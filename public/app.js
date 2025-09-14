@@ -2611,7 +2611,7 @@ function downloadPdfReport() {
                         </div>
         `;
 
-        // Add Q&A sections
+        // Add Q&A sections with corrected question detection
         if (qa.length > 0) {
             qa.forEach(qItem => {
                 let question = '';
@@ -2619,13 +2619,26 @@ function downloadPdfReport() {
                 
                 Object.keys(qItem).forEach(key => {
                     const lowerKey = key.toLowerCase();
-                    if (lowerKey.includes('question') && qItem[key]) {
+                    // Look for Column C (Question) instead of Column F (Question Type) - SAME FIX AS UI
+                    if (lowerKey.includes('question') && !lowerKey.includes('type') && qItem[key]) {
                         question = qItem[key];
                     }
                     if (lowerKey.includes('answer') && qItem[key]) {
                         answer = qItem[key];
                     }
                 });
+                
+                // If no question found with above logic, try direct column references
+                if (!question) {
+                    // Try common column names for the actual question text
+                    const questionKeys = ['Question', 'C', 'Col_2', 'Col_C'];
+                    for (const key of questionKeys) {
+                        if (qItem[key] && qItem[key].toString().trim()) {
+                            question = qItem[key];
+                            break;
+                        }
+                    }
+                }
                 
                 if (question && answer && answer.trim()) {
                     printHtml += `

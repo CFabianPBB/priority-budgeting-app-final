@@ -494,3 +494,18 @@ tr:hover {
         max-width: none;
     }
 }
+.download-buttons {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    margin: 20px 0;
+}
+
+.download-btn.pdf-btn {
+    background: linear-gradient(135deg, #28a745, #20c997);
+}
+
+.download-btn.pdf-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(40, 167, 69, 0.4);
+}

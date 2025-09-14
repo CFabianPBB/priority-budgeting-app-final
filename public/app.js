@@ -624,12 +624,21 @@ function displayReport() {
     reportSection.style.display = 'block';
 
     // Add download event listener after report is displayed
-    const downloadBtn = document.getElementById('downloadBtn');
-    if (downloadBtn) {
-        downloadBtn.removeEventListener('click', downloadReport); // Remove any existing listener
-        downloadBtn.addEventListener('click', downloadReport);
+    
+    // Add BOTH download event listeners
+    const downloadWordBtn = document.getElementById('downloadWordBtn');
+    const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+
+    if (downloadWordBtn) {
+        downloadWordBtn.removeEventListener('click', downloadWordReport);
+        downloadWordBtn.addEventListener('click', downloadWordReport);
     }
 
+    if (downloadPdfBtn) {
+        downloadPdfBtn.removeEventListener('click', downloadPdfReport);
+        downloadPdfBtn.addEventListener('click', downloadPdfReport);
+    }
+    
     // Render charts after HTML is added to DOM
     setTimeout(renderCharts, 100);
 }
@@ -1283,7 +1292,7 @@ function renderCharts() {
     }
 }
 
-function downloadReport() {
+function downloadWordReport() {
     // Generate the report content fresh for Word format
     const reportDate = new Date().toLocaleDateString('en-US', {
         year: 'numeric',
@@ -2192,5 +2201,181 @@ function generateWordDetailedRequests() {
         html += `</div></div>`;
     });
 
+    return html;
+}
+
+// PDF DOCUMENT DOWNLOAD - With actual chart images
+function downloadPdfReport() {
+    // Capture chart images
+    const departmentChartImg = captureChartAsImage('departmentChart');
+    const quartileChartImg = captureChartAsImage('quartileChart');
+    
+    const reportDate = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+
+    const totalAmount = filteredData.reduce((sum, request) => {
+        const amounts = getRequestAmount(request);
+        return sum + amounts.total;
+    }, 0);
+
+    let pdfHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Priority Based Budgeting Report - PDF</title>
+            <style>
+                @page { size: A4; margin: 0.75in; }
+                body { font-family: Arial, sans-serif; line-height: 1.4; color: #333; font-size: 11px; }
+                .page-break { page-break-before: always; }
+                .header { text-align: center; margin-bottom: 30px; padding-bottom: 15px; border-bottom: 3px solid #667eea; }
+                .header h1 { color: #667eea; font-size: 24px; margin-bottom: 8px; }
+                .section-header { color: #667eea; font-size: 16px; font-weight: 600; margin: 25px 0 15px 0; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px; }
+                .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 15px 0; }
+                .stats-card { text-align: center; padding: 12px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border-radius: 8px; }
+                .stats-value { font-size: 16px; font-weight: bold; display: block; margin-bottom: 4px; }
+                .stats-label { font-size: 9px; }
+                .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
+                .chart-container { text-align: center; margin: 20px 0; page-break-inside: avoid; }
+                .chart-image { max-width: 100%; height: 250px; border: 1px solid #e0e0e0; border-radius: 8px; margin: 10px 0; }
+                .amount { font-weight: 600; color: #28a745; }
+                table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10px; }
+                th { background: #667eea; color: white; padding: 8px 6px; text-align: left; font-weight: 600; }
+                td { padding: 6px; border-bottom: 1px solid #ddd; }
+                tr:nth-child(even) { background: #f8f9ff; }
+                .quartile-badge { display: inline-block; padding: 3px 8px; border-radius: 10px; font-size: 8px; font-weight: 600; color: white; }
+                .quartile-most-aligned { background: #28a745; }
+                .quartile-more-aligned { background: #17a2b8; }
+                .quartile-less-aligned { background: #ffc107; color: black; }
+                .quartile-least-aligned { background: #dc3545; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>Priority Based Budgeting Report</h1>
+                <p>Budget Request Analysis and Recommendations</p>
+                <p>Generated on ${reportDate}</p>
+            </div>
+
+            <div class="section-header">Executive Summary</div>
+            <p>This report analyzes <strong>${filteredData.length} budget requests</strong> totaling <strong>$${formatCurrency(totalAmount)}</strong> in requested funding.</p>
+            
+            ${generatePDFSummaryStats()}
+            
+            <div class="page-break"></div>
+            <div class="section-header">Visual Analysis</div>
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h4>Budget Requests by Department</h4>
+                    <img src="${departmentChartImg}" class="chart-image" alt="Department Chart">
+                </div>
+                <div class="chart-container">
+                    <h4>Budget Requests by Quartile</h4>
+                    <img src="${quartileChartImg}" class="chart-image" alt="Quartile Chart">
+                </div>
+            </div>
+            
+            <div class="page-break"></div>
+            ${generatePDFRequestTable()}
+        </body>
+        </html>
+    `;
+
+    const blob = new Blob([pdfHtml], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Priority_Budgeting_Report_PDF_${new Date().toISOString().split('T')[0]}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function captureChartAsImage(chartId) {
+    try {
+        const canvas = document.getElementById(chartId);
+        if (canvas && canvas.getContext) {
+            return canvas.toDataURL('image/png', 1.0);
+        }
+    } catch (error) {
+        console.error(`Error capturing chart ${chartId}:`, error);
+    }
+    return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjhmOWZmIiBzdHJva2U9IiNlMGUwZTAiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzY2N2VlYSI+Q2hhcnQgUGxhY2Vob2xkZXI8L3RleHQ+PC9zdmc+';
+}
+
+function generatePDFSummaryStats() {
+    let totalOngoing = 0;
+    let totalOnetime = 0;
+    
+    filteredData.forEach(request => {
+        const amounts = getRequestAmount(request);
+        totalOngoing += amounts.ongoing;
+        totalOnetime += amounts.onetime;
+    });
+
+    return `
+        <div class="stats-grid">
+            <div class="stats-card">
+                <span class="stats-value">${filteredData.length}</span>
+                <div class="stats-label">Total Requests</div>
+            </div>
+            <div class="stats-card">
+                <span class="stats-value">$${formatCurrency(totalOngoing)}</span>
+                <div class="stats-label">Ongoing</div>
+            </div>
+            <div class="stats-card">
+                <span class="stats-value">$${formatCurrency(totalOnetime)}</span>
+                <div class="stats-label">One-time</div>
+            </div>
+            <div class="stats-card">
+                <span class="stats-value">$${formatCurrency(totalOngoing + totalOnetime)}</span>
+                <div class="stats-label">Total Amount</div>
+            </div>
+        </div>
+    `;
+}
+
+function generatePDFRequestTable() {
+    let html = `
+        <div class="section-header">Request Summary</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th><th>Description</th><th>Department</th><th>Quartile</th><th>Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    filteredData.forEach((request) => {
+        const requestId = getRequestId(request);
+        const description = getRequestDescription(request);
+        const lineItems = getLineItemsForRequest(requestId);
+        const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
+        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        const amounts = getRequestAmount(request);
+
+        const shortDesc = description && description.length > 25 ? 
+            description.substring(0, 25) + '...' : (description || 'N/A');
+
+        const quartileBadge = primaryQuartile !== 'N/A' ? 
+            `<span class="quartile-badge quartile-${primaryQuartile.toLowerCase().replace(' ', '-')}">${primaryQuartile.replace(' Aligned', '')}</span>` : 'N/A';
+
+        html += `
+            <tr>
+                <td><strong>${requestId}</strong></td>
+                <td>${shortDesc}</td>
+                <td>${primaryDept}</td>
+                <td>${quartileBadge}</td>
+                <td class="amount">$${formatCurrency(amounts.total)}</td>
+            </tr>
+        `;
+    });
+
+    html += '</tbody></table>';
     return html;
 }

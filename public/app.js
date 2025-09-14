@@ -1786,15 +1786,16 @@ function generateWordFilterSummary() {
     `;
 }
 
+// Enhanced Word document functions - replace these in your app.js
+
 function generateWordVisualAnalysis() {
-    // Calculate quartile distribution
+    // Calculate quartile distribution and departments
     const quartiles = {
         'Most Aligned': 0,
         'More Aligned': 0,
         'Less Aligned': 0,
         'Least Aligned': 0
     };
-
     const departments = {};
 
     filteredData.forEach(request => {
@@ -1815,30 +1816,37 @@ function generateWordVisualAnalysis() {
         });
     });
 
+    // Create ASCII bar charts for Word
+    const maxDeptAmount = Math.max(...Object.values(departments));
+    const maxQuartileAmount = Math.max(...Object.values(quartiles));
+
     let html = `
+        <div class="section-break"></div>
         <div class="section-header" id="visual-analysis">Visual Analysis</div>
         
         <div class="card">
             <div class="card-header">Budget Requests by Department</div>
             <div class="card-body">
-                <div class="chart-placeholder">
-                    [Department Budget Analysis Chart]<br>
-                    Interactive chart showing budget distribution across departments
-                </div>
-                <table style="margin-top: 20px;">
+                <table style="width: 100%; margin: 20px 0;">
                     <thead>
                         <tr>
-                            <th>Department</th>
-                            <th style="text-align: right;">Total Amount</th>
+                            <th style="width: 30%;">Department</th>
+                            <th style="width: 50%;">Visual Distribution</th>
+                            <th style="width: 20%; text-align: right;">Amount</th>
                         </tr>
                     </thead>
                     <tbody>
     `;
     
     Object.entries(departments).forEach(([dept, amount]) => {
+        const percentage = (amount / maxDeptAmount) * 100;
+        const barLength = Math.round(percentage / 5); // Scale to reasonable length
+        const bar = '█'.repeat(barLength) + '░'.repeat(20 - barLength);
+        
         html += `
             <tr>
                 <td>${dept}</td>
+                <td style="font-family: monospace; font-size: 14px; color: #667eea;">${bar} ${Math.round(percentage)}%</td>
                 <td style="text-align: right;" class="amount">$${formatCurrency(amount)}</td>
             </tr>
         `;
@@ -1853,25 +1861,34 @@ function generateWordVisualAnalysis() {
         <div class="card">
             <div class="card-header">Budget Requests by Quartile Alignment</div>
             <div class="card-body">
-                <div class="chart-placeholder">
-                    [Quartile Budget Analysis Chart]<br>
-                    Bar chart showing budget distribution by program alignment quartiles
-                </div>
-                <table style="margin-top: 20px;">
+                <table style="width: 100%; margin: 20px 0;">
                     <thead>
                         <tr>
-                            <th>Quartile</th>
-                            <th style="text-align: right;">Total Amount</th>
+                            <th style="width: 30%;">Quartile</th>
+                            <th style="width: 50%;">Visual Distribution</th>
+                            <th style="width: 20%; text-align: right;">Amount</th>
                         </tr>
                     </thead>
                     <tbody>
     `;
     
+    const quartileColors = {
+        'Most Aligned': '#28a745',
+        'More Aligned': '#17a2b8', 
+        'Less Aligned': '#ffc107',
+        'Least Aligned': '#dc3545'
+    };
+
     Object.entries(quartiles).forEach(([quartile, amount]) => {
+        const percentage = maxQuartileAmount > 0 ? (amount / maxQuartileAmount) * 100 : 0;
+        const barLength = Math.round(percentage / 5);
+        const bar = '█'.repeat(barLength) + '░'.repeat(20 - barLength);
         const badgeClass = quartile.toLowerCase().replace(' ', '-');
+        
         html += `
             <tr>
                 <td><span class="quartile-badge quartile-${badgeClass}">${quartile}</span></td>
+                <td style="font-family: monospace; font-size: 14px; color: ${quartileColors[quartile]};">${bar} ${Math.round(percentage)}%</td>
                 <td style="text-align: right;" class="amount">$${formatCurrency(amount)}</td>
             </tr>
         `;
@@ -1918,22 +1935,23 @@ function generateWordTableOfContents() {
 
 function generateWordRequestTable() {
     let html = `
+        <div class="section-break"></div>
         <div class="section-header" id="request-summary-table">Request Summary Table</div>
-        <table>
+        <table style="width: 100%; font-size: 0.85rem; margin: 10px 0;">
             <thead>
-                <tr>
-                    <th>Request ID</th>
-                    <th>Description</th>
-                    <th>Department</th>
-                    <th>Program</th>
-                    <th>Quartile</th>
-                    <th style="text-align: right;">Amount</th>
+                <tr style="background: #667eea; color: white;">
+                    <th style="padding: 8px 6px;">ID</th>
+                    <th style="padding: 8px 6px;">Description</th>
+                    <th style="padding: 8px 6px;">Dept</th>
+                    <th style="padding: 8px 6px;">Program</th>
+                    <th style="padding: 8px 6px;">Quartile</th>
+                    <th style="padding: 8px 6px; text-align: right;">Amount</th>
                 </tr>
             </thead>
             <tbody>
     `;
 
-    filteredData.forEach((request) => {
+    filteredData.forEach((request, idx) => {
         const requestId = getRequestId(request);
         const description = getRequestDescription(request);
         const lineItems = getLineItemsForRequest(requestId);
@@ -1942,18 +1960,26 @@ function generateWordRequestTable() {
         const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
         const amounts = getRequestAmount(request);
 
+        // Truncate long descriptions for table
+        const shortDesc = description && description.length > 25 ? 
+            description.substring(0, 25) + '...' : (description || 'N/A');
+        const shortProgram = primaryProgram.length > 20 ? 
+            primaryProgram.substring(0, 20) + '...' : primaryProgram;
+
         const quartileBadge = primaryQuartile !== 'N/A' ? 
-            `<span class="quartile-badge quartile-${primaryQuartile.toLowerCase().replace(' ', '-')}">${primaryQuartile}</span>` : 
+            `<span class="quartile-badge quartile-${primaryQuartile.toLowerCase().replace(' ', '-')}" style="font-size: 0.7rem; padding: 2px 8px;">${primaryQuartile.replace(' Aligned', '')}</span>` : 
             'N/A';
 
+        const rowStyle = idx % 2 === 0 ? 'background: #f8f9ff;' : '';
+
         html += `
-            <tr>
-                <td><strong><a href="#request-${requestId}" style="color: #667eea; text-decoration: none;">${requestId}</a></strong></td>
-                <td>${description || 'N/A'}</td>
-                <td>${primaryDept}</td>
-                <td>${primaryProgram}</td>
-                <td>${quartileBadge}</td>
-                <td style="text-align: right;" class="amount">$${formatCurrency(amounts.total)}</td>
+            <tr style="${rowStyle}">
+                <td style="padding: 6px 4px;"><strong><a href="#request-${requestId}" style="color: #667eea; text-decoration: none;">${requestId}</a></strong></td>
+                <td style="padding: 6px 4px; font-size: 0.8rem;">${shortDesc}</td>
+                <td style="padding: 6px 4px;">${primaryDept}</td>
+                <td style="padding: 6px 4px; font-size: 0.8rem;">${shortProgram}</td>
+                <td style="padding: 6px 4px; text-align: center;">${quartileBadge}</td>
+                <td style="padding: 6px 4px; text-align: right; font-weight: 600;" class="amount">$${formatCurrency(amounts.total)}</td>
             </tr>
         `;
     });
@@ -2000,45 +2026,48 @@ function generateWordDepartmentSummary() {
         });
     });
 
-    let html = `<div class="section-header" id="department-analysis">Department Analysis</div>`;
+    let html = `
+        <div class="section-break"></div>
+        <div class="section-header" id="department-analysis">Department Analysis</div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 15px;">`;
     
     Object.entries(departments).forEach(([dept, data]) => {
         html += `
-            <div class="card">
-                <div class="card-header">${dept}</div>
-                <div class="card-body">
-                    <div class="detail-grid">
-                        <div class="detail-row">
-                            <div class="detail-cell detail-label">Total Requests:</div>
-                            <div class="detail-cell detail-value">${data.requests.size}</div>
+            <div class="card" style="margin: 10px 0; break-inside: avoid;">
+                <div class="card-header" style="background: #667eea; color: white; padding: 12px 15px; font-size: 1.1rem;">${dept}</div>
+                <div class="card-body" style="padding: 15px;">
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: center; margin-bottom: 15px;">
+                        <div style="background: #f8f9ff; padding: 10px; border-radius: 5px;">
+                            <div style="font-size: 1.2rem; font-weight: bold; color: #667eea;">${data.requests.size}</div>
+                            <div style="font-size: 0.8rem; color: #666;">Requests</div>
                         </div>
-                        <div class="detail-row">
-                            <div class="detail-cell detail-label">Programs Impacted:</div>
-                            <div class="detail-cell detail-value">${data.programs.size}</div>
+                        <div style="background: #f8f9ff; padding: 10px; border-radius: 5px;">
+                            <div style="font-size: 1.2rem; font-weight: bold; color: #667eea;">${data.programs.size}</div>
+                            <div style="font-size: 0.8rem; color: #666;">Programs</div>
                         </div>
-                        <div class="detail-row">
-                            <div class="detail-cell detail-label">Total Amount:</div>
-                            <div class="detail-cell detail-value amount">$${formatCurrency(data.amount)}</div>
+                        <div style="background: #f8f9ff; padding: 10px; border-radius: 5px;">
+                            <div style="font-size: 1.1rem; font-weight: bold; color: #28a745;">$${formatCurrency(data.amount)}</div>
+                            <div style="font-size: 0.8rem; color: #666;">Total</div>
                         </div>
                     </div>
                     
-                    <h4 style="color: #667eea; margin: 20px 0 10px 0;">Quartile Distribution</h4>
-                    <div class="detail-grid">
-                        <div class="detail-row">
-                            <div class="detail-cell detail-label">Most Aligned:</div>
-                            <div class="detail-cell detail-value amount">$${formatCurrency(data.quartiles['Most Aligned'])}</div>
+                    <h4 style="color: #667eea; margin: 15px 0 8px 0; font-size: 0.9rem;">Quartile Distribution</h4>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; font-size: 0.8rem;">
+                        <div style="display: flex; justify-content: space-between; padding: 4px 8px; background: #f0f8f0; border-radius: 3px;">
+                            <span>Most Aligned:</span>
+                            <span class="amount">$${formatCurrency(data.quartiles['Most Aligned'])}</span>
                         </div>
-                        <div class="detail-row">
-                            <div class="detail-cell detail-label">More Aligned:</div>
-                            <div class="detail-cell detail-value amount">$${formatCurrency(data.quartiles['More Aligned'])}</div>
+                        <div style="display: flex; justify-content: space-between; padding: 4px 8px; background: #f0f8ff; border-radius: 3px;">
+                            <span>More Aligned:</span>
+                            <span class="amount">$${formatCurrency(data.quartiles['More Aligned'])}</span>
                         </div>
-                        <div class="detail-row">
-                            <div class="detail-cell detail-label">Less Aligned:</div>
-                            <div class="detail-cell detail-value amount">$${formatCurrency(data.quartiles['Less Aligned'])}</div>
+                        <div style="display: flex; justify-content: space-between; padding: 4px 8px; background: #fff8f0; border-radius: 3px;">
+                            <span>Less Aligned:</span>
+                            <span class="amount">$${formatCurrency(data.quartiles['Less Aligned'])}</span>
                         </div>
-                        <div class="detail-row">
-                            <div class="detail-cell detail-label">Least Aligned:</div>
-                            <div class="detail-cell detail-value amount">$${formatCurrency(data.quartiles['Least Aligned'])}</div>
+                        <div style="display: flex; justify-content: space-between; padding: 4px 8px; background: #fff0f0; border-radius: 3px;">
+                            <span>Least Aligned:</span>
+                            <span class="amount">$${formatCurrency(data.quartiles['Least Aligned'])}</span>
                         </div>
                     </div>
                 </div>
@@ -2046,11 +2075,14 @@ function generateWordDepartmentSummary() {
         `;
     });
 
+    html += '</div>';
     return html;
 }
 
 function generateWordDetailedRequests() {
-    let html = `<div class="section-header" id="individual-requests">Individual Budget Requests</div>`;
+    let html = `
+        <div class="section-break"></div>
+        <div class="section-header" id="individual-requests">Individual Budget Requests</div>`;
     
     filteredData.forEach((request, index) => {
         const requestId = getRequestId(request);
@@ -2058,33 +2090,36 @@ function generateWordDetailedRequests() {
         const lineItems = getLineItemsForRequest(requestId);
         const qa = getRequestQA(requestId);
         const amounts = getRequestAmount(request);
-        
-        const pageBreak = index > 0 ? 'page-break' : '';
 
         html += `
-            <div class="card ${pageBreak}" id="request-${requestId}">
-                <div class="card-header">Request ${requestId}: ${description}</div>
-                <div class="card-body">
-                    <div class="detail-grid">
-                        <div class="detail-row">
-                            <div class="detail-cell detail-label">Request ID:</div>
-                            <div class="detail-cell detail-value">${requestId}</div>
+            <div class="card page-break" id="request-${requestId}" style="margin: 15px 0;">
+                <div class="card-header" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 15px 20px;">
+                    <div style="font-size: 1.2rem; font-weight: 600;">Request ${requestId}: ${description}</div>
+                </div>
+                <div class="card-body" style="padding: 20px;">
+                    <!-- Quick Summary Section -->
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; text-align: center;">
+                        <div style="background: #f8f9ff; padding: 12px; border-radius: 8px; border-left: 4px solid #667eea;">
+                            <div style="font-size: 0.8rem; color: #666; margin-bottom: 5px;">Request ID</div>
+                            <div style="font-size: 1.1rem; font-weight: 600; color: #667eea;">${requestId}</div>
                         </div>
-                        <div class="detail-row">
-                            <div class="detail-cell detail-label">Description:</div>
-                            <div class="detail-cell detail-value">${description}</div>
+                        <div style="background: #f0f8f0; padding: 12px; border-radius: 8px; border-left: 4px solid #28a745;">
+                            <div style="font-size: 0.8rem; color: #666; margin-bottom: 5px;">Total Amount</div>
+                            <div style="font-size: 1.1rem; font-weight: 600; color: #28a745;">$${formatCurrency(amounts.total)}</div>
                         </div>
-                        <div class="detail-row">
-                            <div class="detail-cell detail-label">Total Amount:</div>
-                            <div class="detail-cell detail-value amount">$${formatCurrency(amounts.total)}</div>
+                        <div style="background: #fff8f0; padding: 12px; border-radius: 8px; border-left: 4px solid #ffc107;">
+                            <div style="font-size: 0.8rem; color: #666; margin-bottom: 5px;">Line Items</div>
+                            <div style="font-size: 1.1rem; font-weight: 600; color: #ffc107;">${lineItems.length}</div>
                         </div>
                     </div>
         `;
 
-        // Add Q&A
+        // Add Q&A section - more compact
         if (qa.length > 0) {
-            html += `<h4 style="color: #667eea; margin: 20px 0 15px 0;">Request Context & Details</h4>`;
-            qa.forEach(qItem => {
+            html += `<div style="margin-bottom: 20px;">
+                        <h4 style="color: #667eea; margin-bottom: 10px; font-size: 1rem; border-bottom: 1px solid #e0e0e0; padding-bottom: 5px;">Request Details</h4>`;
+            
+            qa.forEach((qItem, idx) => {
                 let question = '';
                 let answer = '';
                 
@@ -2100,43 +2135,58 @@ function generateWordDetailedRequests() {
                 
                 if (question && answer && answer.trim()) {
                     html += `
-                        <div class="qa-section">
-                            <div class="qa-question">${question}</div>
-                            <div class="qa-answer">${answer}</div>
+                        <div style="margin: 10px 0; padding: 12px 15px; background: #fff8f0; border-radius: 5px; border-left: 3px solid #ffc107;">
+                            <div style="font-weight: 600; color: #667eea; font-size: 0.9rem; margin-bottom: 6px;">${question}</div>
+                            <div style="line-height: 1.4; font-size: 0.85rem; color: #333;">${answer}</div>
                         </div>
                     `;
                 }
             });
+            html += '</div>';
         }
 
-        // Add line items
+        // Add line items - more compact grid layout
         if (lineItems.length > 0) {
-            html += `<h4 style="color: #667eea; margin: 20px 0 15px 0;">Line Item Details</h4>`;
+            html += `<div style="margin-bottom: 15px;">
+                        <h4 style="color: #667eea; margin-bottom: 10px; font-size: 1rem; border-bottom: 1px solid #e0e0e0; padding-bottom: 5px;">Line Items</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px;">`;
+            
             lineItems.forEach((item, idx) => {
                 const quartile = getPrimaryValue([item], 'quartile');
                 const quartileBadge = quartile ? 
-                    `<span class="quartile-badge quartile-${quartile.toLowerCase().replace(' ', '-')}">${quartile}</span>` : 
+                    `<span class="quartile-badge quartile-${quartile.toLowerCase().replace(' ', '-')}" style="font-size: 0.7rem; padding: 2px 8px; margin-left: 8px;">${quartile.replace(' Aligned', '')}</span>` : 
                     '';
 
                 html += `
-                    <div class="line-item">
-                        <div class="line-item-header">Line Item ${idx + 1} ${quartileBadge}</div>
-                        <div class="detail-grid">
+                    <div style="background: #f8f9ff; padding: 12px; border-radius: 5px; border-left: 3px solid #667eea;">
+                        <div style="font-weight: 600; font-size: 0.9rem; margin-bottom: 8px; color: #333;">
+                            Line Item ${idx + 1}${quartileBadge}
+                        </div>
                 `;
                 
+                // Show key fields only
+                const keyFields = ['Department', 'Program', 'Position Title', 'Account', 'Description'];
+                let shownFields = 0;
+                
                 Object.entries(item).forEach(([key, value]) => {
-                    if (value !== null && value !== undefined && value.toString().trim() !== '') {
-                        html += `
-                            <div class="detail-row">
-                                <div class="detail-cell detail-label">${key}:</div>
-                                <div class="detail-cell detail-value">${value}</div>
-                            </div>
-                        `;
+                    if (value !== null && value !== undefined && value.toString().trim() !== '' && shownFields < 4) {
+                        const isKeyField = keyFields.some(kf => key.toLowerCase().includes(kf.toLowerCase()));
+                        if (isKeyField || shownFields < 2) {
+                            html += `
+                                <div style="display: flex; justify-content: space-between; margin: 3px 0; font-size: 0.8rem;">
+                                    <span style="color: #666; font-weight: 500;">${key}:</span>
+                                    <span style="color: #333; text-align: right;">${value}</span>
+                                </div>
+                            `;
+                            shownFields++;
+                        }
                     }
                 });
                 
-                html += `</div></div>`;
+                html += `</div>`;
             });
+            
+            html += '</div></div>';
         }
 
         html += `</div></div>`;

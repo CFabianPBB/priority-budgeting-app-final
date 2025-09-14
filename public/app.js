@@ -2280,6 +2280,10 @@ function downloadPdfReport() {
             
             <div class="page-break"></div>
             ${generatePDFRequestTable()}
+
+            <div class="page-break"></div>
+            ${generatePDFDetailedRequests()}
+            
         </body>
         </html>
     `;
@@ -2378,4 +2382,200 @@ function generatePDFRequestTable() {
 
     html += '</tbody></table>';
     return html;
+}
+
+function generatePDFDetailedRequests() {
+    let html = `<div class="section-header">Individual Budget Requests</div>`;
+    
+    filteredData.forEach((request, index) => {
+        const requestId = getRequestId(request);
+        const description = getRequestDescription(request);
+        const lineItems = getLineItemsForRequest(requestId);
+        const qa = getRequestQA(requestId);
+        const amounts = getRequestAmount(request);
+
+        html += `
+            <div class="page-break" style="margin: 15px 0;">
+                <div style="background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 12px 15px; border-radius: 8px 8px 0 0;">
+                    <h3 style="margin: 0; font-size: 14px;">Request ID: ${requestId} - ${description}</h3>
+                </div>
+                <div style="border: 1px solid #e0e0e0; border-top: none; padding: 15px; background: #fafafa;">
+                    
+                    <!-- Quick Summary Section -->
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 15px;">
+                        <div style="background: #f8f9ff; padding: 8px; border-radius: 5px; text-align: center; border-left: 3px solid #667eea;">
+                            <div style="font-size: 8px; color: #666; margin-bottom: 3px;">Request ID</div>
+                            <div style="font-size: 11px; font-weight: 600; color: #667eea;">${requestId}</div>
+                        </div>
+                        <div style="background: #f0f8f0; padding: 8px; border-radius: 5px; text-align: center; border-left: 3px solid #28a745;">
+                            <div style="font-size: 8px; color: #666; margin-bottom: 3px;">Total Amount</div>
+                            <div style="font-size: 11px; font-weight: 600; color: #28a745;">$${formatCurrency(amounts.total)}</div>
+                        </div>
+                        <div style="background: #fff8f0; padding: 8px; border-radius: 5px; text-align: center; border-left: 3px solid #ffc107;">
+                            <div style="font-size: 8px; color: #666; margin-bottom: 3px;">Line Items</div>
+                            <div style="font-size: 11px; font-weight: 600; color: #ffc107;">${lineItems.length}</div>
+                        </div>
+                    </div>
+        `;
+
+        // Add Q&A section - Complete details
+        if (qa.length > 0) {
+            html += `<div style="margin-bottom: 15px;">
+                        <h4 style="color: #667eea; margin-bottom: 8px; font-size: 11px; border-bottom: 1px solid #e0e0e0; padding-bottom: 3px;">Request Context & Details</h4>`;
+            
+            qa.forEach((qItem, idx) => {
+                let question = '';
+                let answer = '';
+                
+                Object.keys(qItem).forEach(key => {
+                    const lowerKey = key.toLowerCase();
+                    if (lowerKey.includes('question') && qItem[key]) {
+                        question = qItem[key];
+                    }
+                    if (lowerKey.includes('answer') && qItem[key]) {
+                        answer = qItem[key];
+                    }
+                });
+                
+                if (question && answer && answer.trim()) {
+                    html += `
+                        <div style="margin: 8px 0; padding: 8px 10px; background: #fff8f0; border-radius: 4px; border-left: 3px solid #ffc107;">
+                            <div style="font-weight: 600; color: #667eea; font-size: 9px; margin-bottom: 4px;">${question}</div>
+                            <div style="line-height: 1.3; font-size: 8px; color: #333;">${answer}</div>
+                        </div>
+                    `;
+                }
+            });
+            html += '</div>';
+        }
+
+        // Add line items - Complete scoring details
+        if (lineItems.length > 0) {
+            html += `<div style="margin-bottom: 15px;">
+                        <h4 style="color: #667eea; margin-bottom: 8px; font-size: 11px; border-bottom: 1px solid #e0e0e0; padding-bottom: 3px;">Line Item Details</h4>`;
+            
+            lineItems.forEach((item, idx) => {
+                const quartile = getPrimaryValue([item], 'quartile');
+                const quartileBadge = quartile ? 
+                    `<span class="quartile-badge quartile-${quartile.toLowerCase().replace(' ', '-')}" style="font-size: 7px; padding: 2px 6px; margin-left: 6px;">${quartile}</span>` : 
+                    '';
+
+                html += `
+                    <div style="background: #f8f9ff; padding: 10px; border-radius: 4px; border-left: 3px solid #667eea; margin: 8px 0; page-break-inside: avoid;">
+                        <div style="font-weight: 600; font-size: 9px; margin-bottom: 6px; color: #333;">
+                            Line Item ${idx + 1}${quartileBadge}
+                        </div>
+                        
+                        <!-- Basic Info Grid -->
+                        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 8px;">
+                `;
+                
+                // Show key basic fields
+                const basicFields = ['REQUESTID', 'REQUEST DESCRIPTION', 'REQUEST TYPE', 'STATUS', 'ONGOING COST'];
+                basicFields.forEach(field => {
+                    const value = findFieldValue(item, field);
+                    if (value !== null) {
+                        html += `
+                            <div style="background: white; padding: 4px; border-radius: 3px; text-align: center;">
+                                <div style="font-size: 6px; color: #666; font-weight: 600;">${field}</div>
+                                <div style="font-size: 8px; color: #333; margin-top: 2px;">${value}</div>
+                            </div>
+                        `;
+                    }
+                });
+                
+                html += `</div>`;
+                
+                // Second row - Financial details
+                html += `<div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 8px;">`;
+                
+                const financialFields = ['ONETIME COST', 'NUMBEROFITEMS', 'COST CENTER', 'ACCTTYPE', 'ACCTCODE'];
+                financialFields.forEach(field => {
+                    const value = findFieldValue(item, field);
+                    if (value !== null) {
+                        html += `
+                            <div style="background: white; padding: 4px; border-radius: 3px; text-align: center;">
+                                <div style="font-size: 6px; color: #666; font-weight: 600;">${field}</div>
+                                <div style="font-size: 8px; color: #333; margin-top: 2px;">${value}</div>
+                            </div>
+                        `;
+                    }
+                });
+                
+                html += `</div>`;
+                
+                // Third row - Organizational details
+                html += `<div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 8px;">`;
+                
+                const orgFields = ['FUND', 'DEPARTMENT', 'ACCOUNT CATEGORY', 'PROGRAM', 'PROGRAMID'];
+                orgFields.forEach(field => {
+                    const value = findFieldValue(item, field);
+                    if (value !== null) {
+                        html += `
+                            <div style="background: white; padding: 4px; border-radius: 3px; text-align: center;">
+                                <div style="font-size: 6px; color: #666; font-weight: 600;">${field}</div>
+                                <div style="font-size: 8px; color: #333; margin-top: 2px;">${value}</div>
+                            </div>
+                        `;
+                    }
+                });
+                
+                html += `</div>`;
+                
+                // Fourth row - Scoring details
+                html += `<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;">`;
+                
+                const scoringFields = ['CHANGE IN DEMAND FOR THE PROGRAM', 'MANDATED TO PROVIDE PROGRAM', 'RELIANCE ON CITY TO PROVIDE PROGRAM', 'PORTION OF THE COMMUNITY SERVED'];
+                scoringFields.forEach(field => {
+                    const value = findFieldValue(item, field);
+                    if (value !== null) {
+                        html += `
+                            <div style="background: #fff8f0; padding: 4px; border-radius: 3px; text-align: center;">
+                                <div style="font-size: 6px; color: #666; font-weight: 600;">${field}</div>
+                                <div style="font-size: 8px; color: #333; margin-top: 2px;">${value}</div>
+                            </div>
+                        `;
+                    }
+                });
+                
+                html += `</div>`;
+                
+                // Cost recovery if available
+                const costRecovery = findFieldValue(item, 'COST RECOVERY OF PROGRAM');
+                if (costRecovery) {
+                    html += `
+                        <div style="margin-top: 6px; padding: 4px 8px; background: #f0f0f0; border-radius: 3px;">
+                            <span style="font-size: 6px; color: #666; font-weight: 600;">COST RECOVERY: </span>
+                            <span style="font-size: 8px; color: #333;">${costRecovery}</span>
+                        </div>
+                    `;
+                }
+                
+                html += `</div>`;
+            });
+            
+            html += '</div>';
+        }
+
+        html += `</div></div>`;
+    });
+
+    return html;
+}
+
+// Helper function to find field values flexibly
+function findFieldValue(item, targetField) {
+    // Direct match
+    if (item[targetField] !== undefined && item[targetField] !== null && item[targetField].toString().trim() !== '') {
+        return item[targetField];
+    }
+    
+    // Flexible matching
+    for (const [key, value] of Object.entries(item)) {
+        if (key.toUpperCase().includes(targetField.toUpperCase()) && value !== null && value !== undefined && value.toString().trim() !== '') {
+            return value;
+        }
+    }
+    
+    return null;
 }

@@ -1103,19 +1103,32 @@ function generateRequestQASection(qa) {
     `;
     
     qa.forEach(qItem => {
-        // Find question and answer fields
+        // Find question and answer fields - UPDATED LOGIC
         let question = '';
         let answer = '';
         
         Object.keys(qItem).forEach(key => {
             const lowerKey = key.toLowerCase();
-            if (lowerKey.includes('question') && qItem[key]) {
+            // Look for Column C (Question) instead of Column F (Question Type)
+            if (lowerKey.includes('question') && !lowerKey.includes('type') && qItem[key]) {
                 question = qItem[key];
             }
             if (lowerKey.includes('answer') && qItem[key]) {
                 answer = qItem[key];
             }
         });
+        
+        // If no question found with above logic, try direct column references
+        if (!question) {
+            // Try common column names for the actual question text
+            const questionKeys = ['Question', 'C', 'Col_2', 'Col_C'];
+            for (const key of questionKeys) {
+                if (qItem[key] && qItem[key].toString().trim()) {
+                    question = qItem[key];
+                    break;
+                }
+            }
+        }
         
         if (question && answer && answer.trim()) {
             html += `
@@ -2625,49 +2638,114 @@ function downloadPdfReport() {
             });
         }
 
-        // Add line items summary
+        // Add detailed line items (replace the existing line items summary section)
         if (lineItems.length > 0) {
             printHtml += `
-                <div class="detail-section">
-                    <h4 style="margin-bottom: 15px; color: #667eea;">Line Item Summary</h4>
+                <div class="detail-section" style="page-break-inside: avoid;">
+                    <h4 style="margin-bottom: 15px; color: #667eea;">Line Item Details</h4>
             `;
             
             lineItems.forEach((item, idx) => {
                 const quartile = getPrimaryValue([item], 'quartile');
                 const quartileBadge = quartile ? 
-                    `<span class="quartile-badge quartile-${quartile.toLowerCase().replace(' ', '-')}">${quartile}</span>` : '';
+                    `<span class="quartile-badge quartile-${quartile.toLowerCase().replace(' ', '-')}" style="margin-left: 10px;">${quartile}</span>` : '';
 
                 printHtml += `
-                    <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 5px; border: 1px solid #e0e0e0;">
-                        <div style="font-weight: 600; margin-bottom: 8px;">Line Item ${idx + 1} ${quartileBadge}</div>
-                        <div class="detail-grid">
+                    <div style="margin: 15px 0; padding: 15px; background: #f8f9ff; border-radius: 5px; border-left: 4px solid #667eea; page-break-inside: avoid;">
+                        <div style="font-weight: 600; margin-bottom: 10px; font-size: 14px;">Line Item ${idx + 1} ${quartileBadge}</div>
+                        
+                        <!-- Comprehensive field display matching UI layout -->
+                        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 12px;">
                 `;
                 
-                // Show key fields only for space
-                const keyFields = ['DEPARTMENT', 'PROGRAM', 'POSITION TITLE', 'ONGOING COST', 'ONETIME COST'];
-                let fieldsShown = 0;
-                
-                Object.entries(item).forEach(([key, value]) => {
-                    if (value !== null && value !== undefined && value.toString().trim() !== '' && fieldsShown < 6) {
-                        const isKeyField = keyFields.some(kf => key.toUpperCase().includes(kf));
-                        if (isKeyField || fieldsShown < 3) {
-                            printHtml += `
-                                <div class="detail-item">
-                                    <div class="detail-label">${key}</div>
-                                    <div class="detail-value">${value}</div>
-                                </div>
-                            `;
-                            fieldsShown++;
-                        }
+                // First row - Basic Info
+                const basicFields = ['REQUESTID', 'REQUEST DESCRIPTION', 'REQUEST TYPE', 'STATUS', 'ONGOING COST'];
+                basicFields.forEach(field => {
+                    const value = findFieldValue(item, field);
+                    if (value !== null) {
+                        printHtml += `
+                            <div style="background: white; padding: 8px; border-radius: 4px; border: 1px solid #e0e0e0; text-align: center;">
+                                <div style="font-size: 9px; color: #666; font-weight: 600; margin-bottom: 3px;">${field}</div>
+                                <div style="font-size: 11px; color: #333; font-weight: 500;">${value}</div>
+                            </div>
+                        `;
                     }
                 });
                 
-                printHtml += `</div></div>`;
+                printHtml += `</div><div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 12px;">`;
+                
+                // Second row - Financial
+                const financialFields = ['ONETIME COST', 'NUMBEROFITEMS', 'COST CENTER', 'ACCTTYPE', 'ACCTCODE'];
+                financialFields.forEach(field => {
+                    const value = findFieldValue(item, field);
+                    if (value !== null) {
+                        printHtml += `
+                            <div style="background: white; padding: 8px; border-radius: 4px; border: 1px solid #e0e0e0; text-align: center;">
+                                <div style="font-size: 9px; color: #666; font-weight: 600; margin-bottom: 3px;">${field}</div>
+                                <div style="font-size: 11px; color: #333; font-weight: 500;">${value}</div>
+                            </div>
+                        `;
+                    }
+                });
+                
+                printHtml += `</div><div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 12px;">`;
+                
+                // Third row - Organizational
+                const orgFields = ['FUND', 'DEPARTMENT', 'ACCOUNT CATEGORY', 'PROGRAM', 'PROGRAMID'];
+                orgFields.forEach(field => {
+                    const value = findFieldValue(item, field);
+                    if (value !== null) {
+                        printHtml += `
+                            <div style="background: white; padding: 8px; border-radius: 4px; border: 1px solid #e0e0e0; text-align: center;">
+                                <div style="font-size: 9px; color: #666; font-weight: 600; margin-bottom: 3px;">${field}</div>
+                                <div style="font-size: 11px; color: #333; font-weight: 500;">${value}</div>
+                            </div>
+                        `;
+                    }
+                });
+                
+                printHtml += `</div><div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px;">`;
+                
+                // Fourth row - Scoring criteria
+                const scoringFields = ['CHANGE IN DEMAND FOR THE PROGRAM', 'MANDATED TO PROVIDE PROGRAM', 'RELIANCE ON CITY TO PROVIDE PROGRAM', 'PORTION OF THE COMMUNITY SERVED'];
+                scoringFields.forEach(field => {
+                    const value = findFieldValue(item, field);
+                    if (value !== null) {
+                        printHtml += `
+                            <div style="background: #fff8f0; padding: 8px; border-radius: 4px; border: 1px solid #ffc107; text-align: center;">
+                                <div style="font-size: 8px; color: #666; font-weight: 600; margin-bottom: 3px;">${field}</div>
+                                <div style="font-size: 10px; color: #333; font-weight: 500;">${value}</div>
+                            </div>
+                        `;
+                    }
+                });
+                
+                printHtml += `</div>`;
+                
+                // Fifth row - Additional fields
+                const additionalFields = ['QUARTILE', 'COST RECOVERY OF PROGRAM'];
+                const foundAdditional = additionalFields.filter(field => findFieldValue(item, field) !== null);
+                
+                if (foundAdditional.length > 0) {
+                    printHtml += `<div style="display: grid; grid-template-columns: repeat(${foundAdditional.length}, 1fr); gap: 8px;">`;
+                    foundAdditional.forEach(field => {
+                        const value = findFieldValue(item, field);
+                        printHtml += `
+                            <div style="background: #f0f8f0; padding: 8px; border-radius: 4px; border: 1px solid #28a745; text-align: center;">
+                                <div style="font-size: 9px; color: #666; font-weight: 600; margin-bottom: 3px;">${field}</div>
+                                <div style="font-size: 11px; color: #333; font-weight: 500;">${value}</div>
+                            </div>
+                        `;
+                    });
+                    printHtml += `</div>`;
+                }
+                
+                printHtml += `</div>`;
             });
             
             printHtml += `</div>`;
         }
-
+        
         printHtml += `</div></div>`;
     });
 
@@ -2962,6 +3040,23 @@ function findFieldValue(item, targetField) {
     }
     
     // Flexible matching
+    for (const [key, value] of Object.entries(item)) {
+        if (key.toUpperCase().includes(targetField.toUpperCase()) && value !== null && value !== undefined && value.toString().trim() !== '') {
+            return value;
+        }
+    }
+    
+    return null;
+}
+
+// Helper function to find field values flexibly
+function findFieldValue(item, targetField) {
+    // Direct match
+    if (item[targetField] !== undefined && item[targetField] !== null && item[targetField].toString().trim() !== '') {
+        return item[targetField];
+    }
+    
+    // Flexible matching - check if any key contains the target field name
     for (const [key, value] of Object.entries(item)) {
         if (key.toUpperCase().includes(targetField.toUpperCase()) && value !== null && value !== undefined && value.toString().trim() !== '') {
             return value;

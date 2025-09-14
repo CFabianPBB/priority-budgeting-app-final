@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Priority Based Budgeting Report Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Priority Based Budgeting</h1>
+            <p>Budget Request Report Generator</p>
+        </div>
+
+        <div class="upload-section">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📄</div>
+                <h3>Upload Budget Request Data</h3>
+                <p>Drag and drop your Excel file here or click to browse</p>
+                <input type="file" id="fileInput" accept=".xlsx,.xls" style="display: none;">
+            </div>
+            <div id="uploadStatus"></div>
+        </div>
+
+        <div class="filters-section" id="filtersSection">
+            <h2 style="margin-bottom: 20px; color: #333;">Filter Budget Requests</h2>
+            <div class="filters-grid">
+                <div class="filter-group">
+                    <label>Fund</label>
+                    <select id="fundFilter">
+                        <option value="all">All Funds</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Department</label>
+                    <select id="departmentFilter">
+                        <option value="all">All Departments</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Division</label>
+                    <select id="divisionFilter">
+                        <option value="all">All Divisions</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Program</label>
+                    <select id="programFilter">
+                        <option value="all">All Programs</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Request Type</label>
+                    <select id="requestTypeFilter">
+                        <option value="all">All Types</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Status</label>
+                    <select id="statusFilter">
+                        <option value="all">All Status</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="stats-cards" id="statsCards">
+                <!-- Stats will be populated here -->
+            </div>
+
+            <div style="text-align: center;">
+                <button class="generate-btn" id="generateBtn" disabled>Generate Report</button>
+                <div class="progress-bar" id="progressBar" style="display: none;">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="report-section" id="reportSection">
+            <div class="report-header">
+                <h2>Priority Based Budgeting Report</h2>
+                <p id="reportDate"></p>
+                <button class="download-btn" id="downloadBtn">Download as Word Document</button>
+            </div>
+            <div class="report-content" id="reportContent">
+                <!-- Report content will be generated here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

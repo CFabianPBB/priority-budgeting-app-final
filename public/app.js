@@ -2204,12 +2204,7 @@ function generateWordDetailedRequests() {
     return html;
 }
 
-// PDF DOCUMENT DOWNLOAD - With actual chart images
 function downloadPdfReport() {
-    // Capture chart images
-    const departmentChartImg = captureChartAsImage('departmentChart');
-    const quartileChartImg = captureChartAsImage('quartileChart');
-    
     const reportDate = new Date().toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
@@ -2221,39 +2216,282 @@ function downloadPdfReport() {
         return sum + amounts.total;
     }, 0);
 
-    let pdfHtml = `
+    // Calculate summary stats for the report
+    let totalOngoing = 0;
+    let totalOnetime = 0;
+    const quartileStats = {
+        'Most Aligned': 0,
+        'More Aligned': 0,
+        'Less Aligned': 0,
+        'Least Aligned': 0
+    };
+    
+    filteredData.forEach(request => {
+        const amounts = getRequestAmount(request);
+        totalOngoing += amounts.ongoing;
+        totalOnetime += amounts.onetime;
+        
+        const requestId = getRequestId(request);
+        const lineItems = getLineItemsForRequest(requestId);
+        
+        lineItems.forEach(item => {
+            const quartile = getPrimaryValue([item], 'quartile');
+            if (quartile && quartileStats.hasOwnProperty(quartile)) {
+                quartileStats[quartile] += amounts.total / lineItems.length;
+            }
+        });
+    });
+
+    // Create a print-optimized HTML document
+    let printHtml = `
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
-            <title>Priority Based Budgeting Report - PDF</title>
+            <title>Priority Based Budgeting Report</title>
             <style>
-                @page { size: A4; margin: 0.75in; }
-                body { font-family: Arial, sans-serif; line-height: 1.4; color: #333; font-size: 11px; }
-                .page-break { page-break-before: always; }
-                .header { text-align: center; margin-bottom: 30px; padding-bottom: 15px; border-bottom: 3px solid #667eea; }
-                .header h1 { color: #667eea; font-size: 24px; margin-bottom: 8px; }
-                .section-header { color: #667eea; font-size: 16px; font-weight: 600; margin: 25px 0 15px 0; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px; }
-                .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 15px 0; }
-                .stats-card { text-align: center; padding: 12px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border-radius: 8px; }
-                .stats-value { font-size: 16px; font-weight: bold; display: block; margin-bottom: 4px; }
-                .stats-label { font-size: 9px; }
-                .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
-                .chart-container { text-align: center; margin: 20px 0; page-break-inside: avoid; }
-                .chart-image { max-width: 100%; height: 250px; border: 1px solid #e0e0e0; border-radius: 8px; margin: 10px 0; }
-                .amount { font-weight: 600; color: #28a745; }
-                table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10px; }
-                th { background: #667eea; color: white; padding: 8px 6px; text-align: left; font-weight: 600; }
-                td { padding: 6px; border-bottom: 1px solid #ddd; }
-                tr:nth-child(even) { background: #f8f9ff; }
-                .quartile-badge { display: inline-block; padding: 3px 8px; border-radius: 10px; font-size: 8px; font-weight: 600; color: white; }
+                @page { 
+                    size: A4; 
+                    margin: 0.75in; 
+                    @top-center {
+                        content: "Priority Based Budgeting Report - Page " counter(page);
+                    }
+                }
+                
+                body { 
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                    line-height: 1.5; 
+                    color: #333; 
+                    font-size: 12px;
+                    margin: 0;
+                    padding: 0;
+                }
+                
+                .print-instruction {
+                    background: #fff3cd;
+                    border: 2px solid #ffc107;
+                    padding: 15px;
+                    margin: 20px 0;
+                    border-radius: 8px;
+                    text-align: center;
+                    font-weight: bold;
+                    color: #856404;
+                }
+                
+                .header { 
+                    text-align: center; 
+                    margin-bottom: 40px; 
+                    padding-bottom: 20px;
+                    border-bottom: 3px solid #667eea;
+                }
+                
+                .header h1 { 
+                    color: #667eea; 
+                    font-size: 28px; 
+                    margin-bottom: 10px; 
+                }
+                
+                .header p { 
+                    color: #666; 
+                    font-size: 14px; 
+                    margin: 5px 0;
+                }
+                
+                .section-header { 
+                    color: #667eea; 
+                    font-size: 18px; 
+                    font-weight: 600; 
+                    margin: 30px 0 20px 0; 
+                    border-bottom: 2px solid #e0e0e0; 
+                    padding-bottom: 10px; 
+                    page-break-after: avoid;
+                }
+                
+                .stats-container {
+                    display: grid;
+                    grid-template-columns: repeat(4, 1fr);
+                    gap: 15px;
+                    margin: 20px 0;
+                    page-break-inside: avoid;
+                }
+                
+                .stat-card {
+                    background: linear-gradient(135deg, #667eea, #764ba2);
+                    color: white;
+                    padding: 20px;
+                    border-radius: 10px;
+                    text-align: center;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                }
+                
+                .stat-value {
+                    font-size: 24px;
+                    font-weight: bold;
+                    display: block;
+                    margin-bottom: 8px;
+                }
+                
+                .stat-label {
+                    font-size: 11px;
+                    opacity: 0.9;
+                }
+                
+                .card { 
+                    border: 2px solid #e0e0e0; 
+                    margin: 20px 0; 
+                    border-radius: 8px; 
+                    page-break-inside: avoid;
+                    background: white;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }
+                
+                .card-header { 
+                    background: linear-gradient(135deg, #667eea, #764ba2); 
+                    color: white; 
+                    padding: 15px 20px; 
+                    font-size: 16px; 
+                    font-weight: 600; 
+                    border-radius: 6px 6px 0 0;
+                }
+                
+                .card-body { 
+                    padding: 20px; 
+                }
+                
+                table { 
+                    width: 100%; 
+                    border-collapse: collapse; 
+                    margin: 15px 0; 
+                    font-size: 11px;
+                    page-break-inside: auto;
+                }
+                
+                th { 
+                    background: #667eea; 
+                    color: white; 
+                    padding: 12px 8px; 
+                    text-align: left; 
+                    font-weight: 600; 
+                    font-size: 12px;
+                }
+                
+                td { 
+                    padding: 10px 8px; 
+                    border-bottom: 1px solid #ddd; 
+                    vertical-align: top;
+                }
+                
+                tr:nth-child(even) { 
+                    background: #f8f9ff; 
+                }
+                
+                .quartile-badge { 
+                    display: inline-block; 
+                    padding: 4px 12px; 
+                    border-radius: 15px; 
+                    font-size: 10px; 
+                    font-weight: 600; 
+                    color: white;
+                }
+                
                 .quartile-most-aligned { background: #28a745; }
                 .quartile-more-aligned { background: #17a2b8; }
                 .quartile-less-aligned { background: #ffc107; color: black; }
                 .quartile-least-aligned { background: #dc3545; }
+                
+                .amount { 
+                    font-weight: 600; 
+                    color: #28a745; 
+                    font-size: 13px;
+                }
+                
+                .page-break { 
+                    page-break-before: always; 
+                }
+                
+                .detail-section {
+                    margin: 20px 0;
+                    padding: 15px;
+                    background: #f8f9ff;
+                    border-radius: 8px;
+                    border-left: 4px solid #667eea;
+                }
+                
+                .detail-grid {
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 10px;
+                    margin: 10px 0;
+                }
+                
+                .detail-item {
+                    padding: 8px;
+                    background: white;
+                    border-radius: 5px;
+                    border: 1px solid #e0e0e0;
+                }
+                
+                .detail-label {
+                    font-size: 10px;
+                    color: #666;
+                    font-weight: 600;
+                    margin-bottom: 3px;
+                }
+                
+                .detail-value {
+                    font-size: 12px;
+                    color: #333;
+                    font-weight: 500;
+                }
+                
+                .qa-section {
+                    background: #fff8f0;
+                    border-left: 4px solid #ffc107;
+                    padding: 15px;
+                    margin: 15px 0;
+                    border-radius: 0 8px 8px 0;
+                    page-break-inside: avoid;
+                }
+                
+                .qa-question {
+                    font-weight: 600;
+                    color: #667eea;
+                    font-size: 13px;
+                    margin-bottom: 8px;
+                }
+                
+                .qa-answer {
+                    line-height: 1.6;
+                    color: #333;
+                    font-size: 12px;
+                }
+                
+                .chart-placeholder {
+                    background: linear-gradient(45deg, #667eea, #764ba2);
+                    color: white;
+                    padding: 40px 20px;
+                    text-align: center;
+                    margin: 20px 0;
+                    border-radius: 8px;
+                    font-size: 16px;
+                    font-weight: 600;
+                }
+                
+                @media print {
+                    .print-instruction { display: none; }
+                    body { font-size: 11px; }
+                    .page-break { page-break-before: always; }
+                    .card { break-inside: avoid; }
+                    .detail-section { break-inside: avoid; }
+                    .qa-section { break-inside: avoid; }
+                }
             </style>
         </head>
         <body>
+            <div class="print-instruction">
+                📄 To save as PDF: Press Ctrl+P (or Cmd+P on Mac), then select "Save as PDF" as your destination
+            </div>
+            
             <div class="header">
                 <h1>Priority Based Budgeting Report</h1>
                 <p>Budget Request Analysis and Recommendations</p>
@@ -2261,42 +2499,195 @@ function downloadPdfReport() {
             </div>
 
             <div class="section-header">Executive Summary</div>
-            <p>This report analyzes <strong>${filteredData.length} budget requests</strong> totaling <strong>$${formatCurrency(totalAmount)}</strong> in requested funding.</p>
+            <p>This comprehensive report analyzes <strong>${filteredData.length} budget requests</strong> totaling <strong class="amount">$${formatCurrency(totalAmount)}</strong> in requested funding. The requests span multiple departments and programs, with varying levels of alignment to organizational priorities.</p>
             
-            ${generatePDFSummaryStats()}
-            
-            <div class="page-break"></div>
-            <div class="section-header">Visual Analysis</div>
-            <div class="charts-grid">
-                <div class="chart-container">
-                    <h4>Budget Requests by Department</h4>
-                    <img src="${departmentChartImg}" class="chart-image" alt="Department Chart">
+            <div class="stats-container">
+                <div class="stat-card">
+                    <span class="stat-value">${filteredData.length}</span>
+                    <div class="stat-label">Total Requests</div>
                 </div>
-                <div class="chart-container">
-                    <h4>Budget Requests by Quartile</h4>
-                    <img src="${quartileChartImg}" class="chart-image" alt="Quartile Chart">
+                <div class="stat-card">
+                    <span class="stat-value">$${formatCurrency(totalOngoing)}</span>
+                    <div class="stat-label">Ongoing Requests</div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value">$${formatCurrency(totalOnetime)}</span>
+                    <div class="stat-label">One-time Requests</div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value">$${formatCurrency(totalAmount)}</span>
+                    <div class="stat-label">Total Amount</div>
                 </div>
             </div>
-            
-            <div class="page-break"></div>
-            ${generatePDFRequestTable()}
 
-            <div class="page-break"></div>
-            ${generatePDFDetailedRequests()}
+            <div class="section-header">Request Summary</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Request ID</th>
+                        <th>Description</th>
+                        <th>Department</th>
+                        <th>Quartile</th>
+                        <th style="text-align: right;">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    // Add request summary table
+    filteredData.forEach((request) => {
+        const requestId = getRequestId(request);
+        const description = getRequestDescription(request);
+        const lineItems = getLineItemsForRequest(requestId);
+        const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
+        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        const amounts = getRequestAmount(request);
+
+        const shortDesc = description && description.length > 40 ? 
+            description.substring(0, 40) + '...' : (description || 'N/A');
+
+        const quartileBadge = primaryQuartile !== 'N/A' ? 
+            `<span class="quartile-badge quartile-${primaryQuartile.toLowerCase().replace(' ', '-')}">${primaryQuartile.replace(' Aligned', '')}</span>` : 'N/A';
+
+        printHtml += `
+            <tr>
+                <td><strong>${requestId}</strong></td>
+                <td>${shortDesc}</td>
+                <td>${primaryDept}</td>
+                <td>${quartileBadge}</td>
+                <td style="text-align: right;" class="amount">$${formatCurrency(amounts.total)}</td>
+            </tr>
+        `;
+    });
+
+    printHtml += `
+                </tbody>
+            </table>
+    `;
+
+    // Add detailed request sections
+    filteredData.forEach((request, index) => {
+        const requestId = getRequestId(request);
+        const description = getRequestDescription(request);
+        const lineItems = getLineItemsForRequest(requestId);
+        const qa = getRequestQA(requestId);
+        const amounts = getRequestAmount(request);
+
+        printHtml += `
+            <div class="page-break">
+                <div class="card">
+                    <div class="card-header">Request ${requestId}: ${description}</div>
+                    <div class="card-body">
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <div class="detail-label">Request ID</div>
+                                <div class="detail-value">${requestId}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Total Amount</div>
+                                <div class="detail-value amount">$${formatCurrency(amounts.total)}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Line Items</div>
+                                <div class="detail-value">${lineItems.length}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Department</div>
+                                <div class="detail-value">${getPrimaryValue(lineItems, 'department') || 'N/A'}</div>
+                            </div>
+                        </div>
+        `;
+
+        // Add Q&A sections
+        if (qa.length > 0) {
+            qa.forEach(qItem => {
+                let question = '';
+                let answer = '';
+                
+                Object.keys(qItem).forEach(key => {
+                    const lowerKey = key.toLowerCase();
+                    if (lowerKey.includes('question') && qItem[key]) {
+                        question = qItem[key];
+                    }
+                    if (lowerKey.includes('answer') && qItem[key]) {
+                        answer = qItem[key];
+                    }
+                });
+                
+                if (question && answer && answer.trim()) {
+                    printHtml += `
+                        <div class="qa-section">
+                            <div class="qa-question">${question}</div>
+                            <div class="qa-answer">${answer}</div>
+                        </div>
+                    `;
+                }
+            });
+        }
+
+        // Add line items summary
+        if (lineItems.length > 0) {
+            printHtml += `
+                <div class="detail-section">
+                    <h4 style="margin-bottom: 15px; color: #667eea;">Line Item Summary</h4>
+            `;
             
+            lineItems.forEach((item, idx) => {
+                const quartile = getPrimaryValue([item], 'quartile');
+                const quartileBadge = quartile ? 
+                    `<span class="quartile-badge quartile-${quartile.toLowerCase().replace(' ', '-')}">${quartile}</span>` : '';
+
+                printHtml += `
+                    <div style="margin: 10px 0; padding: 10px; background: white; border-radius: 5px; border: 1px solid #e0e0e0;">
+                        <div style="font-weight: 600; margin-bottom: 8px;">Line Item ${idx + 1} ${quartileBadge}</div>
+                        <div class="detail-grid">
+                `;
+                
+                // Show key fields only for space
+                const keyFields = ['DEPARTMENT', 'PROGRAM', 'POSITION TITLE', 'ONGOING COST', 'ONETIME COST'];
+                let fieldsShown = 0;
+                
+                Object.entries(item).forEach(([key, value]) => {
+                    if (value !== null && value !== undefined && value.toString().trim() !== '' && fieldsShown < 6) {
+                        const isKeyField = keyFields.some(kf => key.toUpperCase().includes(kf));
+                        if (isKeyField || fieldsShown < 3) {
+                            printHtml += `
+                                <div class="detail-item">
+                                    <div class="detail-label">${key}</div>
+                                    <div class="detail-value">${value}</div>
+                                </div>
+                            `;
+                            fieldsShown++;
+                        }
+                    }
+                });
+                
+                printHtml += `</div></div>`;
+            });
+            
+            printHtml += `</div>`;
+        }
+
+        printHtml += `</div></div>`;
+    });
+
+    printHtml += `
         </body>
         </html>
     `;
 
-    const blob = new Blob([pdfHtml], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Priority_Budgeting_Report_PDF_${new Date().toISOString().split('T')[0]}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // Open in new window for printing
+    const newWindow = window.open('', '_blank');
+    newWindow.document.write(printHtml);
+    newWindow.document.close();
+    
+    // Focus the new window
+    newWindow.focus();
+    
+    // Show instruction alert
+    setTimeout(() => {
+        alert('Your report has opened in a new window. To save as PDF:\n\n1. Press Ctrl+P (or Cmd+P on Mac)\n2. Select "Save as PDF" as destination\n3. Click Save\n\nThe yellow instruction bar will not appear in the printed PDF.');
+    }, 500);
 }
 
 function captureChartAsImage(chartId) {

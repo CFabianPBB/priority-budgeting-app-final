@@ -200,6 +200,7 @@ function parseSheetWithDebug(workbook, sheetName) {
     return data;
 }
 
+// ADDITIONAL FIX: Enhanced setup filters to use proper field names
 function setupFilters() {
     console.log('\n=== Setting up filters ===');
     
@@ -212,53 +213,27 @@ function setupFilters() {
         status: new Set(['all'])
     };
 
-    // Collect unique values from all data sources
     console.log('Collecting filter values...');
     
-    // From Personnel data
-    budgetData.personnel.forEach((item, idx) => {
-        if (idx < 3) console.log(`Personnel item ${idx}:`, item);
+    // Collect unique values from all line items (Personnel + NonPersonnel)
+    const allLineItems = [...budgetData.personnel, ...budgetData.nonPersonnel];
+    
+    allLineItems.forEach((item, idx) => {
+        if (idx < 5) console.log(`Line item ${idx}:`, item);
         
-        Object.keys(item).forEach(key => {
-            const value = item[key];
-            if (value && typeof value === 'string') {
-                const lowerKey = key.toLowerCase();
-                if (lowerKey.includes('fund')) filters.fund.add(value);
-                if (lowerKey.includes('department') || lowerKey.includes('dept')) filters.department.add(value);
-                if (lowerKey.includes('division') || lowerKey.includes('div')) filters.division.add(value);
-                if (lowerKey.includes('program')) filters.program.add(value);
-                if (lowerKey.includes('status')) filters.status.add(value);
-            }
-        });
+        // FIXED: Use explicit field names instead of fuzzy matching
+        if (item.Fund) filters.fund.add(item.Fund);
+        if (item.Department) filters.department.add(item.Department);
+        if (item['Cost Center']) filters.department.add(item['Cost Center']); // Cost Center as department
+        if (item.Division) filters.division.add(item.Division);
+        if (item.Program) filters.program.add(item.Program);
+        if (item.Status) filters.status.add(item.Status);
     });
     
-    // From NonPersonnel data
-    budgetData.nonPersonnel.forEach((item, idx) => {
-        if (idx < 3) console.log(`NonPersonnel item ${idx}:`, item);
-        
-        Object.keys(item).forEach(key => {
-            const value = item[key];
-            if (value && typeof value === 'string') {
-                const lowerKey = key.toLowerCase();
-                if (lowerKey.includes('fund')) filters.fund.add(value);
-                if (lowerKey.includes('department') || lowerKey.includes('dept')) filters.department.add(value);
-                if (lowerKey.includes('division') || lowerKey.includes('div')) filters.division.add(value);
-                if (lowerKey.includes('program')) filters.program.add(value);
-                if (lowerKey.includes('status')) filters.status.add(value);
-            }
-        });
-    });
-    
-    // From Request Summary
+    // From Request Summary (for request-level filters)
     budgetData.requestSummary.forEach(item => {
-        Object.keys(item).forEach(key => {
-            const value = item[key];
-            if (value && typeof value === 'string') {
-                const lowerKey = key.toLowerCase();
-                if (lowerKey.includes('type')) filters.requestType.add(value);
-                if (lowerKey.includes('status')) filters.status.add(value);
-            }
-        });
+        if (item['Request Type']) filters.requestType.add(item['Request Type']);
+        if (item.Status) filters.status.add(item.Status);
     });
 
     console.log('Filter values found:', {
@@ -284,6 +259,7 @@ function setupFilters() {
     });
 }
 
+
 function populateSelect(selectId, values) {
     const select = document.getElementById(selectId);
     select.innerHTML = '<option value="all">All</option>';
@@ -298,20 +274,17 @@ function populateSelect(selectId, values) {
     });
 }
 
+// ISSUE 2 FIX: Corrected line item retrieval to ensure RequestID matches
 function getLineItemsForRequest(requestId) {
-    // Find Personnel and NonPersonnel items for this request
+    console.log(`Getting line items for Request ID: ${requestId}`);
+    
+    // FIXED: Only return items where the RequestID field explicitly matches
     const personnel = budgetData.personnel.filter(item => {
-        // Look for RequestID in any field that might contain it
-        return Object.values(item).some(value => 
-            value && value.toString().trim() === requestId.toString().trim()
-        );
+        return item.RequestID && item.RequestID.toString().trim() === requestId.toString().trim();
     });
     
     const nonPersonnel = budgetData.nonPersonnel.filter(item => {
-        // Look for RequestID in any field that might contain it
-        return Object.values(item).some(value => 
-            value && value.toString().trim() === requestId.toString().trim()
-        );
+        return item.RequestID && item.RequestID.toString().trim() === requestId.toString().trim();
     });
     
     console.log(`Request ${requestId}: Found ${personnel.length} personnel + ${nonPersonnel.length} non-personnel items`);
@@ -319,6 +292,7 @@ function getLineItemsForRequest(requestId) {
     return [...personnel, ...nonPersonnel];
 }
 
+// ISSUE 1 FIX: Corrected department filtering logic
 function getFilteredData() {
     const filters = {
         fund: document.getElementById('fundFilter').value,
@@ -336,48 +310,39 @@ function getFilteredData() {
         const requestId = getRequestId(request);
         if (!requestId) return false;
         
-        // Get related personnel and non-personnel data
+        // FIXED: Get related personnel and non-personnel data FOR THIS SPECIFIC REQUEST ONLY
         const lineItems = getLineItemsForRequest(requestId);
+        
+        // IMPORTANT: If no line items found, exclude the request
+        if (lineItems.length === 0) return false;
 
-        // Check filters against line items
+        // Check filters against line items that belong to THIS request
         if (filters.fund !== 'all') {
             const hasMatchingFund = lineItems.some(item => 
-                Object.values(item).some(value => 
-                    value && value.toString() === filters.fund
-                )
+                item.Fund && item.Fund.toString() === filters.fund
             );
             if (!hasMatchingFund) return false;
         }
 
         if (filters.department !== 'all') {
-            const hasMatchingDept = lineItems.some(item => 
-                Object.keys(item).some(key => {
-                    const lowerKey = key.toLowerCase();
-                    return (lowerKey.includes('department') || lowerKey.includes('dept')) &&
-                           item[key] && item[key].toString() === filters.department;
-                })
-            );
+            // FIXED: Check both Department and Cost Center fields properly
+            const hasMatchingDept = lineItems.some(item => {
+                const dept = item.Department || item['Cost Center'] || '';
+                return dept.toString() === filters.department;
+            });
             if (!hasMatchingDept) return false;
         }
 
         if (filters.division !== 'all') {
             const hasMatchingDiv = lineItems.some(item => 
-                Object.keys(item).some(key => {
-                    const lowerKey = key.toLowerCase();
-                    return (lowerKey.includes('division') || lowerKey.includes('div')) &&
-                           item[key] && item[key].toString() === filters.division;
-                })
+                item.Division && item.Division.toString() === filters.division
             );
             if (!hasMatchingDiv) return false;
         }
 
         if (filters.program !== 'all') {
             const hasMatchingProgram = lineItems.some(item => 
-                Object.keys(item).some(key => {
-                    const lowerKey = key.toLowerCase();
-                    return lowerKey.includes('program') &&
-                           item[key] && item[key].toString() === filters.program;
-                })
+                item.Program && item.Program.toString() === filters.program
             );
             if (!hasMatchingProgram) return false;
         }
@@ -404,6 +369,7 @@ function getFilteredData() {
         return true;
     });
 }
+
 
 function getRequestId(request) {
     // Look for Request ID in various field names
@@ -870,14 +836,22 @@ function getRequestDescription(request) {
     return 'N/A';
 }
 
+// HELPER FUNCTION: Get primary value with improved logic
 function getPrimaryValue(lineItems, fieldType) {
-    // Look for the field type in line items
+    // Look for the specific field in line items
     for (const item of lineItems) {
-        for (const key of Object.keys(item)) {
-            const lowerKey = key.toLowerCase();
-            if (lowerKey.includes(fieldType) && item[key]) {
-                return item[key];
-            }
+        if (fieldType === 'department') {
+            // Check both Department and Cost Center fields
+            if (item.Department) return item.Department;
+            if (item['Cost Center']) return item['Cost Center'];
+        } else if (fieldType === 'program') {
+            if (item.Program) return item.Program;
+        } else if (fieldType === 'quartile') {
+            if (item.Quartile) return item.Quartile;
+        } else if (fieldType === 'fund') {
+            if (item.Fund) return item.Fund;
+        } else if (fieldType === 'division') {
+            if (item.Division) return item.Division;
         }
     }
     return null;

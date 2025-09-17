@@ -2931,7 +2931,7 @@ function generatePDFDetailedRequests() {
             html += '</div>';
         }
 
-        // Add line items - Complete scoring details
+        // Add line items - Complete scoring details with FIXED dollar formatting
         if (lineItems.length > 0) {
             html += `<div style="margin-bottom: 15px;">
                         <h4 style="color: #667eea; margin-bottom: 8px; font-size: 11px; border-bottom: 1px solid #e0e0e0; padding-bottom: 3px;">Line Item Details</h4>`;
@@ -2952,20 +2952,12 @@ function generatePDFDetailedRequests() {
                         <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 8px;">
                 `;
                 
-                // Show key basic fields
+                // FIXED: First row - Basic Info with proper dollar formatting
                 const basicFields = ['REQUESTID', 'REQUEST DESCRIPTION', 'REQUEST TYPE', 'STATUS', 'ONGOING COST'];
                 basicFields.forEach(field => {
                     const value = findFieldValue(item, field);
                     if (value !== null) {
-                        // Add dollar signs to cost fields
-                        let displayValue = value;
-                        if (field.toLowerCase().includes('cost')) {
-                            const numValue = parseFloat(value);
-                            if (!isNaN(numValue)) {
-                                displayValue = `$${formatCurrency(numValue)}`;
-                            }
-                        }
-
+                        const displayValue = formatFieldValue(field, value);
                         html += `
                             <div style="background: white; padding: 4px; border-radius: 3px; text-align: center;">
                                 <div style="font-size: 6px; color: #666; font-weight: 600;">${field}</div>
@@ -2974,25 +2966,15 @@ function generatePDFDetailedRequests() {
                         `;
                     }
                 });
-                html += `</div>`;
                 
+                html += `</div><div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 8px;">`;
                 
-                // Second row - Financial details
-                html += `<div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 8px;">`;
-                
+                // FIXED: Second row - Financial with proper dollar formatting
                 const financialFields = ['ONETIME COST', 'NUMBEROFITEMS', 'COST CENTER', 'ACCTTYPE', 'ACCTCODE'];
                 financialFields.forEach(field => {
                     const value = findFieldValue(item, field);
                     if (value !== null) {
-                        // Add dollar signs to cost fields
-                        let displayValue = value;
-                        if (field.toLowerCase().includes('cost')) {
-                            const numValue = parseFloat(value);
-                            if (!isNaN(numValue)) {
-                                displayValue = `$${formatCurrency(numValue)}`;
-                            }
-                        }
-
+                        const displayValue = formatFieldValue(field, value);
                         html += `
                             <div style="background: white; padding: 4px; border-radius: 3px; text-align: center;">
                                 <div style="font-size: 6px; color: #666; font-weight: 600;">${field}</div>
@@ -3001,12 +2983,10 @@ function generatePDFDetailedRequests() {
                         `;
                     }
                 });
-                html += `</div>`;
                 
+                html += `</div><div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 8px;">`;
                 
-                // Third row - Organizational details
-                html += `<div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 8px;">`;
-                
+                // Third row - Organizational details (no formatting needed)
                 const orgFields = ['FUND', 'DEPARTMENT', 'ACCOUNT CATEGORY', 'PROGRAM', 'PROGRAMID'];
                 orgFields.forEach(field => {
                     const value = findFieldValue(item, field);
@@ -3020,11 +3000,9 @@ function generatePDFDetailedRequests() {
                     }
                 });
                 
-                html += `</div>`;
+                html += `</div><div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;">`;
                 
-                // Fourth row - Scoring details
-                html += `<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;">`;
-                
+                // Fourth row - Scoring details (no formatting needed)
                 const scoringFields = ['CHANGE IN DEMAND FOR THE PROGRAM', 'MANDATED TO PROVIDE PROGRAM', 'RELIANCE ON CITY TO PROVIDE PROGRAM', 'PORTION OF THE COMMUNITY SERVED'];
                 scoringFields.forEach(field => {
                     const value = findFieldValue(item, field);
@@ -3063,6 +3041,7 @@ function generatePDFDetailedRequests() {
     return html;
 }
 
+
 // Helper function to find field values flexibly
 function findFieldValue(item, targetField) {
     // Direct match
@@ -3095,4 +3074,18 @@ function findFieldValue(item, targetField) {
     }
     
     return null;
+}
+
+// Helper function to format field values for display
+function formatFieldValue(field, value) {
+    // Check if this is a cost field that should have dollar formatting
+    const lowerField = field.toLowerCase();
+    if ((lowerField.includes('onetime') && lowerField.includes('cost')) ||
+        (lowerField.includes('ongoing') && lowerField.includes('cost'))) {
+        const numValue = parseFloat(value);
+        if (!isNaN(numValue)) {
+            return `$${formatCurrency(numValue)}`;
+        }
+    }
+    return value;
 }

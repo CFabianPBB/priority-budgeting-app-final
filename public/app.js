@@ -2667,26 +2667,28 @@ function downloadPdfReport() {
                 basicFields.forEach(field => {
                     const value = findFieldValue(item, field);
                     if (value !== null) {
+                        const displayValue = formatFieldValue(field, value);
                         printHtml += `
                             <div style="background: white; padding: 8px; border-radius: 4px; border: 1px solid #e0e0e0; text-align: center;">
                                 <div style="font-size: 9px; color: #666; font-weight: 600; margin-bottom: 3px;">${field}</div>
-                                <div style="font-size: 11px; color: #333; font-weight: 500;">${value}</div>
+                                <div style="font-size: 11px; color: #333; font-weight: 500;">${displayValue}</div>
                             </div>
                         `;
                     }
                 });
-                
+
                 printHtml += `</div><div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 12px;">`;
-                
+
                 // Second row - Financial
                 const financialFields = ['ONETIME COST', 'NUMBEROFITEMS', 'COST CENTER', 'ACCTTYPE', 'ACCTCODE'];
                 financialFields.forEach(field => {
                     const value = findFieldValue(item, field);
                     if (value !== null) {
+                        const displayValue = formatFieldValue(field, value);
                         printHtml += `
                             <div style="background: white; padding: 8px; border-radius: 4px; border: 1px solid #e0e0e0; text-align: center;">
                                 <div style="font-size: 9px; color: #666; font-weight: 600; margin-bottom: 3px;">${field}</div>
-                                <div style="font-size: 11px; color: #333; font-weight: 500;">${value}</div>
+                                <div style="font-size: 11px; color: #333; font-weight: 500;">${displayValue}</div>
                             </div>
                         `;
                     }
@@ -2943,37 +2945,36 @@ function generatePDFDetailedRequests() {
                         <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 8px;">
                 `;
                 
-                // FIXED: First row - Basic Info with proper dollar formatting
+                // First row - Basic Info
                 const basicFields = ['REQUESTID', 'REQUEST DESCRIPTION', 'REQUEST TYPE', 'STATUS', 'ONGOING COST'];
                 basicFields.forEach(field => {
                     const value = findFieldValue(item, field);
                     if (value !== null) {
-                        const displayValue = formatFieldValue(field, value);
+                        const displayValue = formatFieldValue(field, value); // ADD THIS LINE
                         html += `
                             <div style="background: white; padding: 4px; border-radius: 3px; text-align: center;">
                                 <div style="font-size: 6px; color: #666; font-weight: 600;">${field}</div>
-                                <div style="font-size: 8px; color: #333; margin-top: 2px;">${displayValue}</div>
+                                <div style="font-size: 8px; color: #333; margin-top: 2px;">${displayValue}</div> <!-- CHANGE FROM ${value} TO ${displayValue} -->
                             </div>
                         `;
                     }
                 });
-                
-                html += `</div><div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 8px;">`;
-                
-                // FIXED: Second row - Financial with proper dollar formatting
+
+                // Second row - Financial
                 const financialFields = ['ONETIME COST', 'NUMBEROFITEMS', 'COST CENTER', 'ACCTTYPE', 'ACCTCODE'];
                 financialFields.forEach(field => {
                     const value = findFieldValue(item, field);
                     if (value !== null) {
-                        const displayValue = formatFieldValue(field, value);
+                        const displayValue = formatFieldValue(field, value); // ADD THIS LINE
                         html += `
                             <div style="background: white; padding: 4px; border-radius: 3px; text-align: center;">
                                 <div style="font-size: 6px; color: #666; font-weight: 600;">${field}</div>
-                                <div style="font-size: 8px; color: #333; margin-top: 2px;">${displayValue}</div>
+                                <div style="font-size: 8px; color: #333; margin-top: 2px;">${displayValue}</div> <!-- CHANGE FROM ${value} TO ${displayValue} -->
                             </div>
                         `;
                     }
                 });
+                
                 
                 html += `</div><div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 8px;">`;
                 

@@ -583,12 +583,6 @@ function displayReport() {
     // Add request summary table
     html += generateRequestSummaryTable();
 
-    // Add department summary
-    html += generateDepartmentSummary();
-
-    // Add quartile analysis
-    html += generateQuartileAnalysis();
-
     // Add individual request details
     html += generateDetailedRequestReport();
 
@@ -2963,14 +2957,24 @@ function generatePDFDetailedRequests() {
                 basicFields.forEach(field => {
                     const value = findFieldValue(item, field);
                     if (value !== null) {
-                        html += `
-                            <div style="background: white; padding: 4px; border-radius: 3px; text-align: center;">
-                                <div style="font-size: 6px; color: #666; font-weight: 600;">${field}</div>
-                                <div style="font-size: 8px; color: #333; margin-top: 2px;">${value}</div>
-                            </div>
-                        `;
+                        // Add dollar signs to cost fields
+                        let displayValue = value;
+                        if (field.toLowerCase().includes('cost')) {
+                            const numValue = parseFloat(value);
+                            if (!isNaN(numValue)) {
+                                displayValue = `$${formatCurrency(numValue)}`;
+                            }
+                        }
+
+                        printHtml += `
+            <div style="background: white; padding: 8px; border-radius: 4px; border: 1px solid #e0e0e0; text-align: center;">
+                <div style="font-size: 9px; color: #666; font-weight: 600; margin-bottom: 3px;">${field}</div>
+                <div style="font-size: 11px; color: #333; font-weight: 500;">${displayValue}</div>
+            </div>
+        `;
                     }
                 });
+                
                 
                 html += `</div>`;
                 
@@ -2981,14 +2985,24 @@ function generatePDFDetailedRequests() {
                 financialFields.forEach(field => {
                     const value = findFieldValue(item, field);
                     if (value !== null) {
-                        html += `
-                            <div style="background: white; padding: 4px; border-radius: 3px; text-align: center;">
-                                <div style="font-size: 6px; color: #666; font-weight: 600;">${field}</div>
-                                <div style="font-size: 8px; color: #333; margin-top: 2px;">${value}</div>
-                            </div>
-                        `;
+                        // Add dollar signs to cost fields
+                        let displayValue = value;
+                        if (field.toLowerCase().includes('cost')) {
+                            const numValue = parseFloat(value);
+                            if (!isNaN(numValue)) {
+                                displayValue = `$${formatCurrency(numValue)}`;
+                            }
+                        }
+
+                        printHtml += `
+            <div style="background: white; padding: 8px; border-radius: 4px; border: 1px solid #e0e0e0; text-align: center;">
+                <div style="font-size: 9px; color: #666; font-weight: 600; margin-bottom: 3px;">${field}</div>
+                <div style="font-size: 11px; color: #333; font-weight: 500;">${displayValue}</div>
+            </div>
+        `;
                     }
                 });
+                
                 
                 html += `</div>`;
                 

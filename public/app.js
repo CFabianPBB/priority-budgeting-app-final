@@ -570,6 +570,15 @@ function displayReport() {
     // Add actual table of contents with links
     console.log('Generating table of contents...');
     html += generateActualTableOfContents();
+    
+    // Add department summary
+    html += generateDepartmentSummary();
+
+    // Add quartile analysis
+    html += generateQuartileAnalysis();
+
+    // Add charts AFTER table of contents
+    html += generateCharts();
 
     // Add request summary table
     html += generateRequestSummaryTable();
@@ -583,10 +592,8 @@ function displayReport() {
     // Add individual request details
     html += generateDetailedRequestReport();
 
-    // Add charts
-    html += generateCharts();
-
     reportContent.innerHTML = html;
+    
     reportSection.style.display = 'block';
 
     // Add download event listener after report is displayed
@@ -1138,14 +1145,27 @@ function generateLineItemSection(lineItems) {
         `;
         
         // Show all fields from this line item
+        // Show all fields from this line item
         Object.entries(item).forEach(([key, value]) => {
             if (value !== null && value !== undefined && value.toString().trim() !== '') {
+                // Add dollar signs to cost fields
+                let displayValue = value;
+                const lowerKey = key.toLowerCase();
+                if ((lowerKey.includes('onetime') && lowerKey.includes('cost')) ||
+                    (lowerKey.includes('ongoing') && lowerKey.includes('cost'))) {
+                    // Check if the value is numeric
+                    const numValue = parseFloat(value);
+                    if (!isNaN(numValue)) {
+                        displayValue = `$${formatCurrency(numValue)}`;
+                    }
+                }
+
                 html += `
-                    <div class="detail-item">
-                        <div class="detail-label">${key}</div>
-                        <div class="detail-value">${value}</div>
-                    </div>
-                `;
+            <div class="detail-item">
+                <div class="detail-label">${key}</div>
+                <div class="detail-value">${displayValue}</div>
+            </div>
+        `;
             }
         });
         
@@ -2168,12 +2188,24 @@ function generateWordDetailedRequests() {
                     if (value !== null && value !== undefined && value.toString().trim() !== '' && shownFields < 4) {
                         const isKeyField = keyFields.some(kf => key.toLowerCase().includes(kf.toLowerCase()));
                         if (isKeyField || shownFields < 2) {
+                            // Add dollar signs to cost fields
+                            let displayValue = value;
+                            const lowerKey = key.toLowerCase();
+                            if ((lowerKey.includes('onetime') && lowerKey.includes('cost')) ||
+                                (lowerKey.includes('ongoing') && lowerKey.includes('cost'))) {
+                                // Check if the value is numeric
+                                const numValue = parseFloat(value);
+                                if (!isNaN(numValue)) {
+                                    displayValue = `$${formatCurrency(numValue)}`;
+                                }
+                            }
+
                             html += `
-                                <div style="display: flex; justify-content: space-between; margin: 3px 0; font-size: 0.8rem;">
-                                    <span style="color: #666; font-weight: 500;">${key}:</span>
-                                    <span style="color: #333; text-align: right;">${value}</span>
-                                </div>
-                            `;
+                <div style="display: flex; justify-content: space-between; margin: 3px 0; font-size: 0.8rem;">
+                    <span style="color: #666; font-weight: 500;">${key}:</span>
+                    <span style="color: #333; text-align: right;">${displayValue}</span>
+                </div>
+            `;
                             shownFields++;
                         }
                     }

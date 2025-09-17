@@ -3053,10 +3053,17 @@ function formatFieldValue(field, value) {
     console.log('formatFieldValue called with:', field, value);
     
     const lowerKey = field.toLowerCase();
-    if ((lowerKey.includes('onetime') && lowerKey.includes('cost')) ||
-        (lowerKey.includes('ongoing') && lowerKey.includes('cost'))) {
-        
-        console.log('Found cost field:', field);
+    // Check for any variation of "ongoing cost" or "onetime cost"
+    if (lowerKey.includes('ongoing') && lowerKey.includes('cost')) {
+        console.log('Found ongoing cost field:', field);
+        const numValue = parseFloat(value);
+        if (!isNaN(numValue)) {
+            const formatted = `$${formatCurrency(numValue)}`;
+            console.log('Formatting', value, 'to', formatted);
+            return formatted;
+        }
+    } else if (lowerKey.includes('onetime') && lowerKey.includes('cost')) {
+        console.log('Found onetime cost field:', field);
         const numValue = parseFloat(value);
         if (!isNaN(numValue)) {
             const formatted = `$${formatCurrency(numValue)}`;

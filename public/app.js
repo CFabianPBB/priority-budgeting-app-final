@@ -3078,10 +3078,11 @@ function findFieldValue(item, targetField) {
 
 // Helper function to format field values for display
 function formatFieldValue(field, value) {
-    // Check if this is a cost field that should have dollar formatting
-    const lowerField = field.toLowerCase();
-    if ((lowerField.includes('onetime') && lowerField.includes('cost')) ||
-        (lowerField.includes('ongoing') && lowerField.includes('cost'))) {
+    // Match the exact same logic as the UI
+    const lowerKey = field.toLowerCase();
+    if ((lowerKey.includes('onetime') && lowerKey.includes('cost')) ||
+        (lowerKey.includes('ongoing') && lowerKey.includes('cost'))) {
+        // Check if the value is numeric
         const numValue = parseFloat(value);
         if (!isNaN(numValue)) {
             return `$${formatCurrency(numValue)}`;

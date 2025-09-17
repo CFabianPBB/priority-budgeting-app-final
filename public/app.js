@@ -3049,16 +3049,19 @@ function findFieldValue(item, targetField) {
     return null;
 }
 
-// Helper function to format field values for display
 function formatFieldValue(field, value) {
-    // Match the exact same logic as the UI
+    console.log('formatFieldValue called with:', field, value);
+    
     const lowerKey = field.toLowerCase();
     if ((lowerKey.includes('onetime') && lowerKey.includes('cost')) ||
         (lowerKey.includes('ongoing') && lowerKey.includes('cost'))) {
-        // Check if the value is numeric
+        
+        console.log('Found cost field:', field);
         const numValue = parseFloat(value);
         if (!isNaN(numValue)) {
-            return `$${formatCurrency(numValue)}`;
+            const formatted = `$${formatCurrency(numValue)}`;
+            console.log('Formatting', value, 'to', formatted);
+            return formatted;
         }
     }
     return value;

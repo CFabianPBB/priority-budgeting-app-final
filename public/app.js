@@ -2966,17 +2966,16 @@ function generatePDFDetailedRequests() {
                             }
                         }
 
-                        printHtml += `
-            <div style="background: white; padding: 8px; border-radius: 4px; border: 1px solid #e0e0e0; text-align: center;">
-                <div style="font-size: 9px; color: #666; font-weight: 600; margin-bottom: 3px;">${field}</div>
-                <div style="font-size: 11px; color: #333; font-weight: 500;">${displayValue}</div>
-            </div>
-        `;
+                        html += `
+                            <div style="background: white; padding: 4px; border-radius: 3px; text-align: center;">
+                                <div style="font-size: 6px; color: #666; font-weight: 600;">${field}</div>
+                                <div style="font-size: 8px; color: #333; margin-top: 2px;">${displayValue}</div>
+                            </div>
+                        `;
                     }
                 });
-                
-                
                 html += `</div>`;
+                
                 
                 // Second row - Financial details
                 html += `<div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 8px;">`;
@@ -2994,17 +2993,16 @@ function generatePDFDetailedRequests() {
                             }
                         }
 
-                        printHtml += `
-            <div style="background: white; padding: 8px; border-radius: 4px; border: 1px solid #e0e0e0; text-align: center;">
-                <div style="font-size: 9px; color: #666; font-weight: 600; margin-bottom: 3px;">${field}</div>
-                <div style="font-size: 11px; color: #333; font-weight: 500;">${displayValue}</div>
-            </div>
-        `;
+                        html += `
+                            <div style="background: white; padding: 4px; border-radius: 3px; text-align: center;">
+                                <div style="font-size: 6px; color: #666; font-weight: 600;">${field}</div>
+                                <div style="font-size: 8px; color: #333; margin-top: 2px;">${displayValue}</div>
+                            </div>
+                        `;
                     }
                 });
-                
-                
                 html += `</div>`;
+                
                 
                 // Third row - Organizational details
                 html += `<div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 8px;">`;

@@ -1139,29 +1139,20 @@ function generateLineItemSection(lineItems) {
         `;
         
         // Show all fields from this line item
-        // Show all fields from this line item
         Object.entries(item).forEach(([key, value]) => {
             if (value !== null && value !== undefined && value.toString().trim() !== '') {
-                // Add dollar signs to cost fields
-                let displayValue = value;
-                const lowerKey = key.toLowerCase();
-                if ((lowerKey.includes('onetime') && lowerKey.includes('cost')) ||
-                    (lowerKey.includes('ongoing') && lowerKey.includes('cost'))) {
-                    // Check if the value is numeric
-                    const numValue = parseFloat(value);
-                    if (!isNaN(numValue)) {
-                        displayValue = `$${formatCurrency(numValue)}`;
-                    }
-                }
+                // Use the centralized formatting function
+                const displayValue = formatFieldValue(key, value);
 
                 html += `
-            <div class="detail-item">
-                <div class="detail-label">${key}</div>
-                <div class="detail-value">${displayValue}</div>
-            </div>
-        `;
+                    <div class="detail-item">
+                        <div class="detail-label">${key}</div>
+                        <div class="detail-value">${displayValue}</div>
+                    </div>
+                `;
             }
         });
+        
         
         html += `
                 </div>

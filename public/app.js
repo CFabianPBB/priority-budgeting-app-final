@@ -3041,24 +3041,6 @@ function generatePDFDetailedRequests() {
     return html;
 }
 
-
-// Helper function to find field values flexibly
-function findFieldValue(item, targetField) {
-    // Direct match
-    if (item[targetField] !== undefined && item[targetField] !== null && item[targetField].toString().trim() !== '') {
-        return item[targetField];
-    }
-    
-    // Flexible matching
-    for (const [key, value] of Object.entries(item)) {
-        if (key.toUpperCase().includes(targetField.toUpperCase()) && value !== null && value !== undefined && value.toString().trim() !== '') {
-            return value;
-        }
-    }
-    
-    return null;
-}
-
 // Helper function to find field values flexibly
 function findFieldValue(item, targetField) {
     // Direct match

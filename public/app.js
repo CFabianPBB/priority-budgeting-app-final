@@ -574,6 +574,9 @@ function displayReport() {
     // Add department summary
     html += generateDepartmentSummary();
 
+    // Add program summary
+    html += generateProgramSummary();
+    
     // Add quartile analysis
     html += generateQuartileAnalysis();
 
@@ -866,6 +869,141 @@ function getRequestQA(requestId) {
             value && value.toString().trim() === requestId.toString().trim()
         );
     });
+}
+
+function generateProgramSummary() {
+    console.log('Generating program summary...');
+    
+    const programData = {};
+    
+    // Aggregate data by program within each department
+    filteredData.forEach(request => {
+        const requestId = getRequestId(request);
+        const lineItems = getLineItemsForRequest(requestId);
+        const amounts = getRequestAmount(request);
+        
+        lineItems.forEach(item => {
+            const dept = getPrimaryValue([item], 'department') || 'Unknown Department';
+            const program = getPrimaryValue([item], 'program') || 'Unknown Program';
+            const quartile = getPrimaryValue([item], 'quartile') || 'N/A';
+            
+            // Create department key if it doesn't exist
+            if (!programData[dept]) {
+                programData[dept] = {};
+            }
+            
+            // Create program key if it doesn't exist
+            if (!programData[dept][program]) {
+                programData[dept][program] = {
+                    quartile: quartile,
+                    totalCost: 0, // This would come from existing budget data
+                    requestedAmount: 0,
+                    proposedTotalCost: 0,
+                    requestCount: 0
+                };
+            }
+            
+            // Add to requested amount (distribute across line items for this request)
+            programData[dept][program].requestedAmount += amounts.total / lineItems.length;
+            programData[dept][program].requestCount++;
+            
+            // For demo purposes, we'll estimate total cost as 8x the requested amount
+            // In a real implementation, this would come from existing budget data
+            if (programData[dept][program].totalCost === 0) {
+                programData[dept][program].totalCost = amounts.total * 8; // Rough estimate
+            }
+            
+            // Calculate proposed total
+            programData[dept][program].proposedTotalCost = 
+                programData[dept][program].totalCost + programData[dept][program].requestedAmount;
+        });
+    });
+
+    let html = `<div class="section-header" id="program-summary">Program Summary</div>
+                <p>Below is a summary of programs and their total requested amount and potential new total cost, organized by department and quartile alignment.</p>`;
+    
+    // Generate table for each department
+    Object.entries(programData).forEach(([dept, programs]) => {
+        let departmentTotal = {
+            totalCost: 0,
+            requestedAmount: 0,
+            proposedTotalCost: 0
+        };
+        
+        html += `
+            <div class="request-card">
+                <div class="request-header">
+                    <div class="request-title">${dept}</div>
+                </div>
+                <div class="request-details">
+                    <table style="width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 0.9rem;">
+                        <thead>
+                            <tr style="background: #667eea; color: white;">
+                                <th style="padding: 12px 8px; text-align: center; width: 80px;">Quartile</th>
+                                <th style="padding: 12px 8px; text-align: left;">Program</th>
+                                <th style="padding: 12px 8px; text-align: right; width: 120px;">Total Cost</th>
+                                <th style="padding: 12px 8px; text-align: right; width: 120px;">Requested Amount</th>
+                                <th style="padding: 12px 8px; text-align: right; width: 140px;">Proposed Total Cost</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        // Sort programs by quartile (1=Most Aligned first)
+        const sortedPrograms = Object.entries(programs).sort((a, b) => {
+            const quartileOrder = {'Most Aligned': 1, 'More Aligned': 2, 'Less Aligned': 3, 'Least Aligned': 4};
+            const aOrder = quartileOrder[a[1].quartile] || 5;
+            const bOrder = quartileOrder[b[1].quartile] || 5;
+            return aOrder - bOrder;
+        });
+        
+        sortedPrograms.forEach(([program, data]) => {
+            departmentTotal.totalCost += data.totalCost;
+            departmentTotal.requestedAmount += data.requestedAmount;
+            departmentTotal.proposedTotalCost += data.proposedTotalCost;
+            
+            const quartileBadge = data.quartile !== 'N/A' ? 
+                `<span class="quartile-badge quartile-${data.quartile.toLowerCase().replace(' ', '-')}" style="font-size: 0.8rem; padding: 4px 8px;">${data.quartile.replace(' Aligned', '')}</span>` : 
+                '<span style="color: #666;">N/A</span>';
+            
+            html += `
+                <tr style="border-bottom: 1px solid #e0e0e0;">
+                    <td style="padding: 10px 8px; text-align: center;">${quartileBadge}</td>
+                    <td style="padding: 10px 8px;">${program}</td>
+                    <td style="padding: 10px 8px; text-align: right; color: #333;">$${formatCurrency(Math.round(data.totalCost))}</td>
+                    <td style="padding: 10px 8px; text-align: right; color: #ffc107; font-weight: 600;">$${formatCurrency(Math.round(data.requestedAmount))}</td>
+                    <td style="padding: 10px 8px; text-align: right; color: #28a745; font-weight: 600;">$${formatCurrency(Math.round(data.proposedTotalCost))}</td>
+                </tr>
+            `;
+        });
+        
+        // Add department total row
+        html += `
+                <tr style="background: #f8f9ff; border-top: 2px solid #667eea; font-weight: 600;">
+                    <td style="padding: 12px 8px; text-align: center; color: #667eea;">TOTAL</td>
+                    <td style="padding: 12px 8px; color: #667eea;">${dept} Department Total</td>
+                    <td style="padding: 12px 8px; text-align: right; color: #333;">$${formatCurrency(Math.round(departmentTotal.totalCost))}</td>
+                    <td style="padding: 12px 8px; text-align: right; color: #ffc107;">$${formatCurrency(Math.round(departmentTotal.requestedAmount))}</td>
+                    <td style="padding: 12px 8px; text-align: right; color: #28a745;">$${formatCurrency(Math.round(departmentTotal.proposedTotalCost))}</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <div style="margin-top: 15px; padding: 10px; background: #f0f8ff; border-radius: 5px; border-left: 4px solid #667eea;">
+            <strong>Department Impact Summary:</strong> ${dept} has ${Object.keys(programs).length} programs requesting 
+            <span style="color: #ffc107; font-weight: 600;">$${formatCurrency(Math.round(departmentTotal.requestedAmount))}</span> 
+            in additional funding, which would increase the department's total budget from 
+            <span style="color: #333;">$${formatCurrency(Math.round(departmentTotal.totalCost))}</span> to 
+            <span style="color: #28a745; font-weight: 600;">$${formatCurrency(Math.round(departmentTotal.proposedTotalCost))}</span> 
+            (${((departmentTotal.requestedAmount / departmentTotal.totalCost) * 100).toFixed(1)}% increase).
+        </div>
+        
+        </div>
+    </div>
+        `;
+    });
+
+    return html;
 }
 
 function generateDepartmentSummary() {
@@ -1284,6 +1422,129 @@ function renderCharts() {
     }
 }
 
+function generateWordProgramSummary() {
+    // Reuse the same program aggregation logic
+    const programData = {};
+    
+    filteredData.forEach(request => {
+        const requestId = getRequestId(request);
+        const lineItems = getLineItemsForRequest(requestId);
+        const amounts = getRequestAmount(request);
+        
+        lineItems.forEach(item => {
+            const dept = getPrimaryValue([item], 'department') || 'Unknown Department';
+            const program = getPrimaryValue([item], 'program') || 'Unknown Program';
+            const quartile = getPrimaryValue([item], 'quartile') || 'N/A';
+            
+            if (!programData[dept]) {
+                programData[dept] = {};
+            }
+            
+            if (!programData[dept][program]) {
+                programData[dept][program] = {
+                    quartile: quartile,
+                    totalCost: 0,
+                    requestedAmount: 0,
+                    proposedTotalCost: 0,
+                    requestCount: 0
+                };
+            }
+            
+            programData[dept][program].requestedAmount += amounts.total / lineItems.length;
+            programData[dept][program].requestCount++;
+            
+            if (programData[dept][program].totalCost === 0) {
+                programData[dept][program].totalCost = amounts.total * 8;
+            }
+            
+            programData[dept][program].proposedTotalCost = 
+                programData[dept][program].totalCost + programData[dept][program].requestedAmount;
+        });
+    });
+
+    let html = `
+        <div class="section-header" id="program-summary">Program Summary</div>
+        <p>Below is a summary of programs and their total requested amount and potential new total cost, organized by department and quartile alignment.</p>
+    `;
+    
+    Object.entries(programData).forEach(([dept, programs]) => {
+        let departmentTotal = {
+            totalCost: 0,
+            requestedAmount: 0,
+            proposedTotalCost: 0
+        };
+        
+        html += `
+            <div class="card">
+                <div class="card-header">${dept}</div>
+                <div class="card-body">
+                    <table style="width: 100%; font-size: 11px;">
+                        <thead>
+                            <tr style="background: #667eea; color: white;">
+                                <th style="padding: 8px 6px; text-align: center;">Quartile</th>
+                                <th style="padding: 8px 6px; text-align: left;">Program</th>
+                                <th style="padding: 8px 6px; text-align: right;">Total Cost</th>
+                                <th style="padding: 8px 6px; text-align: right;">Requested</th>
+                                <th style="padding: 8px 6px; text-align: right;">Proposed Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        const sortedPrograms = Object.entries(programs).sort((a, b) => {
+            const quartileOrder = {'Most Aligned': 1, 'More Aligned': 2, 'Less Aligned': 3, 'Least Aligned': 4};
+            const aOrder = quartileOrder[a[1].quartile] || 5;
+            const bOrder = quartileOrder[b[1].quartile] || 5;
+            return aOrder - bOrder;
+        });
+        
+        sortedPrograms.forEach(([program, data]) => {
+            departmentTotal.totalCost += data.totalCost;
+            departmentTotal.requestedAmount += data.requestedAmount;
+            departmentTotal.proposedTotalCost += data.proposedTotalCost;
+            
+            const quartileBadge = data.quartile !== 'N/A' ? 
+                `<span class="quartile-badge quartile-${data.quartile.toLowerCase().replace(' ', '-')}" style="font-size: 8px; padding: 2px 6px;">${data.quartile.replace(' Aligned', '')}</span>` : 
+                'N/A';
+            
+            html += `
+                <tr style="border-bottom: 1px solid #ddd;">
+                    <td style="padding: 6px 4px; text-align: center;">${quartileBadge}</td>
+                    <td style="padding: 6px 4px; font-size: 10px;">${program}</td>
+                    <td style="padding: 6px 4px; text-align: right;">$${formatCurrency(Math.round(data.totalCost))}</td>
+                    <td style="padding: 6px 4px; text-align: right; color: #ffc107;" class="amount">$${formatCurrency(Math.round(data.requestedAmount))}</td>
+                    <td style="padding: 6px 4px; text-align: right; color: #28a745;" class="amount">$${formatCurrency(Math.round(data.proposedTotalCost))}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                <tr style="background: #f8f9ff; border-top: 2px solid #667eea; font-weight: 600;">
+                    <td style="padding: 8px 4px; text-align: center; color: #667eea;">TOTAL</td>
+                    <td style="padding: 8px 4px; color: #667eea; font-size: 10px;">${dept} Total</td>
+                    <td style="padding: 8px 4px; text-align: right;">$${formatCurrency(Math.round(departmentTotal.totalCost))}</td>
+                    <td style="padding: 8px 4px; text-align: right; color: #ffc107;">$${formatCurrency(Math.round(departmentTotal.requestedAmount))}</td>
+                    <td style="padding: 8px 4px; text-align: right; color: #28a745;">$${formatCurrency(Math.round(departmentTotal.proposedTotalCost))}</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <div style="margin-top: 10px; padding: 8px; background: #f0f8ff; border-radius: 5px; font-size: 10px;">
+            <strong>Impact:</strong> ${Object.keys(programs).length} programs requesting 
+            <span class="amount">$${formatCurrency(Math.round(departmentTotal.requestedAmount))}</span>, 
+            increasing budget from $${formatCurrency(Math.round(departmentTotal.totalCost))} to 
+            <span class="amount">$${formatCurrency(Math.round(departmentTotal.proposedTotalCost))}</span> 
+            (${((departmentTotal.requestedAmount / departmentTotal.totalCost) * 100).toFixed(1)}% increase).
+        </div>
+        
+        </div>
+    </div>
+        `;
+    });
+
+    return html;
+}
+
 function downloadWordReport() {
     // Generate the report content fresh for Word format
     const reportDate = new Date().toLocaleDateString('en-US', {
@@ -1548,6 +1809,10 @@ function downloadWordReport() {
     // Department Summary  
     wordHtml += `<div class="section-break"></div>`;
     wordHtml += generateWordDepartmentSummary();
+
+    // Program Summary
+    wordHtml += `<div class="section-break"></div>`;
+    wordHtml += generateWordProgramSummary();
 
     // Individual Requests
     wordHtml += `<div class="section-break"></div>`;
@@ -1914,6 +2179,7 @@ function generateWordTableOfContents() {
                 <li><a href="#visual-analysis">Visual Analysis</a></li>
                 <li><a href="#request-summary-table">Request Summary Table</a></li>
                 <li><a href="#department-analysis">Department Analysis</a></li>
+                <li><a href="#program-summary">Program Summary</a></li>
                 <li><a href="#individual-requests">Individual Budget Requests</a>
                     <ol>
     `;

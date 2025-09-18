@@ -2835,6 +2835,120 @@ function downloadPdfReport() {
             </table>
     `;
 
+    // Add Program Summary to PDF
+    printHtml += `
+        <div class="section-header">Program Summary</div>
+        <p>Below is a summary of programs and their total requested amount and potential new total cost, organized by department and quartile alignment.</p>
+    `;
+
+    // Generate program data for PDF
+    const programData = {};
+
+    filteredData.forEach(request => {
+        const requestId = getRequestId(request);
+        const lineItems = getLineItemsForRequest(requestId);
+        const amounts = getRequestAmount(request);
+
+        lineItems.forEach(item => {
+            const dept = getPrimaryValue([item], 'department') || 'Unknown Department';
+            const program = getPrimaryValue([item], 'program') || 'Unknown Program';
+            const quartile = getPrimaryValue([item], 'quartile') || 'N/A';
+
+            if (!programData[dept]) {
+                programData[dept] = {};
+            }
+
+            if (!programData[dept][program]) {
+                programData[dept][program] = {
+                    quartile: quartile,
+                    totalCost: 0,
+                    requestedAmount: 0,
+                    proposedTotalCost: 0
+                };
+            }
+
+            programData[dept][program].requestedAmount += amounts.total / lineItems.length;
+
+            if (programData[dept][program].totalCost === 0) {
+                programData[dept][program].totalCost = amounts.total * 8;
+            }
+
+            programData[dept][program].proposedTotalCost =
+                programData[dept][program].totalCost + programData[dept][program].requestedAmount;
+        });
+    });
+
+    // Generate Program Summary tables for PDF
+    Object.entries(programData).forEach(([dept, programs]) => {
+        let departmentTotal = { totalCost: 0, requestedAmount: 0, proposedTotalCost: 0 };
+
+        printHtml += `
+            <div class="card">
+                <div class="card-header">${dept}</div>
+                <div class="card-body">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Quartile</th>
+                                <th>Program</th>
+                                <th style="text-align: right;">Total Cost</th>
+                                <th style="text-align: right;">Requested</th>
+                                <th style="text-align: right;">Proposed Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+
+        const sortedPrograms = Object.entries(programs).sort((a, b) => {
+            const quartileOrder = { 'Most Aligned': 1, 'More Aligned': 2, 'Less Aligned': 3, 'Least Aligned': 4 };
+            const aOrder = quartileOrder[a[1].quartile] || 5;
+            const bOrder = quartileOrder[b[1].quartile] || 5;
+            return aOrder - bOrder;
+        });
+
+        sortedPrograms.forEach(([program, data]) => {
+            departmentTotal.totalCost += data.totalCost;
+            departmentTotal.requestedAmount += data.requestedAmount;
+            departmentTotal.proposedTotalCost += data.proposedTotalCost;
+
+            const quartileBadge = data.quartile !== 'N/A' ?
+                `<span class="quartile-badge quartile-${data.quartile.toLowerCase().replace(' ', '-')}">${data.quartile.replace(' Aligned', '')}</span>` : 'N/A';
+
+            printHtml += `
+                <tr>
+                    <td>${quartileBadge}</td>
+                    <td>${program}</td>
+                    <td style="text-align: right;">$${formatCurrency(Math.round(data.totalCost))}</td>
+                    <td style="text-align: right;" class="amount">$${formatCurrency(Math.round(data.requestedAmount))}</td>
+                    <td style="text-align: right;" class="amount">$${formatCurrency(Math.round(data.proposedTotalCost))}</td>
+                </tr>
+            `;
+        });
+
+        printHtml += `
+                <tr style="background: #f8f9ff; border-top: 2px solid #667eea; font-weight: 600;">
+                    <td>TOTAL</td>
+                    <td>${dept} Total</td>
+                    <td style="text-align: right;">$${formatCurrency(Math.round(departmentTotal.totalCost))}</td>
+                    <td style="text-align: right;" class="amount">$${formatCurrency(Math.round(departmentTotal.requestedAmount))}</td>
+                    <td style="text-align: right;" class="amount">$${formatCurrency(Math.round(departmentTotal.proposedTotalCost))}</td>
+                </tr>
+            </tbody>
+        </table>
+    
+        <p style="margin-top: 15px; padding: 10px; background: #f0f8ff; border-radius: 5px; font-size: 12px;">
+            <strong>Impact:</strong> ${Object.keys(programs).length} programs requesting 
+            <span class="amount">$${formatCurrency(Math.round(departmentTotal.requestedAmount))}</span>, 
+            increasing budget from $${formatCurrency(Math.round(departmentTotal.totalCost))} to 
+            <span class="amount">$${formatCurrency(Math.round(departmentTotal.proposedTotalCost))}</span> 
+            (${((departmentTotal.requestedAmount / departmentTotal.totalCost) * 100).toFixed(1)}% increase).
+        </p>
+    
+        </div>
+    </div>
+        `;
+    });
+
     // Add detailed request sections
     filteredData.forEach((request, index) => {
         const requestId = getRequestId(request);

@@ -926,6 +926,8 @@ function getEquityScore(qa, qaText) {
     return 0;
 }
 
+// ===== ENHANCED PBB SCORING ENGINE WITH DECISION GRID =====
+
 function scoreRequest(request) {
     const requestId = getRequestId(request);
     const lineItems = getLineItemsForRequest(requestId);
@@ -944,74 +946,345 @@ function scoreRequest(request) {
         efficiencyScore: getEfficiencyScore(qa, qaText),
         equityScore: getEquityScore(qa, qaText),
         bestQuartile: bestQuartile,
-        hasOutsideFunding: /outside funding.*yes/i.test(qaText),
-        isMandated: /board motion|consent decree|doj|lawsuit|mandate|statute/i.test(qaText),
-        isCompliance: /audit|liability|compliance|risk/i.test(qaText)
+        hasOutsideFunding: /outside funding.*yes|grant|fee|partner|cost recovery/i.test(qaText),
+        isMandated: /board motion|consent decree|doj|mandate|statute/i.test(qaText),
+        isCompliance: /audit|liability|compliance|risk|safety/i.test(qaText)
     };
     
+    // Determine quartile band (High = Q1/Q2, Low = Q3/Q4)
+    analysis.quartileBand = (bestQuartile === 'Q1' || bestQuartile === 'Q2') ? 'High' : 'Low';
+    
+    // Determine mandate level
+    if (analysis.isMandated) {
+        analysis.mandateLevel = 'Mandated';
+    } else if (analysis.isCompliance) {
+        analysis.mandateLevel = 'Compliance';
+    } else {
+        analysis.mandateLevel = 'None';
+    }
+    
+    // Determine funding type
+    analysis.fundingType = analysis.hasOutsideFunding ? 'NonGF' : 'GFonly';
+    
+    // Determine outcomes strength
+    analysis.outcomesStrength = analysis.outcomeScore >= 2 ? 'Strong' : 'Weak';
+    
+    // Calculate total score for display
     analysis.totalScore = analysis.quartileScore + analysis.outcomeScore + 
                           analysis.fundingScore + analysis.mandateScore +
                           analysis.efficiencyScore + analysis.equityScore;
     
-    if (analysis.totalScore >= 9) {
-        analysis.disposition = 'APPROVE';
-        analysis.dispositionColor = '#28a745';
-    } else if (analysis.totalScore >= 6) {
-        analysis.disposition = 'MODIFY';
-        analysis.dispositionColor = '#ffc107';
-    } else {
-        analysis.disposition = 'DEFER';
-        analysis.dispositionColor = '#dc3545';
-    }
+    // Apply the decision grid
+    const gridDecision = applyDecisionGrid(analysis);
     
-    analysis.narrative = generateNarrative(request, lineItems, qa, analysis);
+    analysis.disposition = gridDecision.disposition;
+    analysis.dispositionColor = gridDecision.color;
+    analysis.verifyNow = gridDecision.verifyNow;
+    analysis.strengthenWith = gridDecision.strengthenWith;
+    analysis.gridKey = gridDecision.gridKey;
+    
+    // Generate enhanced narrative
+    analysis.narrative = generateEnhancedNarrative(request, lineItems, qa, analysis);
+    
     return analysis;
 }
 
-function generateNarrative(request, lineItems, qa, analysis) {
+// ===== DECISION GRID LOGIC =====
+function applyDecisionGrid(analysis) {
+    const { quartileBand, mandateLevel, fundingType, outcomesStrength } = analysis;
+    
+    // Create lookup key
+    const gridKey = `${quartileBand}-${mandateLevel}-${fundingType}-${outcomesStrength}`;
+    
+    // Decision grid mapping
+    const grid = {
+        // HIGH RELEVANCE (Q1-Q2)
+        'High-Mandated-NonGF-Strong': {
+            disposition: 'APPROVE',
+            color: '#28a745',
+            verifyNow: ['Statute/board reference', 'Allowability of non-GF sources'],
+            strengthenWith: ['Final KPI list', 'Compliance milestones', 'Data source & cadence']
+        },
+        'High-Mandated-GFonly-Strong': {
+            disposition: 'APPROVE',
+            color: '#28a745',
+            verifyNow: ['Confirm mandate scope & minimums'],
+            strengthenWith: ['Cost offsets (phase-down plan, reallocation)', 'Sunset/true-up triggers']
+        },
+        'High-Mandated-NonGF-Weak': {
+            disposition: 'APPROVE',
+            color: '#ffc107',
+            verifyNow: ['That mandate truly requires this spend'],
+            strengthenWith: ['Baseline→target KPIs', '90-day evaluation plan', 'Interim check-in']
+        },
+        'High-Mandated-GFonly-Weak': {
+            disposition: 'APPROVE',
+            color: '#ffc107',
+            verifyNow: ['Minimum-viable compliance level'],
+            strengthenWith: ['Add fee/grant search', 'Partner MOUs', 'Phased start', 'Sunset clause']
+        },
+        'High-Compliance-NonGF-Strong': {
+            disposition: 'APPROVE',
+            color: '#28a745',
+            verifyNow: ['Risk register link', 'Risk reduction metric'],
+            strengthenWith: ['Cost avoidance calc', 'SLA updates', 'Internal control changes']
+        },
+        'High-Compliance-GFonly-Strong': {
+            disposition: 'MODIFY',
+            color: '#ffc107',
+            verifyNow: ['Materiality of risk', 'Alternatives'],
+            strengthenWith: ['Add partial cost recovery', 'Internal reallocation', 'Pilot scope']
+        },
+        'High-Compliance-NonGF-Weak': {
+            disposition: 'MODIFY',
+            color: '#ffc107',
+            verifyNow: ['That non-GF is real & timely'],
+            strengthenWith: ['KPIs', '6-mo pilot with go/no-go', 'Light-weight evaluation plan']
+        },
+        'High-Compliance-GFonly-Weak': {
+            disposition: 'MODIFY',
+            color: '#ffc107',
+            verifyNow: ['Criticality (safety/liability)?'],
+            strengthenWith: ['Narrow scope', 'Stage gates', 'Non-GF plan within 60–90 days']
+        },
+        'High-None-NonGF-Strong': {
+            disposition: 'APPROVE',
+            color: '#28a745',
+            verifyNow: ['No hidden GF backfill'],
+            strengthenWith: ['Pay-for-itself math', 'Fee elasticity/grant terms', 'Partner commitments']
+        },
+        'High-None-GFonly-Strong': {
+            disposition: 'MODIFY',
+            color: '#ffc107',
+            verifyNow: ['Alternatives considered'],
+            strengthenWith: ['Add cost recovery/partners', 'Unit-cost reduction', 'Partial reallocation']
+        },
+        'High-None-NonGF-Weak': {
+            disposition: 'MODIFY',
+            color: '#ffc107',
+            verifyNow: ['Outcome plausibility'],
+            strengthenWith: ['KPIs & evaluation', 'Start as pilot', 'Tighten deliverables']
+        },
+        'High-None-GFonly-Weak': {
+            disposition: 'DEFER',
+            color: '#dc3545',
+            verifyNow: ['N/A'],
+            strengthenWith: ['Tie to priority KPIs', 'Find non-GF', 'Reduce scope or integrate with Q1/Q2 work']
+        },
+        
+        // LOW RELEVANCE (Q3-Q4)
+        'Low-Mandated-NonGF-Strong': {
+            disposition: 'APPROVE',
+            color: '#28a745',
+            verifyNow: ['Minimum compliance scope'],
+            strengthenWith: ['Keep GF minimal', 'Escrow/offsets', 'Time-bound sunset']
+        },
+        'Low-Mandated-GFonly-Strong': {
+            disposition: 'APPROVE',
+            color: '#ffc107',
+            verifyNow: ['Is Q3/Q4 mapping correct?'],
+            strengthenWith: ['Identify fees/grants', 'Swap lower-impact spend', 'Phase', 'Sunset']
+        },
+        'Low-Mandated-NonGF-Weak': {
+            disposition: 'APPROVE',
+            color: '#ffc107',
+            verifyNow: ['That mandate truly applies to this program'],
+            strengthenWith: ['KPI baseline→target', '90-day review', 'Non-GF documentation']
+        },
+        'Low-Mandated-GFonly-Weak': {
+            disposition: 'APPROVE',
+            color: '#ffc107',
+            verifyNow: ['Cheapest compliance path'],
+            strengthenWith: ['Tight scope', 'Offsets', 'Timeline to add non-GF', 'Exit criteria']
+        },
+        'Low-Compliance-NonGF-Strong': {
+            disposition: 'MODIFY',
+            color: '#ffc107',
+            verifyNow: ['Non-GF terms & durability'],
+            strengthenWith: ['No-GF pledge', 'Measurable risk reduction', 'Pilot + review']
+        },
+        'Low-Compliance-GFonly-Strong': {
+            disposition: 'MODIFY',
+            color: '#ffc107',
+            verifyNow: ['Impact scale vs. alternatives'],
+            strengthenWith: ['Require cost recovery', 'Internal reallocation', 'Narrower scope']
+        },
+        'Low-Compliance-NonGF-Weak': {
+            disposition: 'DEFER',
+            color: '#dc3545',
+            verifyNow: ['Realism of benefits'],
+            strengthenWith: ['Basic KPI set', 'Partner LOIs', 'Phase to prove value']
+        },
+        'Low-Compliance-GFonly-Weak': {
+            disposition: 'DEFER',
+            color: '#dc3545',
+            verifyNow: ['If imminent, treat as mandate'],
+            strengthenWith: ['Pilot w/ non-GF', 'Quantify liability avoided', 'Combine with Q1/Q2']
+        },
+        'Low-None-NonGF-Strong': {
+            disposition: 'APPROVE',
+            color: '#28a745',
+            verifyNow: ['No GF drift'],
+            strengthenWith: ['Full cost recovery', 'Service redesign', 'Contribution margin']
+        },
+        'Low-None-GFonly-Strong': {
+            disposition: 'DEFER',
+            color: '#dc3545',
+            verifyNow: ['Competes with higher-Q needs'],
+            strengthenWith: ['Add fee/grant/partner', 'ROI calc', 'Phase behind Q1/Q2']
+        },
+        'Low-None-NonGF-Weak': {
+            disposition: 'DEFER',
+            color: '#dc3545',
+            verifyNow: ['N/A'],
+            strengthenWith: ['KPIs', 'Tighten scope', 'Prove demand/willingness-to-pay']
+        },
+        'Low-None-GFonly-Weak': {
+            disposition: 'REJECT',
+            color: '#dc3545',
+            verifyNow: ['N/A'],
+            strengthenWith: ['Reframe to higher-Q outcome', 'Non-GF plan', 'Consolidate/streamline']
+        }
+    };
+    
+    const decision = grid[gridKey] || {
+        disposition: 'MODIFY',
+        color: '#ffc107',
+        verifyNow: ['Unable to categorize - manual review needed'],
+        strengthenWith: ['Provide complete information on mandate, funding, and outcomes']
+    };
+    
+    decision.gridKey = gridKey;
+    return decision;
+}
+
+// ===== ENHANCED NARRATIVE GENERATOR =====
+function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     const requestId = getRequestId(request);
     const amounts = getRequestAmount(request);
     const dept = getPrimaryValue(lineItems, 'department') || 'Unknown';
     const program = getPrimaryValue(lineItems, 'program') || 'Unknown';
     
-    let narrative = `**Program:** ${program} (${dept}). **Quartile:** ${analysis.bestQuartile}. **Total Amount:** $${formatCurrency(amounts.total)}.\n\n`;
+    let narrative = `**Program:** ${program} (${dept})\n`;
+    narrative += `**Quartile:** ${analysis.bestQuartile} (${analysis.quartileBand} Relevance)\n`;
+    narrative += `**Total Amount:** $${formatCurrency(amounts.total)}\n`;
+    narrative += `**Decision Profile:** ${analysis.gridKey}\n\n`;
     
-    if (analysis.isMandated) {
-        narrative += `⚠️ **Mandated**: This request appears to be legally mandated or tied to a Board Motion/consent decree, which strengthens the case for approval.\n\n`;
-    } else if (analysis.isCompliance) {
-        narrative += `⚠️ **Compliance/Risk**: This request addresses compliance obligations or risk mitigation.\n\n`;
+    narrative += `---\n\n`;
+    
+    // Context flags
+    if (analysis.mandateLevel === 'Mandated') {
+        narrative += `⚖️ **MANDATED**: This request is legally mandated or tied to a Board Motion/consent decree.\n\n`;
+    } else if (analysis.mandateLevel === 'Compliance') {
+        narrative += `⚠️ **COMPLIANCE/RISK**: This request addresses compliance obligations or risk mitigation.\n\n`;
     }
     
     if (analysis.hasOutsideFunding) {
-        narrative += `✅ **Funding Strategy**: Includes non-General Fund sources (grants, fees, or partnerships), which strengthens the proposal.\n\n`;
-    } else if (analysis.bestQuartile === 'Q3' || analysis.bestQuartile === 'Q4') {
-        narrative += `⚠️ **Funding Gap**: 100% General Fund requested for a Q3/Q4 program. Consider identifying fee recovery, grant opportunities, or partnership options.\n\n`;
+        narrative += `✅ **NON-GF FUNDING**: Includes non-General Fund sources (grants, fees, or partnerships).\n\n`;
+    } else if (analysis.quartileBand === 'Low') {
+        narrative += `🚨 **FUNDING CONCERN**: 100% General Fund requested for a lower-relevance (Q3/Q4) program.\n\n`;
     }
     
-    if (analysis.outcomeScore >= 2) {
-        narrative += `✅ **Strong Evidence**: Clear performance metrics and outcome targets provided.\n\n`;
-    } else if (analysis.outcomeScore === 1) {
-        narrative += `⚠️ **Limited Evidence**: Qualitative outcomes described but lacks specific KPIs or measurable targets.\n\n`;
+    if (analysis.outcomesStrength === 'Strong') {
+        narrative += `📊 **STRONG EVIDENCE**: Clear performance metrics and outcome targets provided.\n\n`;
     } else {
-        narrative += `❌ **Weak Evidence**: Insufficient outcome data or evaluation plan. Business case needs strengthening.\n\n`;
+        narrative += `📋 **WEAK EVIDENCE**: Insufficient outcome data, KPIs, or evaluation plan.\n\n`;
     }
     
-    narrative += `**📊 SCORE: ${analysis.totalScore}/12** — `;
+    narrative += `---\n\n`;
     
+    // Disposition and recommendation
+    narrative += `## 🎯 DISPOSITION: **${analysis.disposition}** (Score: ${analysis.totalScore}/12)\n\n`;
+    
+    // Main recommendation based on disposition
     if (analysis.disposition === 'APPROVE') {
-        if (analysis.bestQuartile === 'Q1' || analysis.bestQuartile === 'Q2') {
-            narrative += `**COMPELLING for approval.** General Fund support is appropriate given high program relevance${analysis.isMandated ? ' and legal mandate' : ''}. ${analysis.hasOutsideFunding ? 'Non-GF sources further strengthen this request.' : 'Still seek grant/fee opportunities where feasible.'}`;
+        if (analysis.mandateLevel === 'Mandated') {
+            narrative += `**Recommendation:** APPROVE. This is a mandated program with ${analysis.outcomesStrength.toLowerCase()} outcomes evidence. `;
+            if (analysis.fundingType === 'GFonly' && analysis.quartileBand === 'Low') {
+                narrative += `Given the lower quartile, require offsetting reductions or pursue non-GF sources. `;
+            }
+            if (analysis.outcomesStrength === 'Weak') {
+                narrative += `Require metrics and evaluation plan as condition of approval.\n\n`;
+            } else {
+                narrative += `General Fund support is justified.\n\n`;
+            }
+        } else if (analysis.fundingType === 'NonGF') {
+            narrative += `**Recommendation:** APPROVE with non-GF priority. Strong proposal with external funding sources. `;
+            if (analysis.quartileBand === 'Low') {
+                narrative += `For Q3/Q4 programs, ensure minimal or no GF backfill. `;
+            }
+            narrative += `Proceed with clear cost recovery and sustainability plan.\n\n`;
         } else {
-            narrative += `**APPROVE with conditions.** ${analysis.isMandated ? 'Legal mandate justifies approval despite lower quartile.' : 'Strong business case compensates for lower quartile.'} Prioritize non-GF funding sources and phase implementation if possible.`;
+            narrative += `**Recommendation:** APPROVE but strengthen funding strategy. While outcomes are strong, consider adding cost recovery or partnership elements to reduce General Fund reliance.\n\n`;
         }
     } else if (analysis.disposition === 'MODIFY') {
-        narrative += `**MODIFY RECOMMENDED.** Consider: (1) Reducing scope or phasing, (2) Adding cost recovery mechanisms, (3) Seeking partnerships, (4) Strengthening outcome metrics and evaluation plans. May approve with these adjustments.`;
-    } else {
-        if (analysis.isMandated) {
-            narrative += `**DEFER but monitor mandate.** If legally required, proceed but require offsetting reductions elsewhere. Otherwise defer until stronger business case or alternative funding identified.`;
-        } else {
-            narrative += `**DEFER or REJECT.** Insufficient business case for General Fund investment. Recommend: (1) Seeking alternative funding, (2) Program redesign, (3) Partnership exploration, or (4) deferral to future cycle with improved justification.`;
+        narrative += `**Recommendation:** MODIFY before approval. This request shows merit but requires adjustments:\n\n`;
+    } else if (analysis.disposition === 'DEFER') {
+        narrative += `**Recommendation:** DEFER. Insufficient business case for current approval. `;
+        if (analysis.mandateLevel === 'Mandated') {
+            narrative += `Monitor mandate requirements. `;
         }
+        narrative += `See strengthening actions below.\n\n`;
+    } else if (analysis.disposition === 'REJECT') {
+        narrative += `**Recommendation:** REJECT OR SIGNIFICANT REDESIGN REQUIRED. `;
+        narrative += `This low-relevance, GF-only request with weak outcomes does not meet funding criteria. Fundamental changes needed.\n\n`;
+    }
+    
+    // Verification requirements
+    if (analysis.verifyNow && analysis.verifyNow.length > 0 && analysis.verifyNow[0] !== 'N/A') {
+        narrative += `### ✅ VERIFY NOW:\n\n`;
+        analysis.verifyNow.forEach(item => {
+            narrative += `- ${item}\n`;
+        });
+        narrative += `\n`;
+    }
+    
+    // Strengthening actions
+    if (analysis.strengthenWith && analysis.strengthenWith.length > 0) {
+        narrative += `### 💪 TO STRENGTHEN THIS REQUEST:\n\n`;
+        analysis.strengthenWith.forEach(item => {
+            narrative += `- ${item}\n`;
+        });
+        narrative += `\n`;
+    }
+    
+    // Specific follow-up prompts based on weaknesses
+    narrative += `### 📝 SPECIFIC FOLLOW-UP ACTIONS:\n\n`;
+    
+    if (analysis.outcomeScore < 2) {
+        narrative += `**KPIs & Evaluation:** Please add baseline→target values for 2–3 KPIs, the data source, and review cadence (e.g., monthly). We'll approve as a 90-day pilot pending KPI progress.\n\n`;
+    }
+    
+    if (analysis.fundingScore === 0 && (analysis.quartileBand === 'Low' || analysis.disposition !== 'APPROVE')) {
+        narrative += `**Funding/Offsets:** Identify at least one non-GF source (fee, grant, partner, restricted fund) covering ≥30% of the request, or propose an internal reallocation/offset equal to ≥20%.\n\n`;
+    }
+    
+    if (analysis.mandateLevel === 'Mandated' && analysis.outcomeScore < 2) {
+        narrative += `**Mandate Evidence:** Attach the statute/board motion/consent decree citation and define the minimum compliance scope. Include milestones and success criteria.\n\n`;
+    }
+    
+    if (analysis.mandateLevel === 'Compliance') {
+        narrative += `**Risk Reduction:** Link this request to a specific risk register item and quantify the expected reduction (e.g., 'reduce audit findings by 50% in 12 months').\n\n`;
+    }
+    
+    if (analysis.efficiencyScore < 2 && analysis.disposition !== 'REJECT') {
+        narrative += `**ROI/Efficiency:** Provide a cost-avoidance or productivity calculation (unit cost, throughput, payback). If uncertain, start with a 6-month pilot and measure.\n\n`;
+    }
+    
+    if (analysis.equityScore < 2 && analysis.quartileBand === 'High') {
+        narrative += `**Equity:** Name the priority population and specify a measurable access/outcome improvement (e.g., 'decrease wait time for X group from 12 to 6 weeks').\n\n`;
+    }
+    
+    if (analysis.quartileBand === 'Low' && analysis.fundingType === 'GFonly') {
+        narrative += `**Scope/Phasing:** Consider a phased approach (Phase 1 core features, Phase 2 optional enhancements) to reduce near-term GF use.\n\n`;
+    }
+    
+    if (analysis.fundingScore === 1) {
+        narrative += `**Partnership:** Add letters of intent (LOIs) or MOUs for partner contributions (space, staff time, cash match).\n\n`;
+    }
+    
+    if (analysis.mandateLevel === 'Mandated' && analysis.quartileBand === 'Low') {
+        narrative += `**Sunset/True-up:** Add a 12-month sunset and a true-up clause to right-size funding based on measured demand and KPI performance.\n\n`;
     }
     
     return narrative;

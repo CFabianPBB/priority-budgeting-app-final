@@ -878,55 +878,101 @@ function getPrimaryValue(lineItems, fieldType) {
     return null;
 }
 
-// ===== PBB SCORING ENGINE - ADD THIS ENTIRE SECTION =====
+// ===== ENHANCED PBB SCORING ENGINE WITH EXPLICIT REASONING =====
 
-// Helper function to get best quartile
-function getBestQuartile(quartiles) {
-    if (quartiles.includes('Most Aligned')) return 'Q1';
-    if (quartiles.includes('More Aligned')) return 'Q2';
-    if (quartiles.includes('Less Aligned')) return 'Q3';
-    if (quartiles.includes('Least Aligned')) return 'Q4';
-    return 'Q4';
-}
-
-// Scoring functions
 function getQuartileScore(quartile) {
-    if (quartile === 'Q1' || quartile === 'Q2') return 2;
-    if (quartile === 'Q3') return 1;
-    return 0;
+    if (!quartile) return { score: 0, reason: "No quartile alignment data found in line items" };
+    if (quartile === 'Q1') return { score: 2, reason: `Program quartile is Q1 (Most Aligned) - highest priority alignment with city strategic goals and community priorities` };
+    if (quartile === 'Q2') return { score: 2, reason: `Program quartile is Q2 (More Aligned) - strong alignment with city strategic goals and community priorities` };
+    if (quartile === 'Q3') return { score: 1, reason: `Program quartile is Q3 (Less Aligned) - moderate alignment with city strategic goals` };
+    return { score: 0, reason: `Program quartile is Q4 (Least Aligned) - lower priority alignment with current strategic goals` };
 }
 
 function getOutcomeScore(qa, qaText) {
-    if (/kpi|target|baseline|metric|goal|measur/i.test(qaText)) return 2;
-    if (!/n\/a|unknown|none/i.test(qaText) && qa.length > 0) return 1;
-    return 0;
+    const hasMetrics = /kpi|target|baseline|metric|goal|measur/i.test(qaText);
+    const hasData = /data|trend|statistics|baseline/i.test(qaText);
+    
+    if (hasMetrics && hasData) {
+        return { score: 2, reason: "Request includes specific KPIs/metrics AND baseline data or trends showing measurable outcomes" };
+    }
+    if (hasMetrics) {
+        return { score: 1, reason: "Request mentions performance targets or metrics, but lacks supporting baseline data or outcome trends" };
+    }
+    if (hasData && qa.length > 0 && !/n\/a|unknown|none/i.test(qaText)) {
+        return { score: 1, reason: "Request includes some data or information, but lacks specific measurable performance targets" };
+    }
+    return { score: 0, reason: "No measurable outcomes, KPIs, targets, or performance data provided in request documentation" };
 }
 
 function getFundingScore(qa, qaText) {
-    if (/outside funding.*yes|grant|fee|partner|cost recovery/i.test(qaText)) return 2;
-    if (/potential|partial|exploring/i.test(qaText)) return 1;
-    return 0;
+    const hasGrant = /grant|outside funding.*yes/i.test(qaText);
+    const hasFee = /fee|cost recovery|charge|revenue/i.test(qaText);
+    const hasPartner = /partner|partnership|contribution|match/i.test(qaText);
+    
+    if ((hasGrant || hasFee || hasPartner) && qaText.match(/grant|fee|partner/gi)?.length >= 2) {
+        return { score: 2, reason: "Request identifies MULTIPLE non-General Fund sources (grants, fees, cost recovery, or partnership funding)" };
+    }
+    if (hasGrant) {
+        return { score: 1, reason: "Request mentions grant funding or outside funding sources, reducing General Fund dependency" };
+    }
+    if (hasFee || hasPartner) {
+        return { score: 1, reason: "Request includes cost recovery mechanisms (fees/charges) or partnership contributions" };
+    }
+    if (/potential|exploring|seeking/i.test(qaText) && /grant|partner|fee/i.test(qaText)) {
+        return { score: 1, reason: "Request mentions exploring or seeking non-General Fund sources, though not yet secured" };
+    }
+    return { score: 0, reason: "No non-General Fund sources identified - request is 100% dependent on General Fund appropriation" };
 }
 
 function getMandateScore(qa, qaText) {
-    if (/board motion|consent decree|doj|mandate|statute/i.test(qaText)) return 2;
-    if (/audit|liability|compliance|risk|safety/i.test(qaText)) return 1;
-    return 0;
+    const hasMandate = /board motion|consent decree|doj|mandate|statute|ordinance|charter/i.test(qaText);
+    const hasCompliance = /audit|liability|compliance|risk|safety|violation|penalty/i.test(qaText);
+    
+    if (hasMandate && hasCompliance) {
+        return { score: 2, reason: "Request cites specific legal/regulatory mandate (board motion, statute, consent decree) AND identifies compliance risks or penalties" };
+    }
+    if (hasMandate) {
+        return { score: 1, reason: "Request references legal or regulatory mandate, board motion, or statutory requirement" };
+    }
+    if (hasCompliance) {
+        return { score: 1, reason: "Request addresses compliance obligations, audit findings, liability mitigation, or safety risks" };
+    }
+    return { score: 0, reason: "No legal mandates, compliance obligations, or significant regulatory risks identified in request" };
 }
 
 function getEfficiencyScore(qa, qaText) {
-    if (/roi|payback|productivity|efficiency|cost avoidance|reduce cost/i.test(qaText)) return 2;
-    if (/improve|streamline|automate/i.test(qaText)) return 1;
-    return 0;
+    const hasROI = /roi|return on investment|payback|cost avoidance|cost savings/i.test(qaText);
+    const hasEfficiency = /productivity|efficiency|streamline|reduce cost|automate/i.test(qaText);
+    const hasQuantification = /\$\d+|save.*\d+|\d+%|\d+ hours|\d+ fte/i.test(qaText);
+    
+    if ((hasROI || hasEfficiency) && hasQuantification) {
+        return { score: 2, reason: "Request demonstrates efficiency gains or ROI with QUANTIFIED savings, cost avoidance, or productivity improvements (includes dollar amounts, percentages, or time savings)" };
+    }
+    if (hasROI || (hasEfficiency && hasQuantification)) {
+        return { score: 1, reason: "Request mentions efficiency improvements, cost savings, or ROI, with some quantification or specific metrics" };
+    }
+    if (hasEfficiency) {
+        return { score: 1, reason: "Request describes efficiency improvements or process streamlining, but lacks quantified ROI or savings calculations" };
+    }
+    return { score: 0, reason: "No efficiency improvements, cost savings, ROI, or productivity gains identified in the request" };
 }
 
-function getEquityScore(qa, qaText) {
-    if (/equity|underserved|priority population|disparit|access|vulnerable/i.test(qaText)) return 2;
-    if (/community|outreach|service/i.test(qaText)) return 1;
-    return 0;
+function getAccessScore(qa, qaText) {
+    const hasEquity = /equity|underserved|priority population|disparit|vulnerable|disadvantaged/i.test(qaText);
+    const hasAccess = /access|barrier|inclusive|reach|serve/i.test(qaText);
+    const hasPopData = /\d+%|portion|community|residents|population|demographic/i.test(qaText);
+    
+    if ((hasEquity || hasAccess) && hasPopData) {
+        return { score: 2, reason: "Request explicitly addresses access or equity issues with SPECIFIC population data (percentages, demographics, or community impact metrics)" };
+    }
+    if (hasEquity) {
+        return { score: 1, reason: "Request mentions equity, underserved populations, or vulnerable communities, but lacks specific demographic data" };
+    }
+    if (hasAccess || (/community|service|outreach/i.test(qaText) && hasPopData)) {
+        return { score: 1, reason: "Request addresses community access or service delivery with some population information" };
+    }
+    return { score: 0, reason: "No specific attention to access, equity considerations, or underserved population impacts identified" };
 }
-
-// ===== ENHANCED PBB SCORING ENGINE WITH DECISION GRID =====
 
 function scoreRequest(request) {
     const requestId = getRequestId(request);
@@ -938,18 +984,44 @@ function scoreRequest(request) {
     const bestQuartile = getBestQuartile(quartiles);
     const qaText = qa.map(q => Object.values(q).join(' ')).join(' ').toLowerCase();
     
+    // Score each criterion with explicit reasoning
+    const quartileAnalysis = getQuartileScore(bestQuartile);
+    const outcomeAnalysis = getOutcomeScore(qa, qaText);
+    const fundingAnalysis = getFundingScore(qa, qaText);
+    const mandateAnalysis = getMandateScore(qa, qaText);
+    const efficiencyAnalysis = getEfficiencyScore(qa, qaText);
+    const accessAnalysis = getAccessScore(qa, qaText);
+    
     const analysis = {
-        quartileScore: getQuartileScore(bestQuartile),
-        outcomeScore: getOutcomeScore(qa, qaText),
-        fundingScore: getFundingScore(qa, qaText),
-        mandateScore: getMandateScore(qa, qaText),
-        efficiencyScore: getEfficiencyScore(qa, qaText),
-        equityScore: getEquityScore(qa, qaText),
+        // Scores with explicit reasons
+        quartileScore: quartileAnalysis.score,
+        quartileReason: quartileAnalysis.reason,
+        
+        outcomeScore: outcomeAnalysis.score,
+        outcomeReason: outcomeAnalysis.reason,
+        
+        fundingScore: fundingAnalysis.score,
+        fundingReason: fundingAnalysis.reason,
+        
+        mandateScore: mandateAnalysis.score,
+        mandateReason: mandateAnalysis.reason,
+        
+        efficiencyScore: efficiencyAnalysis.score,
+        efficiencyReason: efficiencyAnalysis.reason,
+        
+        accessScore: accessAnalysis.score,
+        accessReason: accessAnalysis.reason,
+        
+        // Legacy fields for backwards compatibility
         bestQuartile: bestQuartile,
         hasOutsideFunding: /outside funding.*yes|grant|fee|partner|cost recovery/i.test(qaText),
         isMandated: /board motion|consent decree|doj|mandate|statute/i.test(qaText),
         isCompliance: /audit|liability|compliance|risk|safety/i.test(qaText)
     };
+    
+    // Calculate total score
+    const totalScore = quartileAnalysis.score + outcomeAnalysis.score + fundingAnalysis.score + 
+                      mandateAnalysis.score + efficiencyAnalysis.score + accessAnalysis.score;
     
     // Determine quartile band (High = Q1/Q2, Low = Q3/Q4)
     analysis.quartileBand = (bestQuartile === 'Q1' || bestQuartile === 'Q2') ? 'High' : 'Low';
@@ -967,12 +1039,9 @@ function scoreRequest(request) {
     analysis.fundingType = analysis.hasOutsideFunding ? 'NonGF' : 'GFonly';
     
     // Determine outcomes strength
-    analysis.outcomesStrength = analysis.outcomeScore >= 2 ? 'Strong' : 'Weak';
+    analysis.outcomesStrength = outcomeAnalysis.score >= 2 ? 'Strong' : 'Weak';
     
-    // Calculate total score for display
-    analysis.totalScore = analysis.quartileScore + analysis.outcomeScore + 
-                          analysis.fundingScore + analysis.mandateScore +
-                          analysis.efficiencyScore + analysis.equityScore;
+    analysis.totalScore = totalScore;
     
     // Apply the decision grid
     const gridDecision = applyDecisionGrid(analysis);
@@ -1193,41 +1262,41 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     
     narrative += `---\n\n`;
     
-    // Disposition and recommendation
-    narrative += `## 🎯 DISPOSITION: **${analysis.disposition}** (Score: ${analysis.totalScore}/12)\n\n`;
+    // Disposition and recommendation with PBB suggests language
+    narrative += `## 🎯 PBB SUGGESTS: **${analysis.disposition}** (Score: ${analysis.totalScore}/12)\n\n`;
     
     // Main recommendation based on disposition
     if (analysis.disposition === 'APPROVE') {
         if (analysis.mandateLevel === 'Mandated') {
-            narrative += `**Recommendation:** APPROVE. This is a mandated program with ${analysis.outcomesStrength.toLowerCase()} outcomes evidence. `;
+            narrative += `**PBB Recommendation:** PBB suggests APPROVE. This is a mandated program with ${analysis.outcomesStrength.toLowerCase()} outcomes evidence. `;
             if (analysis.fundingType === 'GFonly' && analysis.quartileBand === 'Low') {
-                narrative += `Given the lower quartile, require offsetting reductions or pursue non-GF sources. `;
+                narrative += `Given the lower quartile, PBB suggests requiring offsetting reductions or pursuing non-GF sources. `;
             }
             if (analysis.outcomesStrength === 'Weak') {
-                narrative += `Require metrics and evaluation plan as condition of approval.\n\n`;
+                narrative += `PBB suggests requiring metrics and evaluation plan as condition of approval.\n\n`;
             } else {
-                narrative += `General Fund support is justified.\n\n`;
+                narrative += `General Fund support appears justified based on mandate requirements.\n\n`;
             }
         } else if (analysis.fundingType === 'NonGF') {
-            narrative += `**Recommendation:** APPROVE with non-GF priority. Strong proposal with external funding sources. `;
+            narrative += `**PBB Recommendation:** PBB suggests APPROVE with non-GF priority. Strong proposal with external funding sources. `;
             if (analysis.quartileBand === 'Low') {
-                narrative += `For Q3/Q4 programs, ensure minimal or no GF backfill. `;
+                narrative += `For Q3/Q4 programs, PBB suggests ensuring minimal or no GF backfill. `;
             }
-            narrative += `Proceed with clear cost recovery and sustainability plan.\n\n`;
+            narrative += `PBB recommends proceeding with clear cost recovery and sustainability plan.\n\n`;
         } else {
-            narrative += `**Recommendation:** APPROVE but strengthen funding strategy. While outcomes are strong, consider adding cost recovery or partnership elements to reduce General Fund reliance.\n\n`;
+            narrative += `**PBB Recommendation:** PBB suggests APPROVE but strengthen funding strategy. While outcomes are strong, PBB recommends adding cost recovery or partnership elements to reduce General Fund reliance.\n\n`;
         }
     } else if (analysis.disposition === 'MODIFY') {
-        narrative += `**Recommendation:** MODIFY before approval. This request shows merit but requires adjustments:\n\n`;
+        narrative += `**PBB Recommendation:** PBB suggests MODIFY before approval. This request shows merit but PBB recommends adjustments before proceeding:\n\n`;
     } else if (analysis.disposition === 'DEFER') {
-        narrative += `**Recommendation:** DEFER. Insufficient business case for current approval. `;
+        narrative += `**PBB Recommendation:** PBB suggests DEFER. Insufficient business case for current approval based on PBB criteria. `;
         if (analysis.mandateLevel === 'Mandated') {
-            narrative += `Monitor mandate requirements. `;
+            narrative += `PBB recommends monitoring mandate requirements. `;
         }
-        narrative += `See strengthening actions below.\n\n`;
+        narrative += `See PBB-recommended strengthening actions below.\n\n`;
     } else if (analysis.disposition === 'REJECT') {
-        narrative += `**Recommendation:** REJECT OR SIGNIFICANT REDESIGN REQUIRED. `;
-        narrative += `This low-relevance, GF-only request with weak outcomes does not meet funding criteria. Fundamental changes needed.\n\n`;
+        narrative += `**PBB Recommendation:** PBB suggests REJECT OR SIGNIFICANT REDESIGN. `;
+        narrative += `This low-relevance, GF-only request with weak outcomes does not meet PBB funding criteria. PBB recommends fundamental changes before reconsideration.\n\n`;
     }
     
     // Verification requirements
@@ -1724,43 +1793,58 @@ function generateDetailedRequestReportAnalytical() {
                             📊 PBB Analysis Score: ${analysis.totalScore}/12
                         </h3>
                         
-                        <!-- Score Breakdown Grid -->
-                        <div class="score-grid">
-                            <div class="score-item">
-                                <div class="score-value">${analysis.quartileScore}/2</div>
-                                <div class="score-label">Quartile Relevance</div>
-                                <div style="font-size: 0.8rem; color: #999; margin-top: 5px;">${analysis.bestQuartile}</div>
-                            </div>
-                            <div class="score-item">
-                                <div class="score-value">${analysis.outcomeScore}/2</div>
-                                <div class="score-label">Outcome Evidence</div>
-                                <div style="font-size: 0.8rem; color: #999; margin-top: 5px;">
-                                    ${analysis.outcomeScore === 2 ? 'Strong' : analysis.outcomeScore === 1 ? 'Moderate' : 'Weak'}
+                        <!-- Score Breakdown with Explicit Reasons -->
+                        <div style="margin: 20px 0;">
+                            <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #667eea;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <strong style="color: #667eea; font-size: 1.1rem;">1. Program Alignment (Quartile)</strong>
+                                    <span style="background: #667eea; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.quartileScore}/2</span>
                                 </div>
+                                <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.quartileReason}</em></p>
                             </div>
-                            <div class="score-item">
-                                <div class="score-value">${analysis.fundingScore}/2</div>
-                                <div class="score-label">Funding Strategy</div>
-                                <div style="font-size: 0.8rem; color: #999; margin-top: 5px;">
-                                    ${analysis.hasOutsideFunding ? 'Non-GF Sources' : 'GF Only'}
+                            
+                            <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #17a2b8;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <strong style="color: #17a2b8; font-size: 1.1rem;">2. Outcome Evidence</strong>
+                                    <span style="background: #17a2b8; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.outcomeScore}/2</span>
                                 </div>
+                                <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.outcomeReason}</em></p>
                             </div>
-                            <div class="score-item">
-                                <div class="score-value">${analysis.mandateScore}/2</div>
-                                <div class="score-label">Mandate/Risk</div>
-                                <div style="font-size: 0.8rem; color: #999; margin-top: 5px;">
-                                    ${analysis.isMandated ? 'Mandated' : analysis.isCompliance ? 'Compliance' : 'Discretionary'}
+                            
+                            <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #28a745;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <strong style="color: #28a745; font-size: 1.1rem;">3. Funding Strategy</strong>
+                                    <span style="background: #28a745; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.fundingScore}/2</span>
                                 </div>
+                                <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.fundingReason}</em></p>
                             </div>
-                            <div class="score-item">
-                                <div class="score-value">${analysis.efficiencyScore}/2</div>
-                                <div class="score-label">Efficiency/ROI</div>
+                            
+                            <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #ffc107;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <strong style="color: #856404; font-size: 1.1rem;">4. Mandate/Risk</strong>
+                                    <span style="background: #ffc107; color: #333; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.mandateScore}/2</span>
+                                </div>
+                                <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.mandateReason}</em></p>
                             </div>
-                            <div class="score-item">
-                                <div class="score-value">${analysis.equityScore}/2</div>
-                                <div class="score-label">Equity/Access</div>
+                            
+                            <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #6f42c1;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <strong style="color: #6f42c1; font-size: 1.1rem;">5. Efficiency/ROI</strong>
+                                    <span style="background: #6f42c1; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.efficiencyScore}/2</span>
+                                </div>
+                                <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.efficiencyReason}</em></p>
+                            </div>
+                            
+                            <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #e83e8c;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <strong style="color: #e83e8c; font-size: 1.1rem;">6. Access</strong>
+                                    <span style="background: #e83e8c; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.accessScore}/2</span>
+                                </div>
+                                <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.accessReason}</em></p>
                             </div>
                         </div>
+                        
+                        
                         
                         <!-- Strategic Recommendation -->
                         <div class="narrative-box">

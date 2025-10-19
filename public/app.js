@@ -538,7 +538,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Also add event listener when report is generated
 function displayReport() {
-    console.log('Displaying report...');
+    console.log('Displaying reports...');
     
     const reportDate = new Date().toLocaleDateString('en-US', {
         year: 'numeric',
@@ -547,16 +547,18 @@ function displayReport() {
     });
 
     document.getElementById('reportDate').textContent = `Generated on ${reportDate}`;
+    document.getElementById('analyticalReportDate').textContent = `Generated on ${reportDate}`;
 
     const totalAmount = filteredData.reduce((sum, request) => {
         const amounts = getRequestAmount(request);
         return sum + amounts.total;
     }, 0);
 
-    let html = `
+    // ===== GENERATE STANDARD REPORT (WITHOUT ANALYSIS) =====
+    let standardHtml = `
         <div style="text-align: center; margin-bottom: 30px;">
             <h1 style="color: #333; margin-bottom: 10px;">Priority Based Budgeting Report</h1>
-            <p style="color: #666; font-size: 1.1rem;">Budget Request Analysis and Recommendations</p>
+            <p style="color: #666; font-size: 1.1rem;">Budget Request Analysis</p>
             <p style="color: #888;">Generated on ${reportDate}</p>
         </div>
 
@@ -564,40 +566,42 @@ function displayReport() {
         <p>This report analyzes ${filteredData.length} budget requests totaling ${formatCurrency(totalAmount)} in requested funding. The requests span multiple departments and programs, with varying levels of alignment to organizational priorities.</p>
     `;
 
-    // Add filter summary
-    html += generateFilterSummary();
+    standardHtml += generateFilterSummary();
+    standardHtml += generateActualTableOfContents();
+    standardHtml += generateDepartmentSummary();
+    standardHtml += generateProgramSummary();
+    standardHtml += generateQuartileAnalysis();
+    standardHtml += generateCharts();
+    standardHtml += generateRequestSummaryTable();
+    standardHtml += generateDetailedRequestReportStandard(); // Standard version without analysis
 
-    // Add actual table of contents with links
-    console.log('Generating table of contents...');
-    html += generateActualTableOfContents();
-    
-    // Add department summary
-    html += generateDepartmentSummary();
-
-    // Add program summary
-    html += generateProgramSummary();
-    
-    // Add quartile analysis
-    html += generateQuartileAnalysis();
-
-    // Add charts AFTER table of contents
-    html += generateCharts();
-
-    // Add request summary table
-    html += generateRequestSummaryTable();
-
-    // Add individual request details
-    html += generateDetailedRequestReport();
-
-    reportContent.innerHTML = html;
-    
+    reportContent.innerHTML = standardHtml;
     reportSection.style.display = 'block';
 
-    // Add download event listener after report is displayed
-    
-    // Add BOTH download event listeners
+    // ===== GENERATE ANALYTICAL REPORT (WITH SCORING AND RECOMMENDATIONS) =====
+    let analyticalHtml = `
+        <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #333; margin-bottom: 10px;">🎯 PBB Analysis & Recommendations</h1>
+            <p style="color: #666; font-size: 1.1rem;">Detailed Scoring and Strategic Recommendations</p>
+            <p style="color: #888;">Generated on ${reportDate}</p>
+        </div>
+
+        <div class="section-header">Analysis Overview</div>
+        <p>This analytical report provides detailed Priority Based Budgeting (PBB) scoring and strategic recommendations for ${filteredData.length} budget requests totaling <strong class="amount">$${formatCurrency(totalAmount)}</strong>. Each request is evaluated across six criteria with actionable recommendations.</p>
+    `;
+
+    analyticalHtml += generateAnalyticalSummary();
+    analyticalHtml += generateAnalyticalTableOfContents();
+    analyticalHtml += generateDetailedRequestReportAnalytical(); // Analytical version with full scoring
+
+    document.getElementById('analyticalReportContent').innerHTML = analyticalHtml;
+    document.getElementById('analyticalReportSection').style.display = 'block';
+
+    // Add download event listeners
     const downloadWordBtn = document.getElementById('downloadWordBtn');
     const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+    const downloadAnalyticalWordBtn = document.getElementById('downloadAnalyticalWordBtn');
+    const downloadAnalyticalPdfBtn = document.getElementById('downloadAnalyticalPdfBtn');
 
     if (downloadWordBtn) {
         downloadWordBtn.removeEventListener('click', downloadWordReport);
@@ -608,10 +612,23 @@ function displayReport() {
         downloadPdfBtn.removeEventListener('click', downloadPdfReport);
         downloadPdfBtn.addEventListener('click', downloadPdfReport);
     }
+
+    if (downloadAnalyticalWordBtn) {
+        downloadAnalyticalWordBtn.removeEventListener('click', downloadAnalyticalWordReport);
+        downloadAnalyticalWordBtn.addEventListener('click', downloadAnalyticalWordReport);
+    }
+
+    if (downloadAnalyticalPdfBtn) {
+        downloadAnalyticalPdfBtn.removeEventListener('click', downloadAnalyticalPdfReport);
+        downloadAnalyticalPdfBtn.addEventListener('click', downloadAnalyticalPdfReport);
+    }
     
     // Render charts after HTML is added to DOM
     setTimeout(renderCharts, 100);
 }
+
+
+
 
 function generateFilterSummary() {
     // Get current filter values
@@ -1205,6 +1222,282 @@ function generateDetailedRequestReport() {
     });
 
     return html;
+}
+
+// ===== STANDARD REPORT (NO ANALYSIS) =====
+function generateDetailedRequestReportStandard() {
+    let html = `<div class="section-header" id="individual-requests">Individual Budget Requests</div>`;
+    
+    filteredData.forEach((request, index) => {
+        const requestId = getRequestId(request);
+        const description = getRequestDescription(request);
+        const lineItems = getLineItemsForRequest(requestId);
+        const qa = getRequestQA(requestId);
+        const amounts = getRequestAmount(request);
+        
+        const pageBreakStyle = index > 0 ? 'page-break-before: always;' : '';
+
+        html += `
+            <div class="request-card" id="request-${requestId}" style="${pageBreakStyle} margin-top: 40px;">
+                <div class="request-header" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
+                    <div class="request-title" style="color: white; font-size: 1.4rem;">Request ID: ${requestId} - ${description}</div>
+                </div>
+                <div class="request-details">
+                    <div style="margin-bottom: 25px;">
+                        <h3 style="color: #667eea; margin-bottom: 15px; border-bottom: 1px solid #e0e0e0; padding-bottom: 5px;">Request Summary</h3>
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <div class="detail-label">Request ID</div>
+                                <div class="detail-value">${requestId}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Description</div>
+                                <div class="detail-value">${description}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Total Amount</div>
+                                <div class="detail-value amount">$${formatCurrency(amounts.total)}</div>
+                            </div>
+                        </div>
+                    </div>
+        `;
+
+        if (qa.length > 0) {
+            html += generateRequestQASection(qa);
+        }
+
+        if (lineItems.length > 0) {
+            html += generateLineItemSection(lineItems);
+        }
+
+        html += `</div></div>`;
+    });
+
+    return html;
+}
+
+// ===== ANALYTICAL REPORT (WITH SCORING) =====
+function generateDetailedRequestReportAnalytical() {
+    let html = `<div class="section-header" id="analytical-requests">Detailed Request Analysis</div>`;
+    
+    filteredData.forEach((request, index) => {
+        const requestId = getRequestId(request);
+        const description = getRequestDescription(request);
+        const lineItems = getLineItemsForRequest(requestId);
+        const qa = getRequestQA(requestId);
+        const amounts = getRequestAmount(request);
+        
+        // SCORE THE REQUEST
+        const analysis = scoreRequest(request);
+        
+        const pageBreakStyle = index > 0 ? 'page-break-before: always;' : '';
+
+        html += `
+            <div class="request-card" id="analytical-request-${requestId}" style="${pageBreakStyle} margin-top: 40px; border-left: 5px solid ${analysis.dispositionColor};">
+                <div class="request-header" style="background: ${analysis.dispositionColor}; color: white;">
+                    <div class="request-title" style="color: white; font-size: 1.4rem;">
+                        Request ${requestId} - ${description}
+                        <span class="analysis-badge badge-${analysis.disposition.toLowerCase()}" style="float: right; margin-left: 15px;">
+                            ${analysis.disposition}
+                        </span>
+                    </div>
+                </div>
+                <div class="request-details">
+                    
+                    <!-- PBB SCORING SECTION -->
+                    <div style="background: linear-gradient(135deg, #f8f9ff, #ffffff); padding: 25px; margin-bottom: 25px; border-radius: 8px; border: 2px solid ${analysis.dispositionColor};">
+                        <h3 style="color: ${analysis.dispositionColor}; margin-bottom: 20px; font-size: 1.5rem;">
+                            📊 PBB Analysis Score: ${analysis.totalScore}/12
+                        </h3>
+                        
+                        <!-- Score Breakdown Grid -->
+                        <div class="score-grid">
+                            <div class="score-item">
+                                <div class="score-value">${analysis.quartileScore}/2</div>
+                                <div class="score-label">Quartile Relevance</div>
+                                <div style="font-size: 0.8rem; color: #999; margin-top: 5px;">${analysis.bestQuartile}</div>
+                            </div>
+                            <div class="score-item">
+                                <div class="score-value">${analysis.outcomeScore}/2</div>
+                                <div class="score-label">Outcome Evidence</div>
+                                <div style="font-size: 0.8rem; color: #999; margin-top: 5px;">
+                                    ${analysis.outcomeScore === 2 ? 'Strong' : analysis.outcomeScore === 1 ? 'Moderate' : 'Weak'}
+                                </div>
+                            </div>
+                            <div class="score-item">
+                                <div class="score-value">${analysis.fundingScore}/2</div>
+                                <div class="score-label">Funding Strategy</div>
+                                <div style="font-size: 0.8rem; color: #999; margin-top: 5px;">
+                                    ${analysis.hasOutsideFunding ? 'Non-GF Sources' : 'GF Only'}
+                                </div>
+                            </div>
+                            <div class="score-item">
+                                <div class="score-value">${analysis.mandateScore}/2</div>
+                                <div class="score-label">Mandate/Risk</div>
+                                <div style="font-size: 0.8rem; color: #999; margin-top: 5px;">
+                                    ${analysis.isMandated ? 'Mandated' : analysis.isCompliance ? 'Compliance' : 'Discretionary'}
+                                </div>
+                            </div>
+                            <div class="score-item">
+                                <div class="score-value">${analysis.efficiencyScore}/2</div>
+                                <div class="score-label">Efficiency/ROI</div>
+                            </div>
+                            <div class="score-item">
+                                <div class="score-value">${analysis.equityScore}/2</div>
+                                <div class="score-label">Equity/Access</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Strategic Recommendation -->
+                        <div class="narrative-box">
+                            <h4 style="color: #667eea; margin-bottom: 15px; font-size: 1.2rem;">📝 Strategic Recommendation</h4>
+                            <div style="white-space: pre-wrap; font-size: 1.05rem; line-height: 1.8;">${analysis.narrative}</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Request Details -->
+                    <div style="margin-bottom: 25px;">
+                        <h3 style="color: #667eea; margin-bottom: 15px; border-bottom: 1px solid #e0e0e0; padding-bottom: 5px;">Request Summary</h3>
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <div class="detail-label">Request ID</div>
+                                <div class="detail-value">${requestId}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Description</div>
+                                <div class="detail-value">${description}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Total Amount</div>
+                                <div class="detail-value amount">$${formatCurrency(amounts.total)}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Department</div>
+                                <div class="detail-value">${getPrimaryValue(lineItems, 'department') || 'N/A'}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Program</div>
+                                <div class="detail-value">${getPrimaryValue(lineItems, 'program') || 'N/A'}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Quartile</div>
+                                <div class="detail-value">
+                                    <span class="quartile-badge quartile-${analysis.bestQuartile.toLowerCase()}">${analysis.bestQuartile}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+        `;
+
+        if (qa.length > 0) {
+            html += generateRequestQASection(qa);
+        }
+
+        if (lineItems.length > 0) {
+            html += generateLineItemSection(lineItems);
+        }
+
+        html += `</div></div>`;
+    });
+
+    return html;
+}
+
+// Summary for Analytical Report
+function generateAnalyticalSummary() {
+    const scores = { approve: 0, modify: 0, defer: 0 };
+    const amounts = { approve: 0, modify: 0, defer: 0 };
+    
+    filteredData.forEach(request => {
+        const analysis = scoreRequest(request);
+        const requestAmounts = getRequestAmount(request);
+        
+        if (analysis.disposition === 'APPROVE') {
+            scores.approve++;
+            amounts.approve += requestAmounts.total;
+        } else if (analysis.disposition === 'MODIFY') {
+            scores.modify++;
+            amounts.modify += requestAmounts.total;
+        } else {
+            scores.defer++;
+            amounts.defer += requestAmounts.total;
+        }
+    });
+
+    return `
+        <div class="section-header">Recommendation Summary</div>
+        <div class="request-card">
+            <div class="request-details">
+                <div class="detail-grid">
+                    <div class="detail-item" style="background: linear-gradient(135deg, #d4edda, #c3e6cb); border: 2px solid #28a745;">
+                        <div class="detail-label">✅ Approve</div>
+                        <div class="detail-value" style="font-size: 1.5rem; color: #28a745;">${scores.approve} Requests</div>
+                        <div class="amount" style="font-size: 1.2rem;">$${formatCurrency(amounts.approve)}</div>
+                    </div>
+                    <div class="detail-item" style="background: linear-gradient(135deg, #fff3cd, #ffeeba); border: 2px solid #ffc107;">
+                        <div class="detail-label">⚠️ Modify</div>
+                        <div class="detail-value" style="font-size: 1.5rem; color: #856404;">${scores.modify} Requests</div>
+                        <div class="amount" style="font-size: 1.2rem; color: #856404;">$${formatCurrency(amounts.modify)}</div>
+                    </div>
+                    <div class="detail-item" style="background: linear-gradient(135deg, #f8d7da, #f5c6cb); border: 2px solid #dc3545;">
+                        <div class="detail-label">❌ Defer</div>
+                        <div class="detail-value" style="font-size: 1.5rem; color: #dc3545;">${scores.defer} Requests</div>
+                        <div class="amount" style="font-size: 1.2rem; color: #dc3545;">$${formatCurrency(amounts.defer)}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Table of Contents for Analytical Report
+function generateAnalyticalTableOfContents() {
+    let html = `
+        <div class="section-header">Table of Contents</div>
+        <div class="request-card">
+            <div class="request-details">
+                <ol style="line-height: 2; font-size: 1.1rem;">
+                    <li><a href="#analytical-requests" style="color: #667eea; text-decoration: none;">Detailed Request Analysis</a>
+                        <ol style="margin-top: 10px; font-size: 1rem;">
+    `;
+
+    filteredData.forEach((request) => {
+        const requestId = getRequestId(request);
+        const description = getRequestDescription(request);
+        const analysis = scoreRequest(request);
+        const badgeColor = analysis.disposition === 'APPROVE' ? '#28a745' : 
+                          analysis.disposition === 'MODIFY' ? '#ffc107' : '#dc3545';
+        
+        html += `<li>
+            <a href="#analytical-request-${requestId}" style="color: #667eea; text-decoration: none;">
+                Request ${requestId}: ${description || 'N/A'}
+            </a>
+            <span style="background: ${badgeColor}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; margin-left: 10px;">
+                ${analysis.disposition} (${analysis.totalScore}/12)
+            </span>
+        </li>`;
+    });
+
+    html += `
+                        </ol>
+                    </li>
+                </ol>
+            </div>
+        </div>
+    `;
+
+    return html;
+}
+
+// Download functions for analytical report
+function downloadAnalyticalWordReport() {
+    alert('Analytical Word Report download coming soon! Use the PDF option for now.');
+    // You can implement this similar to downloadWordReport but using the analytical content
+}
+
+function downloadAnalyticalPdfReport() {
+    alert('Analytical PDF Report download coming soon! You can print the analytical report using your browser\'s print function (Ctrl+P).');
+    // You can implement this similar to downloadPdfReport but using the analytical content
 }
 
 function generateRequestQASection(qa) {

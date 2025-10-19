@@ -509,3 +509,58 @@ tr:hover {
     transform: translateY(-2px);
     box-shadow: 0 10px 25px rgba(40, 167, 69, 0.4);
 }
+
+/* Analytical Report Styling */
+#analyticalReportSection .report-header {
+    background: linear-gradient(135deg, #28a745, #20c997);
+}
+
+.analysis-badge {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: white;
+    margin: 5px;
+}
+
+.badge-approve { background: #28a745; }
+.badge-modify { background: #ffc107; color: #333; }
+.badge-defer { background: #dc3545; }
+
+.score-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+    margin: 20px 0;
+}
+
+.score-item {
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+    border: 2px solid #e0e0e0;
+}
+
+.score-value {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #667eea;
+}
+
+.score-label {
+    font-size: 0.9rem;
+    color: #666;
+    margin-top: 5px;
+}
+
+.narrative-box {
+    background: #f8f9ff;
+    border-left: 4px solid #667eea;
+    padding: 20px;
+    margin: 20px 0;
+    border-radius: 0 8px 8px 0;
+    line-height: 1.8;
+}

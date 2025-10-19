@@ -878,6 +878,147 @@ function getPrimaryValue(lineItems, fieldType) {
     return null;
 }
 
+// ===== PBB SCORING ENGINE - ADD THIS ENTIRE SECTION =====
+
+// Helper function to get best quartile
+function getBestQuartile(quartiles) {
+    if (quartiles.includes('Most Aligned')) return 'Q1';
+    if (quartiles.includes('More Aligned')) return 'Q2';
+    if (quartiles.includes('Less Aligned')) return 'Q3';
+    if (quartiles.includes('Least Aligned')) return 'Q4';
+    return 'Q4';
+}
+
+// Scoring functions
+function getQuartileScore(quartile) {
+    if (quartile === 'Q1' || quartile === 'Q2') return 2;
+    if (quartile === 'Q3') return 1;
+    return 0;
+}
+
+function getOutcomeScore(qa, qaText) {
+    if (/kpi|target|baseline|metric|goal|measur/i.test(qaText)) return 2;
+    if (!/n\/a|unknown|none/i.test(qaText) && qa.length > 0) return 1;
+    return 0;
+}
+
+function getFundingScore(qa, qaText) {
+    if (/outside funding.*yes|grant|fee|partner|cost recovery/i.test(qaText)) return 2;
+    if (/potential|partial|exploring/i.test(qaText)) return 1;
+    return 0;
+}
+
+function getMandateScore(qa, qaText) {
+    if (/board motion|consent decree|doj|mandate|statute/i.test(qaText)) return 2;
+    if (/audit|liability|compliance|risk|safety/i.test(qaText)) return 1;
+    return 0;
+}
+
+function getEfficiencyScore(qa, qaText) {
+    if (/roi|payback|productivity|efficiency|cost avoidance|reduce cost/i.test(qaText)) return 2;
+    if (/improve|streamline|automate/i.test(qaText)) return 1;
+    return 0;
+}
+
+function getEquityScore(qa, qaText) {
+    if (/equity|underserved|priority population|disparit|access|vulnerable/i.test(qaText)) return 2;
+    if (/community|outreach|service/i.test(qaText)) return 1;
+    return 0;
+}
+
+function scoreRequest(request) {
+    const requestId = getRequestId(request);
+    const lineItems = getLineItemsForRequest(requestId);
+    const qa = getRequestQA(requestId);
+    const amounts = getRequestAmount(request);
+    
+    const quartiles = lineItems.map(li => getPrimaryValue([li], 'quartile')).filter(q => q);
+    const bestQuartile = getBestQuartile(quartiles);
+    const qaText = qa.map(q => Object.values(q).join(' ')).join(' ').toLowerCase();
+    
+    const analysis = {
+        quartileScore: getQuartileScore(bestQuartile),
+        outcomeScore: getOutcomeScore(qa, qaText),
+        fundingScore: getFundingScore(qa, qaText),
+        mandateScore: getMandateScore(qa, qaText),
+        efficiencyScore: getEfficiencyScore(qa, qaText),
+        equityScore: getEquityScore(qa, qaText),
+        bestQuartile: bestQuartile,
+        hasOutsideFunding: /outside funding.*yes/i.test(qaText),
+        isMandated: /board motion|consent decree|doj|lawsuit|mandate|statute/i.test(qaText),
+        isCompliance: /audit|liability|compliance|risk/i.test(qaText)
+    };
+    
+    analysis.totalScore = analysis.quartileScore + analysis.outcomeScore + 
+                          analysis.fundingScore + analysis.mandateScore +
+                          analysis.efficiencyScore + analysis.equityScore;
+    
+    if (analysis.totalScore >= 9) {
+        analysis.disposition = 'APPROVE';
+        analysis.dispositionColor = '#28a745';
+    } else if (analysis.totalScore >= 6) {
+        analysis.disposition = 'MODIFY';
+        analysis.dispositionColor = '#ffc107';
+    } else {
+        analysis.disposition = 'DEFER';
+        analysis.dispositionColor = '#dc3545';
+    }
+    
+    analysis.narrative = generateNarrative(request, lineItems, qa, analysis);
+    return analysis;
+}
+
+function generateNarrative(request, lineItems, qa, analysis) {
+    const requestId = getRequestId(request);
+    const amounts = getRequestAmount(request);
+    const dept = getPrimaryValue(lineItems, 'department') || 'Unknown';
+    const program = getPrimaryValue(lineItems, 'program') || 'Unknown';
+    
+    let narrative = `**Program:** ${program} (${dept}). **Quartile:** ${analysis.bestQuartile}. **Total Amount:** $${formatCurrency(amounts.total)}.\n\n`;
+    
+    if (analysis.isMandated) {
+        narrative += `⚠️ **Mandated**: This request appears to be legally mandated or tied to a Board Motion/consent decree, which strengthens the case for approval.\n\n`;
+    } else if (analysis.isCompliance) {
+        narrative += `⚠️ **Compliance/Risk**: This request addresses compliance obligations or risk mitigation.\n\n`;
+    }
+    
+    if (analysis.hasOutsideFunding) {
+        narrative += `✅ **Funding Strategy**: Includes non-General Fund sources (grants, fees, or partnerships), which strengthens the proposal.\n\n`;
+    } else if (analysis.bestQuartile === 'Q3' || analysis.bestQuartile === 'Q4') {
+        narrative += `⚠️ **Funding Gap**: 100% General Fund requested for a Q3/Q4 program. Consider identifying fee recovery, grant opportunities, or partnership options.\n\n`;
+    }
+    
+    if (analysis.outcomeScore >= 2) {
+        narrative += `✅ **Strong Evidence**: Clear performance metrics and outcome targets provided.\n\n`;
+    } else if (analysis.outcomeScore === 1) {
+        narrative += `⚠️ **Limited Evidence**: Qualitative outcomes described but lacks specific KPIs or measurable targets.\n\n`;
+    } else {
+        narrative += `❌ **Weak Evidence**: Insufficient outcome data or evaluation plan. Business case needs strengthening.\n\n`;
+    }
+    
+    narrative += `**📊 SCORE: ${analysis.totalScore}/12** — `;
+    
+    if (analysis.disposition === 'APPROVE') {
+        if (analysis.bestQuartile === 'Q1' || analysis.bestQuartile === 'Q2') {
+            narrative += `**COMPELLING for approval.** General Fund support is appropriate given high program relevance${analysis.isMandated ? ' and legal mandate' : ''}. ${analysis.hasOutsideFunding ? 'Non-GF sources further strengthen this request.' : 'Still seek grant/fee opportunities where feasible.'}`;
+        } else {
+            narrative += `**APPROVE with conditions.** ${analysis.isMandated ? 'Legal mandate justifies approval despite lower quartile.' : 'Strong business case compensates for lower quartile.'} Prioritize non-GF funding sources and phase implementation if possible.`;
+        }
+    } else if (analysis.disposition === 'MODIFY') {
+        narrative += `**MODIFY RECOMMENDED.** Consider: (1) Reducing scope or phasing, (2) Adding cost recovery mechanisms, (3) Seeking partnerships, (4) Strengthening outcome metrics and evaluation plans. May approve with these adjustments.`;
+    } else {
+        if (analysis.isMandated) {
+            narrative += `**DEFER but monitor mandate.** If legally required, proceed but require offsetting reductions elsewhere. Otherwise defer until stronger business case or alternative funding identified.`;
+        } else {
+            narrative += `**DEFER or REJECT.** Insufficient business case for General Fund investment. Recommend: (1) Seeking alternative funding, (2) Program redesign, (3) Partnership exploration, or (4) deferral to future cycle with improved justification.`;
+        }
+    }
+    
+    return narrative;
+}
+
+// ===== END OF SCORING ENGINE =====
+
 function getRequestQA(requestId) {
     // Find Q&A entries for this request
     return budgetData.requestQA.filter(qa => {

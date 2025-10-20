@@ -1823,9 +1823,17 @@ function generateDetailedRequestReport() {
     return html;
 }
 
-// ===== STANDARD REPORT (NO ANALYSIS) =====
+// ===== STANDARD REPORT (NO ANALYSIS) WITH COLLAPSIBLE REQUESTS =====
 function generateDetailedRequestReportStandard() {
-    let html = `<div class="section-header" id="individual-requests">Individual Budget Requests</div>`;
+    let html = `
+        <div class="section-header" id="individual-requests">Individual Budget Requests</div>
+        
+        <!-- Expand/Collapse All Controls -->
+        <div class="collapse-controls">
+            <button class="collapse-btn" onclick="expandAllStandardRequests()">📂 Expand All Requests</button>
+            <button class="collapse-btn" onclick="collapseAllStandardRequests()">📁 Collapse All Requests</button>
+        </div>
+    `;
     
     filteredData.forEach((request, index) => {
         const requestId = getRequestId(request);
@@ -1834,46 +1842,97 @@ function generateDetailedRequestReportStandard() {
         const qa = getRequestQA(requestId);
         const amounts = getRequestAmount(request);
         
-        const pageBreakStyle = index > 0 ? 'page-break-before: always;' : '';
+        const uniqueId = `standard-request-accordion-${requestId}`;
+        const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
+        const primaryProgram = getPrimaryValue(lineItems, 'program') || 'N/A';
+        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
 
         html += `
-            <div class="request-card" id="request-${requestId}" style="${pageBreakStyle} margin-top: 40px;">
-                <div class="request-header" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
-                    <div class="request-title" style="color: white; font-size: 1.4rem;">Request ID: ${requestId} - ${description}</div>
+            <!-- Request Accordion -->
+            <div class="request-accordion" id="request-${requestId}">
+                <div class="request-accordion-header" onclick="toggleRequestAccordion('${uniqueId}')">
+                    <div class="request-accordion-title">
+                        <strong>Request ${requestId}:</strong> ${description}
+                    </div>
+                    <span class="request-accordion-badge" style="background: #667eea;">
+                        $${formatCurrency(amounts.total)}
+                    </span>
+                    ${primaryQuartile !== 'N/A' ? 
+                        `<span class="quartile-badge quartile-${primaryQuartile.toLowerCase().replace(' ', '-')}" style="margin: 0 10px;">${primaryQuartile}</span>` 
+                        : ''}
+                    <span class="request-accordion-arrow" id="${uniqueId}-arrow">▼</span>
                 </div>
-                <div class="request-details">
-                    <div style="margin-bottom: 25px;">
-                        <h3 style="color: #667eea; margin-bottom: 15px; border-bottom: 1px solid #e0e0e0; padding-bottom: 5px;">Request Summary</h3>
-                        <div class="detail-grid">
-                            <div class="detail-item">
-                                <div class="detail-label">Request ID</div>
-                                <div class="detail-value">${requestId}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Description</div>
-                                <div class="detail-value">${description}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Total Amount</div>
-                                <div class="detail-value amount">$${formatCurrency(amounts.total)}</div>
+                
+                <div class="request-accordion-content" id="${uniqueId}">
+                    <div class="request-accordion-body">
+                        
+                        <!-- Quick Summary Card -->
+                        <div class="summary-card-compact">
+                            <h4 style="color: #667eea; margin-bottom: 10px;">📊 Request Summary</h4>
+                            <div class="summary-grid">
+                                <div class="summary-item">
+                                    <div class="summary-label">Request ID</div>
+                                    <div class="summary-value">${requestId}</div>
+                                </div>
+                                <div class="summary-item">
+                                    <div class="summary-label">Total Amount</div>
+                                    <div class="summary-value" style="color: #28a745;">$${formatCurrency(amounts.total)}</div>
+                                </div>
+                                <div class="summary-item">
+                                    <div class="summary-label">Department</div>
+                                    <div class="summary-value" style="font-size: 1rem;">${primaryDept}</div>
+                                </div>
+                                <div class="summary-item">
+                                    <div class="summary-label">Program</div>
+                                    <div class="summary-value" style="font-size: 1rem;">${primaryProgram}</div>
+                                </div>
+                                <div class="summary-item">
+                                    <div class="summary-label">Quartile</div>
+                                    <div class="summary-value">
+                                        ${primaryQuartile !== 'N/A' ? 
+                                            `<span class="quartile-badge quartile-${primaryQuartile.toLowerCase().replace(' ', '-')}">${primaryQuartile}</span>` 
+                                            : 'N/A'}
+                                    </div>
+                                </div>
+                                <div class="summary-item">
+                                    <div class="summary-label">Line Items</div>
+                                    <div class="summary-value">${lineItems.length}</div>
+                                </div>
                             </div>
                         </div>
+                        
+                        <!-- REQUEST CONTEXT & DETAILS (Collapsible) -->
+                        ${qa.length > 0 ? `
+                        <div class="collapsible-header" onclick="toggleCollapsible('standard-qa-${requestId}')">
+                            <h3>📋 Request Context & Details</h3>
+                            <span class="collapsible-toggle" id="standard-qa-${requestId}-toggle">▼</span>
+                        </div>
+                        <div class="collapsible-content" id="standard-qa-${requestId}">
+                            ${generateRequestQASection(qa)}
+                        </div>
+                        ` : ''}
+                        
+                        <!-- LINE ITEMS (Collapsible) -->
+                        ${lineItems.length > 0 ? `
+                        <div class="collapsible-header" onclick="toggleCollapsible('standard-line-items-${requestId}')">
+                            <h3>💼 Line Item Details (${lineItems.length} items)</h3>
+                            <span class="collapsible-toggle" id="standard-line-items-${requestId}-toggle">▼</span>
+                        </div>
+                        <div class="collapsible-content" id="standard-line-items-${requestId}">
+                            ${generateLineItemSection(lineItems)}
+                        </div>
+                        ` : ''}
+                        
                     </div>
+                </div>
+            </div>
         `;
-
-        if (qa.length > 0) {
-            html += generateRequestQASection(qa);
-        }
-
-        if (lineItems.length > 0) {
-            html += generateLineItemSection(lineItems);
-        }
-
-        html += `</div></div>`;
     });
 
     return html;
 }
+
+
 
 // ===== ANALYTICAL REPORT (WITH SCORING) =====
 function generateDetailedRequestReportAnalytical() {
@@ -4455,5 +4514,43 @@ function collapseAllRequests() {
     });
     document.querySelectorAll('.request-accordion-arrow').forEach(arrow => {
         arrow.classList.remove('expanded');
+    });
+}
+
+// ===== STANDARD REPORT COLLAPSIBLE CONTROLS =====
+
+function expandAllStandardRequests() {
+    // Expand all request accordions
+    document.querySelectorAll('[id^="standard-request-accordion-"]').forEach(content => {
+        content.classList.add('expanded');
+    });
+    document.querySelectorAll('[id^="standard-request-accordion-"][id$="-arrow"]').forEach(arrow => {
+        arrow.classList.add('expanded');
+    });
+    
+    // Also expand all internal collapsible sections
+    document.querySelectorAll('[id^="standard-qa-"], [id^="standard-line-items-"]').forEach(content => {
+        content.classList.add('expanded');
+    });
+    document.querySelectorAll('[id^="standard-qa-"][id$="-toggle"], [id^="standard-line-items-"][id$="-toggle"]').forEach(toggle => {
+        toggle.classList.add('expanded');
+    });
+}
+
+function collapseAllStandardRequests() {
+    // Collapse all request accordions
+    document.querySelectorAll('[id^="standard-request-accordion-"]').forEach(content => {
+        content.classList.remove('expanded');
+    });
+    document.querySelectorAll('[id^="standard-request-accordion-"][id$="-arrow"]').forEach(arrow => {
+        arrow.classList.remove('expanded');
+    });
+    
+    // Also collapse all internal collapsible sections
+    document.querySelectorAll('[id^="standard-qa-"], [id^="standard-line-items-"]').forEach(content => {
+        content.classList.remove('expanded');
+    });
+    document.querySelectorAll('[id^="standard-qa-"][id$="-toggle"], [id^="standard-line-items-"][id$="-toggle"]').forEach(toggle => {
+        toggle.classList.remove('expanded');
     });
 }

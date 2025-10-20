@@ -880,13 +880,36 @@ function getPrimaryValue(lineItems, fieldType) {
 
 // ===== ENHANCED PBB SCORING ENGINE WITH EXPLICIT REASONING =====
 
+// Helper function to get best quartile - returns full name
+function getBestQuartile(quartiles) {
+    if (quartiles.includes('Most Aligned')) return 'Most Aligned';
+    if (quartiles.includes('More Aligned')) return 'More Aligned';
+    if (quartiles.includes('Less Aligned')) return 'Less Aligned';
+    if (quartiles.includes('Least Aligned')) return 'Least Aligned';
+    return null;
+}
+
 function getQuartileScore(quartile) {
     if (!quartile) return { score: 0, reason: "No quartile alignment data found in line items" };
-    if (quartile === 'Q1') return { score: 2, reason: `Program quartile is Q1 (Most Aligned) - highest priority alignment with city strategic goals and community priorities` };
-    if (quartile === 'Q2') return { score: 2, reason: `Program quartile is Q2 (More Aligned) - strong alignment with city strategic goals and community priorities` };
-    if (quartile === 'Q3') return { score: 1, reason: `Program quartile is Q3 (Less Aligned) - moderate alignment with city strategic goals` };
-    return { score: 0, reason: `Program quartile is Q4 (Least Aligned) - lower priority alignment with current strategic goals` };
+    
+    // Handle both Q1/Q2 format AND full names
+    if (quartile === 'Most Aligned' || quartile === 'Q1') {
+        return { score: 2, reason: `Program quartile is "Most Aligned" (Q1) - highest priority alignment with city strategic goals and community priorities` };
+    }
+    if (quartile === 'More Aligned' || quartile === 'Q2') {
+        return { score: 2, reason: `Program quartile is "More Aligned" (Q2) - strong alignment with city strategic goals and community priorities` };
+    }
+    if (quartile === 'Less Aligned' || quartile === 'Q3') {
+        return { score: 1, reason: `Program quartile is "Less Aligned" (Q3) - moderate alignment with city strategic goals` };
+    }
+    if (quartile === 'Least Aligned' || quartile === 'Q4') {
+        return { score: 0, reason: `Program quartile is "Least Aligned" (Q4) - lower priority alignment with current strategic goals` };
+    }
+    
+    return { score: 0, reason: `Quartile "${quartile}" not recognized - unable to score alignment` };
 }
+
+
 
 function getOutcomeScore(qa, qaText) {
     const hasMetrics = /kpi|target|baseline|metric|goal|measur/i.test(qaText);

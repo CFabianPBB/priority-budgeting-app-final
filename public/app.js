@@ -627,6 +627,13 @@ function displayReport() {
         downloadAnalyticalPdfBtn.addEventListener('click', downloadAnalyticalPdfReport);
     }
     
+    // Wire up Excel Export button
+    const exportPBBExcelBtn = document.getElementById('exportPBBExcelBtn');
+    if (exportPBBExcelBtn) {
+        exportPBBExcelBtn.removeEventListener('click', exportPBBAnalysisToExcel);
+        exportPBBExcelBtn.addEventListener('click', exportPBBAnalysisToExcel);
+    }
+
     // Render charts after HTML is added to DOM
     setTimeout(renderCharts, 100);
 }
@@ -884,34 +891,51 @@ function getPrimaryValue(lineItems, fieldType) {
 
 // ===== ENHANCED PBB SCORING ENGINE WITH EXPLICIT REASONING =====
 
-// Helper function to get best quartile - returns full name
+// Helper function to get best quartile - returns full name and handles BOTH formats
 function getBestQuartile(quartiles) {
-    if (quartiles.includes('Most Aligned')) return 'Most Aligned';
-    if (quartiles.includes('More Aligned')) return 'More Aligned';
-    if (quartiles.includes('Less Aligned')) return 'Less Aligned';
-    if (quartiles.includes('Least Aligned')) return 'Least Aligned';
+    // Normalize all quartiles to text format for comparison
+    const normalizedQuartiles = quartiles.map(q => {
+        if (!q) return null;
+        const qStr = q.toString().trim();
+        if (qStr === '1' || qStr === 'Q1' || qStr === 'Most Aligned') return 'Most Aligned';
+        if (qStr === '2' || qStr === 'Q2' || qStr === 'More Aligned') return 'More Aligned';
+        if (qStr === '3' || qStr === 'Q3' || qStr === 'Less Aligned') return 'Less Aligned';
+        if (qStr === '4' || qStr === 'Q4' || qStr === 'Least Aligned') return 'Least Aligned';
+        return null;
+    }).filter(q => q !== null);
+    
+    // Return the best (most aligned) quartile found
+    if (normalizedQuartiles.includes('Most Aligned')) return 'Most Aligned';
+    if (normalizedQuartiles.includes('More Aligned')) return 'More Aligned';
+    if (normalizedQuartiles.includes('Less Aligned')) return 'Less Aligned';
+    if (normalizedQuartiles.includes('Least Aligned')) return 'Least Aligned';
     return null;
 }
+
 
 function getQuartileScore(quartile) {
     if (!quartile) return { score: 0, reason: "No quartile alignment data found in line items" };
     
-    // Handle both Q1/Q2 format AND full names
-    if (quartile === 'Most Aligned' || quartile === 'Q1') {
+    // Convert quartile to string and normalize
+    const quartileStr = quartile.toString().trim();
+    
+    // Handle BOTH number format (1,2,3,4) AND text format ("Most Aligned", etc.)
+    if (quartileStr === 'Most Aligned' || quartileStr === 'Q1' || quartileStr === '1' || quartile === 1) {
         return { score: 2, reason: `Program quartile is "Most Aligned" (Q1) - highest priority alignment with organizational strategic goals and community priorities` };
     }
-    if (quartile === 'More Aligned' || quartile === 'Q2') {
+    if (quartileStr === 'More Aligned' || quartileStr === 'Q2' || quartileStr === '2' || quartile === 2) {
         return { score: 2, reason: `Program quartile is "More Aligned" (Q2) - strong alignment with organizational strategic goals and community priorities` };
     }
-    if (quartile === 'Less Aligned' || quartile === 'Q3') {
+    if (quartileStr === 'Less Aligned' || quartileStr === 'Q3' || quartileStr === '3' || quartile === 3) {
         return { score: 1, reason: `Program quartile is "Less Aligned" (Q3) - moderate alignment with organizational strategic goals` };
     }
-    if (quartile === 'Least Aligned' || quartile === 'Q4') {
+    if (quartileStr === 'Least Aligned' || quartileStr === 'Q4' || quartileStr === '4' || quartile === 4) {
         return { score: 0, reason: `Program quartile is "Least Aligned" (Q4) - lower priority alignment with current strategic goals` };
     }
     
     return { score: 0, reason: `Quartile "${quartile}" not recognized - unable to score alignment` };
 }
+
 
 
 
@@ -1065,9 +1089,13 @@ function scoreRequest(request) {
     const totalWeightedScore = Object.values(weightedScore).reduce((a, b) => a + b, 0);
     const weightedPercentage = Math.round((totalWeightedScore / maxWeightedScore) * 100);
     
-                      // Determine quartile band (High = Q1/Q2/Most/More, Low = Q3/Q4/Less/Least)
-    analysis.quartileBand = (bestQuartile === 'Q1' || bestQuartile === 'Q2' || 
-                             bestQuartile === 'Most Aligned' || bestQuartile === 'More Aligned') ? 'High' : 'Low';
+    // Determine quartile band (High = Q1/Q2/1/2/Most/More, Low = Q3/Q4/3/4/Less/Least)
+    const quartileStr = bestQuartile ? bestQuartile.toString().trim() : '';
+    analysis.quartileBand = (
+        quartileStr === 'Q1' || quartileStr === 'Q2' || 
+        quartileStr === '1' || quartileStr === '2' ||
+        quartileStr === 'Most Aligned' || quartileStr === 'More Aligned'
+    ) ? 'High' : 'Low';                  
     
     
     // Determine mandate level
@@ -4553,4 +4581,129 @@ function collapseAllStandardRequests() {
     document.querySelectorAll('[id^="standard-qa-"][id$="-toggle"], [id^="standard-line-items-"][id$="-toggle"]').forEach(toggle => {
         toggle.classList.remove('expanded');
     });
+}
+
+// ===== EXCEL EXPORT OF PBB ANALYSIS =====
+function exportPBBAnalysisToExcel() {
+    console.log('Starting PBB Analysis Excel export...');
+    
+    if (filteredData.length === 0) {
+        alert('No data to export. Please generate a report first.');
+        return;
+    }
+
+    // Create a new workbook
+    const wb = XLSX.utils.book_new();
+    
+    // Create header row with all columns
+    const pbbData = [[
+        'Request ID',
+        'Description',
+        'Department',
+        'Program',
+        'Quartile',
+        'Total Amount',
+        'PBB Total Score (0-12)',
+        'PBB Recommendation',
+        '1. Program Alignment Score (0-2)',
+        '1. Program Alignment Notes',
+        '2. Outcome Evidence Score (0-2)',
+        '2. Outcome Evidence Notes',
+        '3. Funding Strategy Score (0-2)',
+        '3. Funding Strategy Notes',
+        '4. Mandate/Risk Score (0-2)',
+        '4. Mandate/Risk Notes',
+        '5. Efficiency/ROI Score (0-2)',
+        '5. Efficiency/ROI Notes',
+        '6. Access Score (0-2)',
+        '6. Access Notes',
+        'Overall Rationale'
+    ]];
+    
+    // Process each request
+    filteredData.forEach(request => {
+        const requestId = getRequestId(request);
+        const description = getRequestDescription(request);
+        const lineItems = getLineItemsForRequest(requestId);
+        const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
+        const primaryProgram = getPrimaryValue(lineItems, 'program') || 'N/A';
+        // Get and normalize quartile for display
+        let primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        if (primaryQuartile !== 'N/A') {
+            const qStr = primaryQuartile.toString().trim();
+            if (qStr === '1' || qStr === 'Q1') primaryQuartile = 'Most Aligned (Q1)';
+            else if (qStr === '2' || qStr === 'Q2') primaryQuartile = 'More Aligned (Q2)';
+            else if (qStr === '3' || qStr === 'Q3') primaryQuartile = 'Less Aligned (Q3)';
+            else if (qStr === '4' || qStr === 'Q4') primaryQuartile = 'Least Aligned (Q4)';
+        }
+        const amounts = getRequestAmount(request);
+        
+        // Calculate PBB scores using your existing scoreRequest function
+        const analysis = scoreRequest(request);
+        
+        pbbData.push([
+            requestId,
+            description,
+            primaryDept,
+            primaryProgram,
+            primaryQuartile,
+            amounts.total,
+            analysis.totalScore,
+            analysis.disposition,
+            analysis.quartileScore,
+            analysis.quartileReason,
+            analysis.outcomeScore,
+            analysis.outcomeReason,
+            analysis.fundingScore,
+            analysis.fundingReason,
+            analysis.mandateScore,
+            analysis.mandateReason,
+            analysis.efficiencyScore,
+            analysis.efficiencyReason,
+            analysis.accessScore,
+            analysis.accessReason,
+            analysis.narrative
+        ]);
+    });
+    
+    // Create worksheet from data
+    const ws = XLSX.utils.aoa_to_sheet(pbbData);
+    
+    // Set column widths for readability
+    ws['!cols'] = [
+        { wch: 12 },  // Request ID
+        { wch: 40 },  // Description
+        { wch: 20 },  // Department
+        { wch: 25 },  // Program
+        { wch: 15 },  // Quartile
+        { wch: 15 },  // Total Amount
+        { wch: 12 },  // PBB Score
+        { wch: 15 },  // Recommendation
+        { wch: 10 },  // Program Alignment Score
+        { wch: 60 },  // Program Alignment Notes
+        { wch: 10 },  // Outcome Evidence Score
+        { wch: 60 },  // Outcome Evidence Notes
+        { wch: 10 },  // Funding Strategy Score
+        { wch: 60 },  // Funding Strategy Notes
+        { wch: 10 },  // Mandate/Risk Score
+        { wch: 60 },  // Mandate/Risk Notes
+        { wch: 10 },  // Efficiency/ROI Score
+        { wch: 60 },  // Efficiency/ROI Notes
+        { wch: 10 },  // Access Score
+        { wch: 60 },  // Access Notes
+        { wch: 80 }   // Overall Rationale
+    ];
+    
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, 'PBB Analysis');
+    
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().split('T')[0];
+    const filename = `PBB_Analysis_${timestamp}.xlsx`;
+    
+    // Download the file
+    XLSX.writeFile(wb, filename);
+    
+    console.log('Excel export complete!');
+    alert(`PBB Analysis exported successfully!\n\nFile: ${filename}\n\nThe Excel file contains detailed scoring for all ${filteredData.length} requests with explicit explanations for each score.`);
 }

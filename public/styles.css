@@ -755,3 +755,414 @@ tr:hover {
 .collapse-btn:active {
     transform: translateY(0);
 }
+
+/* ============================================
+   NEW STYLES FOR EXCEL EXPORT & DECISION TREE
+   ============================================ */
+
+/* Excel Export Button Styling */
+.download-btn.excel-btn {
+    background: linear-gradient(135deg, #217346, #10793f);
+}
+
+.download-btn.excel-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(33, 115, 70, 0.4);
+}
+
+/* Decision Tree Button */
+.pbb-decision-tree-btn {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    padding: 12px 30px;
+    border-radius: 50px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.pbb-decision-tree-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+}
+
+/* Modal Styles */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 20px;
+}
+
+.modal-container {
+    background: white;
+    border-radius: 20px;
+    max-width: 1400px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    padding: 30px;
+    border-radius: 20px 20px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2 {
+    font-size: 1.8rem;
+    margin: 0;
+    font-weight: 600;
+}
+
+.modal-header p {
+    margin: 5px 0 0 0;
+    opacity: 0.9;
+}
+
+.modal-close {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.modal-close:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.modal-content {
+    padding: 40px;
+}
+
+/* Decision Flow Styles */
+.decision-flow h3 {
+    color: #667eea;
+    font-size: 1.5rem;
+    margin-bottom: 20px;
+}
+
+.primary-question {
+    background: linear-gradient(135deg, #f0f4ff, #e8f0ff);
+    border: 3px solid #667eea;
+    border-radius: 15px;
+    padding: 30px;
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.question-badge {
+    display: inline-block;
+    background: #667eea;
+    color: white;
+    padding: 10px 25px;
+    border-radius: 10px;
+    font-weight: bold;
+    font-size: 0.9rem;
+    letter-spacing: 1px;
+    margin-bottom: 15px;
+}
+
+.question-text {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: #333;
+    margin: 0;
+}
+
+/* Decision Paths */
+.decision-paths {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+    margin-bottom: 40px;
+}
+
+.decision-path {
+    border-radius: 15px;
+    padding: 25px;
+    border: 3px solid;
+}
+
+.gf-path {
+    background: linear-gradient(135deg, #fff5f5, #ffe5e5);
+    border-color: #dc3545;
+}
+
+.nongf-path {
+    background: linear-gradient(135deg, #f0fff4, #e5ffe5);
+    border-color: #28a745;
+}
+
+.path-badge {
+    display: inline-block;
+    color: white;
+    padding: 8px 20px;
+    border-radius: 10px;
+    font-weight: bold;
+    margin-bottom: 20px;
+    font-size: 0.9rem;
+}
+
+.gf-badge {
+    background: #dc3545;
+}
+
+.nongf-badge {
+    background: #28a745;
+}
+
+.decision-option {
+    background: white;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-left: 4px solid;
+}
+
+.approve-option { border-color: #28a745; }
+.modify-option { border-color: #ffc107; }
+.defer-option { border-color: #fd7e14; }
+.reject-option { border-color: #dc3545; }
+.consider-option { border-color: #17a2b8; }
+
+.option-title {
+    font-weight: 600;
+    color: #333;
+    margin: 0 0 8px 0;
+    font-size: 0.95rem;
+}
+
+.option-result {
+    color: #666;
+    margin: 0;
+    font-size: 0.85rem;
+}
+
+/* Archetypes Table Section */
+.archetypes-table-section {
+    margin-top: 40px;
+    padding-top: 40px;
+    border-top: 3px solid #e0e0e0;
+}
+
+.archetypes-table-section h3 {
+    color: #667eea;
+    font-size: 1.5rem;
+    margin-bottom: 10px;
+}
+
+.table-container {
+    overflow-x: auto;
+    margin: 20px 0;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.archetypes-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    background: white;
+}
+
+.archetypes-table thead {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+}
+
+.archetypes-table th {
+    padding: 15px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.archetype-row {
+    border-bottom: 1px solid #e0e0e0;
+    transition: background 0.2s;
+}
+
+.archetype-row:hover {
+    background: #f8f9ff;
+}
+
+.archetype-row td {
+    padding: 12px;
+    vertical-align: middle;
+}
+
+.archetype-num {
+    font-weight: bold;
+    font-size: 1rem;
+    color: #667eea;
+}
+
+.low-quartile-section {
+    border-top: 3px solid #667eea;
+}
+
+/* Badge Styles */
+.badge {
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.badge-high {
+    background: linear-gradient(135deg, #28a745, #20c997);
+    color: white;
+}
+
+.badge-low {
+    background: linear-gradient(135deg, #6c757d, #5a6268);
+    color: white;
+}
+
+.badge-gf {
+    background: #dc3545;
+    color: white;
+}
+
+.badge-nongf {
+    background: #28a745;
+    color: white;
+}
+
+.badge-approve {
+    background: #28a745;
+    color: white;
+}
+
+.badge-modify {
+    background: #ffc107;
+    color: #000;
+}
+
+.badge-defer {
+    background: #fd7e14;
+    color: white;
+}
+
+.badge-reject {
+    background: #dc3545;
+    color: white;
+}
+
+/* Summary Grid */
+.archetypes-summary {
+    margin-top: 40px;
+}
+
+.archetypes-summary h3 {
+    color: #667eea;
+    font-size: 1.5rem;
+    margin-bottom: 20px;
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+}
+
+.summary-card {
+    border-radius: 12px;
+    padding: 25px;
+    text-align: center;
+    border: 3px solid;
+}
+
+.approve-card {
+    background: linear-gradient(135deg, #f0fff4, #e5ffe5);
+    border-color: #28a745;
+}
+
+.modify-card {
+    background: linear-gradient(135deg, #fffbf0, #fff8e5);
+    border-color: #ffc107;
+}
+
+.defer-card {
+    background: linear-gradient(135deg, #fff8f0, #ffe5d5);
+    border-color: #fd7e14;
+}
+
+.reject-card {
+    background: linear-gradient(135deg, #fff5f5, #ffe5e5);
+    border-color: #dc3545;
+}
+
+.summary-number {
+    font-size: 3rem;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.approve-card .summary-number { color: #28a745; }
+.modify-card .summary-number { color: #ffc107; }
+.defer-card .summary-number { color: #fd7e14; }
+.reject-card .summary-number { color: #dc3545; }
+
+.summary-label {
+    font-size: 1.2rem;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.summary-description {
+    font-size: 0.85rem;
+    color: #666;
+    margin-bottom: 15px;
+    line-height: 1.4;
+}
+
+.summary-archetypes {
+    font-size: 0.75rem;
+    color: #888;
+    font-family: monospace;
+}
+
+@media (max-width: 768px) {
+    .decision-paths {
+        grid-template-columns: 1fr;
+    }
+    
+    .archetypes-table {
+        font-size: 0.75rem;
+    }
+    
+    .archetypes-table th,
+    .archetypes-table td {
+        padding: 8px 6px;
+    }
+}

@@ -79,12 +79,24 @@
         </div>
 
         <div class="report-section" id="reportSection">
+            <!-- UPDATED REPORT HEADER WITH NEW BUTTONS -->
             <div class="report-header">
                 <h2>Priority Based Budgeting Report</h2>
                 <p id="reportDate"></p>
+                
+                <!-- UPDATED Download Buttons Section -->
                 <div class="download-buttons">
                     <button class="download-btn" id="downloadWordBtn">📄 Download Word Document</button>
                     <button class="download-btn pdf-btn" id="downloadPdfBtn">📊 Download PDF Report</button>
+                    <button class="download-btn excel-btn" id="exportPBBExcelBtn">📊 Export PBB Analysis to Excel</button>
+                </div>
+                
+                <!-- NEW Decision Tree Button -->
+                <div style="text-align: center; margin-top: 20px;">
+                    <button class="pbb-decision-tree-btn" id="showDecisionTreeBtn">
+                        <span style="font-size: 1.2rem;">❓</span>
+                        View PBB Decision Framework (24 Archetypes)
+                    </button>
                 </div>
             </div>
             <div class="report-content" id="reportContent">
@@ -92,7 +104,7 @@
             </div>
         </div>
 
-        <!-- ADD THIS NEW SECTION FOR ANALYTICAL REPORT -->
+        <!-- ANALYTICAL REPORT SECTION -->
         <div class="report-section" id="analyticalReportSection" style="display: none; margin-top: 30px;">
             <div class="report-header" style="background: linear-gradient(135deg, #28a745, #20c997);">
                 <h2>🎯 PBB Analysis & Recommendations Report</h2>
@@ -109,6 +121,395 @@
 
     </div>
 
+    <!-- DECISION TREE MODAL (hidden by default) -->
+    <div id="decisionTreeModal" class="modal-overlay" style="display: none;">
+        <div class="modal-container">
+            <!-- Modal Header -->
+            <div class="modal-header">
+                <div>
+                    <h2>Priority Based Budgeting Decision Framework</h2>
+                    <p>Complete Guide to All 24 Budget Request Archetypes</p>
+                </div>
+                <button class="modal-close" id="closeDecisionTreeBtn">✕</button>
+            </div>
+            
+            <!-- Modal Content -->
+            <div class="modal-content">
+                <!-- Decision Flow -->
+                <div class="decision-flow">
+                    <h3>How We Evaluate Budget Requests</h3>
+                    
+                    <!-- Primary Question -->
+                    <div class="primary-question">
+                        <div class="question-badge">PRIMARY QUESTION</div>
+                        <p class="question-text">Does this request ask for General Fund money?</p>
+                    </div>
+                    
+                    <!-- Two Paths -->
+                    <div class="decision-paths">
+                        <!-- GF Request Path -->
+                        <div class="decision-path gf-path">
+                            <div class="path-badge gf-badge">YES → GF Request</div>
+                            
+                            <div class="decision-option approve-option">
+                                <p class="option-title">✅ High Priority (Q1/Q2)?</p>
+                                <p class="option-result">→ <strong>APPROVE</strong> (advancing strategic goals)</p>
+                            </div>
+                            
+                            <div class="decision-option approve-option">
+                                <p class="option-title">⚖️ Mandated?</p>
+                                <p class="option-result">→ <strong>APPROVE</strong> (but push for offsets)</p>
+                            </div>
+                            
+                            <div class="decision-option modify-option">
+                                <p class="option-title">⚠️ Compliance/Risk?</p>
+                                <p class="option-result">→ <strong>MODIFY</strong> (require mitigation plan)</p>
+                            </div>
+                            
+                            <div class="decision-option reject-option">
+                                <p class="option-title">❌ Low Priority + No Justification?</p>
+                                <p class="option-result">→ <strong>DEFER/REJECT</strong></p>
+                            </div>
+                        </div>
+                        
+                        <!-- Non-GF Path -->
+                        <div class="decision-path nongf-path">
+                            <div class="path-badge nongf-badge">NO → Non-GF Request</div>
+                            
+                            <div class="decision-option approve-option">
+                                <p class="option-title">💰 Offset Revenue (grants/fees)?</p>
+                                <p class="option-result">→ <strong>APPROVE</strong> (leveraging external resources)</p>
+                            </div>
+                            
+                            <div class="decision-option approve-option">
+                                <p class="option-title">📈 Increases Strategic Impact?</p>
+                                <p class="option-result">→ <strong>APPROVE</strong> (investment to improve alignment)</p>
+                            </div>
+                            
+                            <div class="decision-option consider-option">
+                                <p class="option-title">🤝 Partner/Absorb Alternative?</p>
+                                <p class="option-result">→ Consider alternative funding sources</p>
+                            </div>
+                            
+                            <div class="decision-option defer-option">
+                                <p class="option-title">❓ No Clear Value?</p>
+                                <p class="option-result">→ <strong>DEFER</strong></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ALL 24 ARCHETYPES TABLE -->
+                <div class="archetypes-table-section">
+                    <h3>Complete Guide: All 24 Budget Request Archetypes</h3>
+                    <p style="color: #666; margin-bottom: 20px;">Each archetype represents a unique combination of Quartile, Mandate level, Funding type, and Evidence strength.</p>
+                    
+                    <div class="table-container">
+                        <table class="archetypes-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Quartile</th>
+                                    <th>Mandate</th>
+                                    <th>Funding</th>
+                                    <th>Evidence</th>
+                                    <th>Recommendation</th>
+                                    <th>Key Consideration</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- HIGH QUARTILE ARCHETYPES (1-12) -->
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">1</td>
+                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
+                                    <td>Mandated</td>
+                                    <td><span class="badge badge-nongf">NonGF</span></td>
+                                    <td>Strong</td>
+                                    <td><span class="badge badge-approve">APPROVE</span></td>
+                                    <td>Perfect alignment - strategic priority + mandate + no GF impact</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">2</td>
+                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
+                                    <td>Mandated</td>
+                                    <td><span class="badge badge-gf">GF only</span></td>
+                                    <td>Strong</td>
+                                    <td><span class="badge badge-approve">APPROVE</span></td>
+                                    <td>Mission-critical with legal mandate backing strategic goals</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">3</td>
+                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
+                                    <td>Mandated</td>
+                                    <td><span class="badge badge-nongf">NonGF</span></td>
+                                    <td>Weak</td>
+                                    <td><span class="badge badge-approve">APPROVE</span></td>
+                                    <td>Mandate + external funding covers weak evidence</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">4</td>
+                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
+                                    <td>Mandated</td>
+                                    <td><span class="badge badge-gf">GF only</span></td>
+                                    <td>Weak</td>
+                                    <td><span class="badge badge-approve">APPROVE</span></td>
+                                    <td>Mandate requires compliance regardless of evidence gaps</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">5</td>
+                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
+                                    <td>Compliance</td>
+                                    <td><span class="badge badge-nongf">NonGF</span></td>
+                                    <td>Strong</td>
+                                    <td><span class="badge badge-approve">APPROVE</span></td>
+                                    <td>Strategic priority with strong case and low GF risk</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">6</td>
+                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
+                                    <td>Compliance</td>
+                                    <td><span class="badge badge-gf">GF only</span></td>
+                                    <td>Strong</td>
+                                    <td><span class="badge badge-modify">MODIFY</span></td>
+                                    <td>Strong case but push for cost recovery or revenue offsets</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">7</td>
+                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
+                                    <td>Compliance</td>
+                                    <td><span class="badge badge-nongf">NonGF</span></td>
+                                    <td>Weak</td>
+                                    <td><span class="badge badge-modify">MODIFY</span></td>
+                                    <td>Strategic priority but strengthen outcomes/evidence first</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">8</td>
+                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
+                                    <td>Compliance</td>
+                                    <td><span class="badge badge-gf">GF only</span></td>
+                                    <td>Weak</td>
+                                    <td><span class="badge badge-modify">MODIFY</span></td>
+                                    <td>Require evidence plan and measurable outcomes before approval</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">9</td>
+                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
+                                    <td>None</td>
+                                    <td><span class="badge badge-nongf">NonGF</span></td>
+                                    <td>Strong</td>
+                                    <td><span class="badge badge-approve">APPROVE</span></td>
+                                    <td>Strategic priority with strong evidence and self-sustaining funding</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">10</td>
+                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
+                                    <td>None</td>
+                                    <td><span class="badge badge-gf">GF only</span></td>
+                                    <td>Strong</td>
+                                    <td><span class="badge badge-modify">MODIFY</span></td>
+                                    <td>Good case but seek fee/grant offset opportunities first</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">11</td>
+                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
+                                    <td>None</td>
+                                    <td><span class="badge badge-nongf">NonGF</span></td>
+                                    <td>Weak</td>
+                                    <td><span class="badge badge-modify">MODIFY</span></td>
+                                    <td>Strengthen business case or run pilot to prove value</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">12</td>
+                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
+                                    <td>None</td>
+                                    <td><span class="badge badge-gf">GF only</span></td>
+                                    <td>Weak</td>
+                                    <td><span class="badge badge-defer">DEFER</span></td>
+                                    <td>Build evidence and outcomes data before using limited GF</td>
+                                </tr>
+                                
+                                <!-- LOW QUARTILE ARCHETYPES (13-24) -->
+                                <tr class="archetype-row low-quartile-section">
+                                    <td class="archetype-num">13</td>
+                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
+                                    <td>Mandated</td>
+                                    <td><span class="badge badge-nongf">NonGF</span></td>
+                                    <td>Strong</td>
+                                    <td><span class="badge badge-approve">APPROVE</span></td>
+                                    <td>Legal mandate with no GF impact - proceed with compliance</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">14</td>
+                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
+                                    <td>Mandated</td>
+                                    <td><span class="badge badge-gf">GF only</span></td>
+                                    <td>Strong</td>
+                                    <td><span class="badge badge-approve">APPROVE</span></td>
+                                    <td>Legal requirement must be met despite low strategic alignment</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">15</td>
+                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
+                                    <td>Mandated</td>
+                                    <td><span class="badge badge-nongf">NonGF</span></td>
+                                    <td>Weak</td>
+                                    <td><span class="badge badge-approve">APPROVE ⚠️</span></td>
+                                    <td>Verify mandate truly applies to this specific program</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">16</td>
+                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
+                                    <td>Mandated</td>
+                                    <td><span class="badge badge-gf">GF only</span></td>
+                                    <td>Weak</td>
+                                    <td><span class="badge badge-approve">APPROVE ⚠️</span></td>
+                                    <td>Identify cheapest compliance path and timeline to add non-GF</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">17</td>
+                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
+                                    <td>Compliance</td>
+                                    <td><span class="badge badge-nongf">NonGF</span></td>
+                                    <td>Strong</td>
+                                    <td><span class="badge badge-modify">MODIFY ⚠️</span></td>
+                                    <td>Verify durability of non-GF funding terms and conditions</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">18</td>
+                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
+                                    <td>Compliance</td>
+                                    <td><span class="badge badge-gf">GF only</span></td>
+                                    <td>Strong</td>
+                                    <td><span class="badge badge-modify">MODIFY ⚠️</span></td>
+                                    <td>Assess impact scale versus alternative compliance approaches</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">19</td>
+                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
+                                    <td>Compliance</td>
+                                    <td><span class="badge badge-nongf">NonGF</span></td>
+                                    <td>Weak</td>
+                                    <td><span class="badge badge-defer">DEFER</span></td>
+                                    <td>Question realism of claimed benefits - prove value first</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">20</td>
+                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
+                                    <td>Compliance</td>
+                                    <td><span class="badge badge-gf">GF only</span></td>
+                                    <td>Weak</td>
+                                    <td><span class="badge badge-defer">DEFER</span></td>
+                                    <td>If truly imminent, treat as mandate; otherwise quantify risk</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">21</td>
+                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
+                                    <td>None</td>
+                                    <td><span class="badge badge-nongf">NonGF</span></td>
+                                    <td>Strong</td>
+                                    <td><span class="badge badge-approve">APPROVE ✅</span></td>
+                                    <td>No GF impact and self-sustaining - ensure no GF drift</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">22</td>
+                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
+                                    <td>None</td>
+                                    <td><span class="badge badge-gf">GF only</span></td>
+                                    <td>Strong</td>
+                                    <td><span class="badge badge-defer">DEFER</span></td>
+                                    <td>Competes with higher-priority needs - phase behind Q1/Q2</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">23</td>
+                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
+                                    <td>None</td>
+                                    <td><span class="badge badge-nongf">NonGF</span></td>
+                                    <td>Weak</td>
+                                    <td><span class="badge badge-defer">DEFER</span></td>
+                                    <td>Prove demand and willingness-to-pay before proceeding</td>
+                                </tr>
+                                <tr class="archetype-row">
+                                    <td class="archetype-num">24</td>
+                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
+                                    <td>None</td>
+                                    <td><span class="badge badge-gf">GF only</span></td>
+                                    <td>Weak</td>
+                                    <td><span class="badge badge-reject">REJECT</span></td>
+                                    <td>No compelling case for limited GF resources - reframe or defer</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Summary by Disposition -->
+                <div class="archetypes-summary">
+                    <h3>Summary by Disposition</h3>
+                    <div class="summary-grid">
+                        <div class="summary-card approve-card">
+                            <div class="summary-number">9</div>
+                            <div class="summary-label">✅ APPROVE</div>
+                            <p class="summary-description">Strong alignment with strategic goals and/or mandated requirements</p>
+                            <p class="summary-archetypes">#1, #2, #3, #4, #5, #9, #13, #14, #15, #16, #21</p>
+                        </div>
+                        
+                        <div class="summary-card modify-card">
+                            <div class="summary-number">6</div>
+                            <div class="summary-label">⚠️ MODIFY</div>
+                            <p class="summary-description">Conditional approval with required adjustments or offsets</p>
+                            <p class="summary-archetypes">#6, #7, #8, #10, #11, #17, #18</p>
+                        </div>
+                        
+                        <div class="summary-card defer-card">
+                            <div class="summary-number">8</div>
+                            <div class="summary-label">⏸️ DEFER</div>
+                            <p class="summary-description">Postpone until better evidence, funding, or priority alignment</p>
+                            <p class="summary-archetypes">#12, #19, #20, #22, #23</p>
+                        </div>
+                        
+                        <div class="summary-card reject-card">
+                            <div class="summary-number">1</div>
+                            <div class="summary-label">❌ REJECT</div>
+                            <p class="summary-description">Does not meet minimum criteria for consideration</p>
+                            <p class="summary-archetypes">#24</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
+    
+    <!-- Modal JavaScript -->
+    <script>
+    // Modal handling code
+    document.addEventListener('DOMContentLoaded', function() {
+        const showBtn = document.getElementById('showDecisionTreeBtn');
+        const closeBtn = document.getElementById('closeDecisionTreeBtn');
+        const modal = document.getElementById('decisionTreeModal');
+        
+        if (showBtn && modal) {
+            showBtn.addEventListener('click', () => {
+                modal.style.display = 'flex';
+            });
+        }
+        
+        if (closeBtn && modal) {
+            closeBtn.addEventListener('click', () => {
+                modal.style.display = 'none';
+            });
+        }
+        
+        // Close on background click
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
+        }
+    });
+    </script>
 </body>
 </html>

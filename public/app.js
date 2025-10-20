@@ -889,6 +889,22 @@ function getPrimaryValue(lineItems, fieldType) {
     return null;
 }
 
+// Helper function to convert Markdown-style formatting to HTML
+function markdownToHtml(text) {
+    if (!text) return text;
+    
+    // Convert **text** to <strong>text</strong>
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    
+    // Convert *text* to <em>text</em>
+    text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    
+    // Convert newlines to <br> tags
+    text = text.replace(/\n/g, '<br>');
+    
+    return text;
+}
+
 // ===== ENHANCED PBB SCORING ENGINE WITH EXPLICIT REASONING =====
 
 // Helper function to get best quartile - returns full name and handles BOTH formats
@@ -2109,7 +2125,7 @@ function generateDetailedRequestReportAnalytical() {
                                 <!-- Strategic Recommendation -->
                                 <div class="narrative-box" style="background: #f8f9ff; padding: 20px; border-radius: 8px; border-left: 4px solid ${analysis.dispositionColor};">
                                     <h4 style="color: #667eea; margin-bottom: 15px; font-size: 1.2rem;">🔍 Strategic Recommendation</h4>
-                                    <div style="white-space: pre-wrap; font-size: 1.05rem; line-height: 1.8;">${analysis.narrative}</div>
+                                    <div style="white-space: pre-wrap; font-size: 1.05rem; line-height: 1.8;">${markdownToHtml(analysis.narrative)}</div>
                                 </div>
                             </div>
                         </div>

@@ -1046,8 +1046,25 @@ function scoreRequest(request) {
     const totalScore = quartileAnalysis.score + outcomeAnalysis.score + fundingAnalysis.score + 
                       mandateAnalysis.score + efficiencyAnalysis.score + accessAnalysis.score;
     
-    // Determine quartile band (High = Q1/Q2, Low = Q3/Q4)
-    analysis.quartileBand = (bestQuartile === 'Q1' || bestQuartile === 'Q2') ? 'High' : 'Low';
+    // ADD THIS NEW SECTION:
+    // Apply weighted scoring - Quartile is MOST important
+    const weightedScore = {
+        quartile: quartileAnalysis.score * 2.0,      // Double weight (4 points max)
+        outcomes: outcomeAnalysis.score * 1.5,       // 50% bonus (3 points max)
+        funding: fundingAnalysis.score * 1.5,        // 50% bonus (3 points max)
+        mandate: mandateAnalysis.score * 1.0,        // Standard weight (2 points max)
+        efficiency: efficiencyAnalysis.score * 0.75, // Reduced weight (1.5 points max)
+        access: accessAnalysis.score * 0.75          // Reduced weight (1.5 points max)
+    };
+    
+    const maxWeightedScore = 16.5; // 4 + 3 + 3 + 2 + 1.5 + 1.5
+    const totalWeightedScore = Object.values(weightedScore).reduce((a, b) => a + b, 0);
+    const weightedPercentage = Math.round((totalWeightedScore / maxWeightedScore) * 100);
+    
+                      // Determine quartile band (High = Q1/Q2/Most/More, Low = Q3/Q4/Less/Least)
+    analysis.quartileBand = (bestQuartile === 'Q1' || bestQuartile === 'Q2' || 
+                             bestQuartile === 'Most Aligned' || bestQuartile === 'More Aligned') ? 'High' : 'Low';
+    
     
     // Determine mandate level
     if (analysis.isMandated) {
@@ -1065,7 +1082,9 @@ function scoreRequest(request) {
     analysis.outcomesStrength = outcomeAnalysis.score >= 2 ? 'Strong' : 'Weak';
     
     analysis.totalScore = totalScore;
-    
+    analysis.weightedScore = totalWeightedScore;
+    analysis.weightedPercentage = weightedPercentage;
+
     // Apply the decision grid
     const gridDecision = applyDecisionGrid(analysis);
     
@@ -1081,16 +1100,16 @@ function scoreRequest(request) {
     return analysis;
 }
 
-// ===== DECISION GRID LOGIC =====
+// ===== REVISED DECISION GRID BASED ON GF FUNDING PHILOSOPHY =====
 function applyDecisionGrid(analysis) {
     const { quartileBand, mandateLevel, fundingType, outcomesStrength } = analysis;
     
     // Create lookup key
     const gridKey = `${quartileBand}-${mandateLevel}-${fundingType}-${outcomesStrength}`;
     
-    // Decision grid mapping
+    // Decision grid mapping - REVISED to match funding philosophy
     const grid = {
-        // HIGH RELEVANCE (Q1-Q2)
+        // HIGH RELEVANCE (Q1-Q2) - Strategic Priority Programs
         'High-Mandated-NonGF-Strong': {
             disposition: 'APPROVE',
             color: '#28a745',
@@ -1105,7 +1124,7 @@ function applyDecisionGrid(analysis) {
         },
         'High-Mandated-NonGF-Weak': {
             disposition: 'APPROVE',
-            color: '#ffc107',
+            color: '#28a745',
             verifyNow: ['That mandate truly requires this spend'],
             strengthenWith: ['Baseline→target KPIs', '90-day evaluation plan', 'Interim check-in']
         },
@@ -1134,10 +1153,10 @@ function applyDecisionGrid(analysis) {
             strengthenWith: ['KPIs', '6-mo pilot with go/no-go', 'Light-weight evaluation plan']
         },
         'High-Compliance-GFonly-Weak': {
-            disposition: 'MODIFY',
-            color: '#ffc107',
-            verifyNow: ['Criticality (safety/liability)?'],
-            strengthenWith: ['Narrow scope', 'Stage gates', 'Non-GF plan within 60–90 days']
+            disposition: 'DEFER',  // CHANGED from MODIFY
+            color: '#dc3545',
+            verifyNow: ['Is this truly critical for safety/liability?'],
+            strengthenWith: ['Strengthen outcomes evidence', 'Identify cost recovery', 'Narrow scope significantly', 'Stage gates with evaluation']
         },
         'High-None-NonGF-Strong': {
             disposition: 'APPROVE',
@@ -1146,10 +1165,10 @@ function applyDecisionGrid(analysis) {
             strengthenWith: ['Pay-for-itself math', 'Fee elasticity/grant terms', 'Partner commitments']
         },
         'High-None-GFonly-Strong': {
-            disposition: 'MODIFY',
-            color: '#ffc107',
-            verifyNow: ['Alternatives considered'],
-            strengthenWith: ['Add cost recovery/partners', 'Unit-cost reduction', 'Partial reallocation']
+            disposition: 'APPROVE',  // CHANGED from MODIFY
+            color: '#28a745',
+            verifyNow: ['Alignment with strategic plan goals', 'Expected impact on outcomes'],
+            strengthenWith: ['Explore cost recovery options', 'Unit-cost reduction opportunities', 'Potential partnerships']
         },
         'High-None-NonGF-Weak': {
             disposition: 'MODIFY',
@@ -1160,11 +1179,11 @@ function applyDecisionGrid(analysis) {
         'High-None-GFonly-Weak': {
             disposition: 'DEFER',
             color: '#dc3545',
-            verifyNow: ['N/A'],
-            strengthenWith: ['Tie to priority KPIs', 'Find non-GF', 'Reduce scope or integrate with Q1/Q2 work']
+            verifyNow: ['Why should GF be used for this lower-evidence request?'],
+            strengthenWith: ['Tie to priority KPIs with clear metrics', 'Find non-GF sources', 'Reduce scope or integrate with higher-priority work']
         },
         
-        // LOW RELEVANCE (Q3-Q4)
+        // LOW RELEVANCE (Q3-Q4) - Lower Strategic Priority
         'Low-Mandated-NonGF-Strong': {
             disposition: 'APPROVE',
             color: '#28a745',
@@ -1174,8 +1193,8 @@ function applyDecisionGrid(analysis) {
         'Low-Mandated-GFonly-Strong': {
             disposition: 'APPROVE',
             color: '#ffc107',
-            verifyNow: ['Is Q3/Q4 mapping correct?'],
-            strengthenWith: ['Identify fees/grants', 'Swap lower-impact spend', 'Phase', 'Sunset']
+            verifyNow: ['Is Q3/Q4 mapping correct?', 'Minimum compliance requirement'],
+            strengthenWith: ['Identify fees/grants aggressively', 'Swap lower-impact spend', 'Phase implementation', 'Sunset provision']
         },
         'Low-Mandated-NonGF-Weak': {
             disposition: 'APPROVE',
@@ -1184,10 +1203,10 @@ function applyDecisionGrid(analysis) {
             strengthenWith: ['KPI baseline→target', '90-day review', 'Non-GF documentation']
         },
         'Low-Mandated-GFonly-Weak': {
-            disposition: 'APPROVE',
+            disposition: 'MODIFY',  // CHANGED from APPROVE
             color: '#ffc107',
-            verifyNow: ['Cheapest compliance path'],
-            strengthenWith: ['Tight scope', 'Offsets', 'Timeline to add non-GF', 'Exit criteria']
+            verifyNow: ['Absolute minimum compliance path', 'Can this be delayed?'],
+            strengthenWith: ['Tight scope - minimum viable only', 'Aggressive cost offsets', 'Timeline to add non-GF within 6 months', 'Clear exit criteria']
         },
         'Low-Compliance-NonGF-Strong': {
             disposition: 'MODIFY',
@@ -1196,10 +1215,10 @@ function applyDecisionGrid(analysis) {
             strengthenWith: ['No-GF pledge', 'Measurable risk reduction', 'Pilot + review']
         },
         'Low-Compliance-GFonly-Strong': {
-            disposition: 'MODIFY',
-            color: '#ffc107',
-            verifyNow: ['Impact scale vs. alternatives'],
-            strengthenWith: ['Require cost recovery', 'Internal reallocation', 'Narrower scope']
+            disposition: 'DEFER',  // CHANGED from MODIFY
+            color: '#dc3545',
+            verifyNow: ['Why is this low-priority program requiring GF for compliance?'],
+            strengthenWith: ['Require cost recovery mechanism', 'Internal reallocation from Q3/Q4 programs', 'Consider program redesign or elimination']
         },
         'Low-Compliance-NonGF-Weak': {
             disposition: 'DEFER',
@@ -1210,32 +1229,32 @@ function applyDecisionGrid(analysis) {
         'Low-Compliance-GFonly-Weak': {
             disposition: 'DEFER',
             color: '#dc3545',
-            verifyNow: ['If imminent, treat as mandate'],
-            strengthenWith: ['Pilot w/ non-GF', 'Quantify liability avoided', 'Combine with Q1/Q2']
+            verifyNow: ['If imminent risk, treat as mandate'],
+            strengthenWith: ['Pilot w/ non-GF', 'Quantify liability avoided', 'Combine with Q1/Q2 work or eliminate']
         },
         'Low-None-NonGF-Strong': {
             disposition: 'APPROVE',
             color: '#28a745',
-            verifyNow: ['No GF drift'],
-            strengthenWith: ['Full cost recovery', 'Service redesign', 'Contribution margin']
+            verifyNow: ['No GF drift', 'Sustainability of non-GF sources'],
+            strengthenWith: ['Full cost recovery plan', 'Service redesign to increase relevance', 'Path to Q1/Q2 alignment']
         },
         'Low-None-GFonly-Strong': {
             disposition: 'DEFER',
             color: '#dc3545',
-            verifyNow: ['Competes with higher-Q needs'],
-            strengthenWith: ['Add fee/grant/partner', 'ROI calc', 'Phase behind Q1/Q2']
+            verifyNow: ['Why use limited GF on low-priority program?'],
+            strengthenWith: ['Add fee/grant/partner funding', 'ROI calculation showing strategic value', 'Phase behind Q1/Q2 priorities', 'Consider program elimination']
         },
         'Low-None-NonGF-Weak': {
             disposition: 'DEFER',
             color: '#dc3545',
-            verifyNow: ['N/A'],
-            strengthenWith: ['KPIs', 'Tighten scope', 'Prove demand/willingness-to-pay']
+            verifyNow: ['Is there any compelling reason to continue this program?'],
+            strengthenWith: ['Strong KPIs showing strategic value', 'Tighten scope drastically', 'Prove demand/willingness-to-pay', 'Consider elimination']
         },
         'Low-None-GFonly-Weak': {
             disposition: 'REJECT',
             color: '#dc3545',
-            verifyNow: ['N/A'],
-            strengthenWith: ['Reframe to higher-Q outcome', 'Non-GF plan', 'Consolidate/streamline']
+            verifyNow: ['N/A - does not meet funding criteria'],
+            strengthenWith: ['Reframe to demonstrate higher-Q outcome alignment', 'Secure 100% non-GF funding', 'Consolidate with higher-priority programs', 'Recommend program elimination']
         }
     };
     
@@ -1248,6 +1267,71 @@ function applyDecisionGrid(analysis) {
     
     decision.gridKey = gridKey;
     return decision;
+}
+
+// ===== SIMPLIFIED DECISION TREE EXPLANATION =====
+function explainDecisionLogic(analysis) {
+    const { quartileBand, mandateLevel, fundingType, outcomesStrength } = analysis;
+    
+    let logic = "\n**Decision Logic Applied:**\n\n";
+    
+    // Step 1: Check if asking for GF
+    if (fundingType === 'GFonly') {
+        logic += "➡️ This request asks for **General Fund money**\n\n";
+        
+        // Step 2: Check priority
+        if (quartileBand === 'High') {
+            logic += "✅ **High Priority** (Q1/Q2) - Advances strategic plan goals\n";
+            
+            if (outcomesStrength === 'Strong') {
+                logic += "✅ **Strong Outcomes** - Clear metrics and evidence\n";
+                logic += "**→ Strong candidate for APPROVE** - Using GF for strategic priorities with proven outcomes\n";
+            } else {
+                if (mandateLevel === 'Mandated') {
+                    logic += "⚖️ **Mandated** - Legal/regulatory requirement\n";
+                    logic += "**→ APPROVE with conditions** - Mandate requires it, but strengthen outcomes\n";
+                } else if (mandateLevel === 'Compliance') {
+                    logic += "⚠️ **Compliance/Risk** - Addresses safety or liability\n";
+                    logic += "**→ MODIFY/DEFER** - High priority but weak case; compliance alone insufficient\n";
+                } else {
+                    logic += "❌ **Weak Outcomes** - Insufficient evidence\n";
+                    logic += "**→ DEFER** - High priority isn't enough without strong evidence\n";
+                }
+            }
+        } else {
+            logic += "⚠️ **Low Priority** (Q3/Q4) - Lower strategic alignment\n";
+            
+            if (mandateLevel === 'Mandated') {
+                logic += "⚖️ **Mandated** - Legal requirement forces consideration\n";
+                logic += "**→ APPROVE minimum scope** - But aggressively pursue cost offsets\n";
+            } else if (mandateLevel === 'Compliance') {
+                logic += "⚠️ **Compliance/Risk** - Addresses safety or liability\n";
+                logic += "**→ DEFER** - Low priority + GF request needs compelling risk justification\n";
+            } else {
+                logic += "❌ **No compelling justification** for GF use\n";
+                logic += "**→ DEFER/REJECT** - Limited GF should prioritize Q1/Q2 programs\n";
+            }
+        }
+    } else {
+        logic += "💰 This request has **non-GF funding** (grants, fees, partnerships)\n\n";
+        
+        if (quartileBand === 'High') {
+            logic += "✅ **High Priority** (Q1/Q2) + External funding\n";
+            logic += "**→ APPROVE** - Leveraging external resources for strategic priorities\n";
+        } else {
+            logic += "⚠️ **Low Priority** (Q3/Q4) but external funding available\n";
+            
+            if (outcomesStrength === 'Strong') {
+                logic += "✅ **Strong Outcomes** - Could increase program relevance\n";
+                logic += "**→ APPROVE** - Investment could move program toward Q1/Q2 alignment\n";
+            } else {
+                logic += "❌ **Weak Outcomes** - Unclear strategic value\n";
+                logic += "**→ MODIFY/DEFER** - Even with external funding, needs clearer strategic alignment\n";
+            }
+        }
+    }
+    
+    return logic;
 }
 
 // ===== ENHANCED NARRATIVE GENERATOR =====
@@ -1284,6 +1368,10 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     }
     
     narrative += `---\n\n`;
+    
+    // Add decision tree explanation
+    narrative += explainDecisionLogic(analysis);
+    narrative += `\n---\n\n`;
     
     // Disposition and recommendation with PBB suggests language
     narrative += `## 🎯 PBB SUGGESTS: **${analysis.disposition}** (Score: ${analysis.totalScore}/12)\n\n`;
@@ -1813,9 +1901,14 @@ function generateDetailedRequestReportAnalytical() {
                     <!-- PBB SCORING SECTION -->
                     <div style="background: linear-gradient(135deg, #f8f9ff, #ffffff); padding: 25px; margin-bottom: 25px; border-radius: 8px; border: 2px solid ${analysis.dispositionColor};">
                         <h3 style="color: ${analysis.dispositionColor}; margin-bottom: 20px; font-size: 1.5rem;">
-                            📊 PBB Analysis Score: ${analysis.totalScore}/12
+                            📊 PBB Analysis Score: ${analysis.totalScore}/12 
+                            <span style="font-size: 1.2rem; opacity: 0.8;">(Weighted: ${analysis.weightedPercentage}%)</span>
                         </h3>
-                        
+                        <div style="background: #f0f0f0; border-radius: 10px; height: 30px; margin-bottom: 20px; overflow: hidden;">
+                            <div style="background: linear-gradient(90deg, ${analysis.dispositionColor}, ${analysis.dispositionColor}dd); height: 100%; width: ${analysis.weightedPercentage}%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; transition: width 0.3s ease;">
+                                ${analysis.weightedPercentage}%
+                            </div>
+                        </div>    
                         <!-- Score Breakdown with Explicit Reasons -->
                         <div style="margin: 20px 0;">
                             <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #667eea;">

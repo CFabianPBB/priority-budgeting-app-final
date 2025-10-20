@@ -564,3 +564,194 @@ tr:hover {
     border-radius: 0 8px 8px 0;
     line-height: 1.8;
 }
+
+/* Collapsible Section Styles */
+.collapsible-header {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.3s ease;
+    padding: 15px 20px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border-radius: 10px;
+    margin: 20px 0 10px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.collapsible-header:hover {
+    background: linear-gradient(135deg, #5568d3, #6a3f8f);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+}
+
+.collapsible-header h3 {
+    margin: 0;
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.collapsible-toggle {
+    font-size: 1.5rem;
+    font-weight: bold;
+    transition: transform 0.3s ease;
+}
+
+.collapsible-toggle.expanded {
+    transform: rotate(180deg);
+}
+
+.collapsible-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease-out, opacity 0.3s ease-out;
+    opacity: 0;
+}
+
+.collapsible-content.expanded {
+    max-height: 10000px;
+    opacity: 1;
+    transition: max-height 0.5s ease-in, opacity 0.4s ease-in;
+}
+
+/* Quick Summary Card - Always Visible */
+.summary-card-compact {
+    background: linear-gradient(135deg, #f8f9ff, #ffffff);
+    border: 2px solid #667eea;
+    border-radius: 10px;
+    padding: 20px;
+    margin: 15px 0;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.summary-item {
+    text-align: center;
+    padding: 12px;
+    background: white;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+}
+
+.summary-label {
+    font-size: 0.85rem;
+    color: #666;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.summary-value {
+    font-size: 1.3rem;
+    font-weight: bold;
+    color: #667eea;
+    margin-top: 5px;
+}
+
+/* Accordion for Individual Requests */
+.request-accordion {
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    margin: 15px 0;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.request-accordion:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.request-accordion-header {
+    background: linear-gradient(135deg, #f8f9ff, #ffffff);
+    padding: 20px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid #e0e0e0;
+    transition: background 0.3s ease;
+}
+
+.request-accordion-header:hover {
+    background: linear-gradient(135deg, #eef0ff, #f8f9ff);
+}
+
+.request-accordion-title {
+    flex: 1;
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #333;
+}
+
+.request-accordion-badge {
+    margin: 0 15px;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: white;
+}
+
+.request-accordion-arrow {
+    font-size: 1.5rem;
+    color: #667eea;
+    transition: transform 0.3s ease;
+}
+
+.request-accordion-arrow.expanded {
+    transform: rotate(180deg);
+}
+
+.request-accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease-out;
+}
+
+.request-accordion-content.expanded {
+    max-height: 5000px;
+    transition: max-height 0.5s ease-in;
+}
+
+.request-accordion-body {
+    padding: 25px;
+    background: white;
+}
+
+/* Expand/Collapse All Button */
+.collapse-controls {
+    text-align: center;
+    margin: 20px 0;
+}
+
+.collapse-btn {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    padding: 12px 30px;
+    border-radius: 25px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin: 0 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.collapse-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.collapse-btn:active {
+    transform: translateY(0);
+}

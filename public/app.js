@@ -582,12 +582,16 @@ function displayReport() {
     let analyticalHtml = `
         <div style="text-align: center; margin-bottom: 30px;">
             <h1 style="color: #333; margin-bottom: 10px;">🎯 PBB Analysis & Recommendations</h1>
-            <p style="color: #666; font-size: 1.1rem;">Detailed Scoring and Strategic Recommendations</p>
+            <p style="color: #666; font-size: 1.1rem;">Textbook PBB Framework - Advisory Analysis Only</p>
             <p style="color: #888;">Generated on ${reportDate}</p>
+            <p style="background: #fff3cd; border: 2px solid #ffc107; padding: 10px; border-radius: 8px; margin: 15px auto; max-width: 800px; font-size: 0.95rem; color: #856404;">
+                <strong>⚠️ Advisory Report:</strong> This analysis represents what a textbook Priority Based Budgeting framework would suggest. 
+                These are recommendations to inform decision-making, not actual funding decisions. Final decisions rest with leadership and governing bodies.
+            </p>
         </div>
 
         <div class="section-header">Analysis Overview</div>
-        <p>This analytical report provides detailed Priority Based Budgeting (PBB) scoring and strategic recommendations for ${filteredData.length} budget requests totaling <strong class="amount">$${formatCurrency(totalAmount)}</strong>. Each request is evaluated across six criteria with actionable recommendations.</p>
+        <p>This analytical report provides Priority Based Budgeting (PBB) framework scoring and advisory recommendations for ${filteredData.length} budget requests totaling <strong class="amount">$${formatCurrency(totalAmount)}</strong>. Each request is evaluated across six criteria following standard PBB methodology. <strong>These are suggested considerations, not binding decisions.</strong></p>
     `;
 
     analyticalHtml += generateAnalyticalSummary();
@@ -894,13 +898,13 @@ function getQuartileScore(quartile) {
     
     // Handle both Q1/Q2 format AND full names
     if (quartile === 'Most Aligned' || quartile === 'Q1') {
-        return { score: 2, reason: `Program quartile is "Most Aligned" (Q1) - highest priority alignment with city strategic goals and community priorities` };
+        return { score: 2, reason: `Program quartile is "Most Aligned" (Q1) - highest priority alignment with organizational strategic goals and community priorities` };
     }
     if (quartile === 'More Aligned' || quartile === 'Q2') {
-        return { score: 2, reason: `Program quartile is "More Aligned" (Q2) - strong alignment with city strategic goals and community priorities` };
+        return { score: 2, reason: `Program quartile is "More Aligned" (Q2) - strong alignment with organizational strategic goals and community priorities` };
     }
     if (quartile === 'Less Aligned' || quartile === 'Q3') {
-        return { score: 1, reason: `Program quartile is "Less Aligned" (Q3) - moderate alignment with city strategic goals` };
+        return { score: 1, reason: `Program quartile is "Less Aligned" (Q3) - moderate alignment with organizational strategic goals` };
     }
     if (quartile === 'Least Aligned' || quartile === 'Q4') {
         return { score: 0, reason: `Program quartile is "Least Aligned" (Q4) - lower priority alignment with current strategic goals` };
@@ -1374,12 +1378,13 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     narrative += `\n---\n\n`;
     
     // Disposition and recommendation with PBB suggests language
-    narrative += `## 🎯 PBB SUGGESTS: **${analysis.disposition}** (Score: ${analysis.totalScore}/12)\n\n`;
+    narrative += `## 🎯 PBB FRAMEWORK SUGGESTS: **${analysis.disposition}** (Score: ${analysis.totalScore}/12)\n\n`;
+    narrative += `*Note: This is an advisory recommendation based on textbook PBB methodology, not a final decision.*\n\n`;
     
     // Main recommendation based on disposition
     if (analysis.disposition === 'APPROVE') {
         if (analysis.mandateLevel === 'Mandated') {
-            narrative += `**PBB Recommendation:** PBB suggests APPROVE. This is a mandated program with ${analysis.outcomesStrength.toLowerCase()} outcomes evidence. `;
+            narrative += `**PBB Framework Advisory:** PBB suggests APPROVE. This is a mandated program with ${analysis.outcomesStrength.toLowerCase()} outcomes evidence. `;
             if (analysis.fundingType === 'GFonly' && analysis.quartileBand === 'Low') {
                 narrative += `Given the lower quartile, PBB suggests requiring offsetting reductions or pursuing non-GF sources. `;
             }
@@ -1389,24 +1394,24 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
                 narrative += `General Fund support appears justified based on mandate requirements.\n\n`;
             }
         } else if (analysis.fundingType === 'NonGF') {
-            narrative += `**PBB Recommendation:** PBB suggests APPROVE with non-GF priority. Strong proposal with external funding sources. `;
+            narrative += `**PBB Framework Advisory:** PBB suggests APPROVE with non-GF priority. Strong proposal with external funding sources. `;
             if (analysis.quartileBand === 'Low') {
                 narrative += `For Q3/Q4 programs, PBB suggests ensuring minimal or no GF backfill. `;
             }
             narrative += `PBB recommends proceeding with clear cost recovery and sustainability plan.\n\n`;
         } else {
-            narrative += `**PBB Recommendation:** PBB suggests APPROVE but strengthen funding strategy. While outcomes are strong, PBB recommends adding cost recovery or partnership elements to reduce General Fund reliance.\n\n`;
+            narrative += `**PBB Framework Advisory:** PBB suggests APPROVE but strengthen funding strategy. While outcomes are strong, PBB recommends adding cost recovery or partnership elements to reduce General Fund reliance.\n\n`;
         }
     } else if (analysis.disposition === 'MODIFY') {
-        narrative += `**PBB Recommendation:** PBB suggests MODIFY before approval. This request shows merit but PBB recommends adjustments before proceeding:\n\n`;
+        narrative += `**PBB Framework Advisory:** PBB suggests MODIFY before approval. This request shows merit but PBB recommends adjustments before proceeding:\n\n`;
     } else if (analysis.disposition === 'DEFER') {
-        narrative += `**PBB Recommendation:** PBB suggests DEFER. Insufficient business case for current approval based on PBB criteria. `;
+        narrative += `**PBB Framework Advisory:** PBB suggests DEFER. Insufficient business case for current approval based on PBB criteria. `;
         if (analysis.mandateLevel === 'Mandated') {
             narrative += `PBB recommends monitoring mandate requirements. `;
         }
         narrative += `See PBB-recommended strengthening actions below.\n\n`;
     } else if (analysis.disposition === 'REJECT') {
-        narrative += `**PBB Recommendation:** PBB suggests REJECT OR SIGNIFICANT REDESIGN. `;
+        narrative += `**PBB Framework Advisory:** PBB suggests REJECT OR SIGNIFICANT REDESIGN. `;
         narrative += `This low-relevance, GF-only request with weak outcomes does not meet PBB funding criteria. PBB recommends fundamental changes before reconsideration.\n\n`;
     }
     
@@ -1872,7 +1877,15 @@ function generateDetailedRequestReportStandard() {
 
 // ===== ANALYTICAL REPORT (WITH SCORING) =====
 function generateDetailedRequestReportAnalytical() {
-    let html = `<div class="section-header" id="analytical-requests">Detailed Request Analysis</div>`;
+    let html = `
+        <div class="section-header" id="analytical-requests">Detailed Request Analysis</div>
+        
+        <!-- Expand/Collapse All Controls -->
+        <div class="collapse-controls">
+            <button class="collapse-btn" onclick="expandAllRequests()">📂 Expand All Requests</button>
+            <button class="collapse-btn" onclick="collapseAllRequests()">📁 Collapse All Requests</button>
+        </div>
+    `;
     
     filteredData.forEach((request, index) => {
         const requestId = getRequestId(request);
@@ -1884,138 +1897,175 @@ function generateDetailedRequestReportAnalytical() {
         // SCORE THE REQUEST
         const analysis = scoreRequest(request);
         
-        const pageBreakStyle = index > 0 ? 'page-break-before: always;' : '';
+        const uniqueId = `request-accordion-${requestId}`;
 
         html += `
-            <div class="request-card" id="analytical-request-${requestId}" style="${pageBreakStyle} margin-top: 40px; border-left: 5px solid ${analysis.dispositionColor};">
-                <div class="request-header" style="background: ${analysis.dispositionColor}; color: white;">
-                    <div class="request-title" style="color: white; font-size: 1.4rem;">
-                        Request ${requestId} - ${description}
-                        <span class="analysis-badge badge-${analysis.disposition.toLowerCase()}" style="float: right; margin-left: 15px;">
-                            ${analysis.disposition}
-                        </span>
+            <!-- Request Accordion -->
+            <div class="request-accordion" id="analytical-request-${requestId}">
+                <div class="request-accordion-header" onclick="toggleRequestAccordion('${uniqueId}')">
+                    <div class="request-accordion-title">
+                        <strong>Request ${requestId}:</strong> ${description}
                     </div>
+                    <span class="request-accordion-badge" style="background: ${analysis.dispositionColor};">
+                        ${analysis.disposition}
+                    </span>
+                    <span class="request-accordion-badge" style="background: #667eea;">
+                        ${analysis.totalScore}/12
+                    </span>
+                    <span class="request-accordion-arrow" id="${uniqueId}-arrow">▼</span>
                 </div>
-                <div class="request-details">
-                    
-                    <!-- PBB SCORING SECTION -->
-                    <div style="background: linear-gradient(135deg, #f8f9ff, #ffffff); padding: 25px; margin-bottom: 25px; border-radius: 8px; border: 2px solid ${analysis.dispositionColor};">
-                        <h3 style="color: ${analysis.dispositionColor}; margin-bottom: 20px; font-size: 1.5rem;">
-                            📊 PBB Analysis Score: ${analysis.totalScore}/12 
-                            <span style="font-size: 1.2rem; opacity: 0.8;">(Weighted: ${analysis.weightedPercentage}%)</span>
-                        </h3>
-                        <div style="background: #f0f0f0; border-radius: 10px; height: 30px; margin-bottom: 20px; overflow: hidden;">
-                            <div style="background: linear-gradient(90deg, ${analysis.dispositionColor}, ${analysis.dispositionColor}dd); height: 100%; width: ${analysis.weightedPercentage}%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; transition: width 0.3s ease;">
-                                ${analysis.weightedPercentage}%
-                            </div>
-                        </div>    
-                        <!-- Score Breakdown with Explicit Reasons -->
-                        <div style="margin: 20px 0;">
-                            <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #667eea;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                    <strong style="color: #667eea; font-size: 1.1rem;">1. Program Alignment (Quartile)</strong>
-                                    <span style="background: #667eea; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.quartileScore}/2</span>
+                
+                <div class="request-accordion-content" id="${uniqueId}">
+                    <div class="request-accordion-body">
+                        
+                        <!-- Quick Summary Card (Always Visible When Expanded) -->
+                        <div class="summary-card-compact">
+                            <h4 style="color: #667eea; margin-bottom: 10px;">📊 Quick Summary</h4>
+                            <div class="summary-grid">
+                                <div class="summary-item">
+                                    <div class="summary-label">Request ID</div>
+                                    <div class="summary-value">${requestId}</div>
                                 </div>
-                                <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.quartileReason}</em></p>
-                            </div>
-                            
-                            <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #17a2b8;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                    <strong style="color: #17a2b8; font-size: 1.1rem;">2. Outcome Evidence</strong>
-                                    <span style="background: #17a2b8; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.outcomeScore}/2</span>
+                                <div class="summary-item">
+                                    <div class="summary-label">Total Amount</div>
+                                    <div class="summary-value" style="color: #28a745;">$${formatCurrency(amounts.total)}</div>
                                 </div>
-                                <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.outcomeReason}</em></p>
-                            </div>
-                            
-                            <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #28a745;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                    <strong style="color: #28a745; font-size: 1.1rem;">3. Funding Strategy</strong>
-                                    <span style="background: #28a745; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.fundingScore}/2</span>
+                                <div class="summary-item">
+                                    <div class="summary-label">Department</div>
+                                    <div class="summary-value" style="font-size: 1rem;">${getPrimaryValue(lineItems, 'department') || 'N/A'}</div>
                                 </div>
-                                <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.fundingReason}</em></p>
-                            </div>
-                            
-                            <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #ffc107;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                    <strong style="color: #856404; font-size: 1.1rem;">4. Mandate/Risk</strong>
-                                    <span style="background: #ffc107; color: #333; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.mandateScore}/2</span>
+                                <div class="summary-item">
+                                    <div class="summary-label">Program</div>
+                                    <div class="summary-value" style="font-size: 1rem;">${getPrimaryValue(lineItems, 'program') || 'N/A'}</div>
                                 </div>
-                                <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.mandateReason}</em></p>
-                            </div>
-                            
-                            <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #6f42c1;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                    <strong style="color: #6f42c1; font-size: 1.1rem;">5. Efficiency/ROI</strong>
-                                    <span style="background: #6f42c1; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.efficiencyScore}/2</span>
+                                <div class="summary-item">
+                                    <div class="summary-label">Quartile</div>
+                                    <div class="summary-value">
+                                        <span class="quartile-badge quartile-${analysis.bestQuartile.toLowerCase().replace(' ', '-')}">${analysis.bestQuartile}</span>
+                                    </div>
                                 </div>
-                                <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.efficiencyReason}</em></p>
-                            </div>
-                            
-                            <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #e83e8c;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                    <strong style="color: #e83e8c; font-size: 1.1rem;">6. Access</strong>
-                                    <span style="background: #e83e8c; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.accessScore}/2</span>
+                                <div class="summary-item">
+                                    <div class="summary-label">PBB Recommendation</div>
+                                    <div class="summary-value" style="color: ${analysis.dispositionColor};">${analysis.disposition}</div>
                                 </div>
-                                <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.accessReason}</em></p>
                             </div>
                         </div>
                         
-                        
-                        
-                        <!-- Strategic Recommendation -->
-                        <div class="narrative-box">
-                            <h4 style="color: #667eea; margin-bottom: 15px; font-size: 1.2rem;">📝 Strategic Recommendation</h4>
-                            <div style="white-space: pre-wrap; font-size: 1.05rem; line-height: 1.8;">${analysis.narrative}</div>
+                        <!-- PBB SCORING SECTION (Collapsible) -->
+                        <div class="collapsible-header" onclick="toggleCollapsible('pbb-score-${requestId}')">
+                            <h3>📊 PBB Framework Analysis & Scoring</h3>
+                            <span class="collapsible-toggle" id="pbb-score-${requestId}-toggle">▼</span>
                         </div>
-                    </div>
-                    
-                    <!-- Request Details -->
-                    <div style="margin-bottom: 25px;">
-                        <h3 style="color: #667eea; margin-bottom: 15px; border-bottom: 1px solid #e0e0e0; padding-bottom: 5px;">Request Summary</h3>
-                        <div class="detail-grid">
-                            <div class="detail-item">
-                                <div class="detail-label">Request ID</div>
-                                <div class="detail-value">${requestId}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Description</div>
-                                <div class="detail-value">${description}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Total Amount</div>
-                                <div class="detail-value amount">$${formatCurrency(amounts.total)}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Department</div>
-                                <div class="detail-value">${getPrimaryValue(lineItems, 'department') || 'N/A'}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Program</div>
-                                <div class="detail-value">${getPrimaryValue(lineItems, 'program') || 'N/A'}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Quartile</div>
-                                <div class="detail-value">
-                                    <span class="quartile-badge quartile-${analysis.bestQuartile.toLowerCase()}">${analysis.bestQuartile}</span>
+                        <div class="collapsible-content" id="pbb-score-${requestId}">
+                            <div style="background: linear-gradient(135deg, #f8f9ff, #ffffff); padding: 25px; margin-bottom: 25px; border-radius: 8px; border: 2px solid ${analysis.dispositionColor};">
+                                <h3 style="color: ${analysis.dispositionColor}; margin-bottom: 20px; font-size: 1.5rem;">
+                                    📊 PBB Analysis Score: ${analysis.totalScore}/12 
+                                    <span style="font-size: 1.2rem; opacity: 0.8;">(Weighted: ${analysis.weightedPercentage}%)</span>
+                                </h3>
+                                <div style="background: #f0f0f0; border-radius: 10px; height: 30px; margin-bottom: 20px; overflow: hidden;">
+                                    <div style="background: linear-gradient(90deg, ${analysis.dispositionColor}, ${analysis.dispositionColor}dd); height: 100%; width: ${analysis.weightedPercentage}%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; transition: width 0.3s ease;">
+                                        ${analysis.weightedPercentage}%
+                                    </div>
+                                </div>
+                                
+                                <!-- Score Breakdown with Explicit Reasons -->
+                                <div style="margin: 20px 0;">
+                                    <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #667eea;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                            <strong style="color: #667eea; font-size: 1.1rem;">1. Program Alignment (Quartile)</strong>
+                                            <span style="background: #667eea; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.quartileScore}/2</span>
+                                        </div>
+                                        <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.quartileReason}</em></p>
+                                    </div>
+                                    
+                                    <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #17a2b8;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                            <strong style="color: #17a2b8; font-size: 1.1rem;">2. Outcome Evidence</strong>
+                                            <span style="background: #17a2b8; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.outcomeScore}/2</span>
+                                        </div>
+                                        <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.outcomeReason}</em></p>
+                                    </div>
+                                    
+                                    <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #28a745;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                            <strong style="color: #28a745; font-size: 1.1rem;">3. Funding Strategy</strong>
+                                            <span style="background: #28a745; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.fundingScore}/2</span>
+                                        </div>
+                                        <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.fundingReason}</em></p>
+                                    </div>
+                                    
+                                    <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #ffc107;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                            <strong style="color: #856404; font-size: 1.1rem;">4. Mandate/Risk</strong>
+                                            <span style="background: #ffc107; color: #333; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.mandateScore}/2</span>
+                                        </div>
+                                        <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.mandateReason}</em></p>
+                                    </div>
+                                    
+                                    <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #6f42c1;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                            <strong style="color: #6f42c1; font-size: 1.1rem;">5. Efficiency/ROI</strong>
+                                            <span style="background: #6f42c1; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.efficiencyScore}/2</span>
+                                        </div>
+                                        <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.efficiencyReason}</em></p>
+                                    </div>
+                                    
+                                    <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #e83e8c;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                            <strong style="color: #e83e8c; font-size: 1.1rem;">6. Access</strong>
+                                            <span style="background: #e83e8c; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.accessScore}/2</span>
+                                        </div>
+                                        <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.accessReason}</em></p>
+                                    </div>
+                                </div>
+                                
+                                <!-- Strategic Recommendation -->
+                                <div class="narrative-box" style="background: #f8f9ff; padding: 20px; border-radius: 8px; border-left: 4px solid ${analysis.dispositionColor};">
+                                    <h4 style="color: #667eea; margin-bottom: 15px; font-size: 1.2rem;">🔍 Strategic Recommendation</h4>
+                                    <div style="white-space: pre-wrap; font-size: 1.05rem; line-height: 1.8;">${analysis.narrative}</div>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                        
+                        <!-- REQUEST DETAILS (Collapsible) -->
+                        <div class="collapsible-header" onclick="toggleCollapsible('request-qa-${requestId}')">
+                            <h3>📋 Request Context & Details</h3>
+                            <span class="collapsible-toggle" id="request-qa-${requestId}-toggle">▼</span>
+                        </div>
+                        <div class="collapsible-content" id="request-qa-${requestId}">
         `;
 
         if (qa.length > 0) {
             html += generateRequestQASection(qa);
         }
 
+        html += `</div>`;
+        
+        // LINE ITEMS (Collapsible)
+        html += `
+                        <div class="collapsible-header" onclick="toggleCollapsible('line-items-${requestId}')">
+                            <h3>💼 Line Item Details (${lineItems.length} items)</h3>
+                            <span class="collapsible-toggle" id="line-items-${requestId}-toggle">▼</span>
+                        </div>
+                        <div class="collapsible-content" id="line-items-${requestId}">
+        `;
+        
         if (lineItems.length > 0) {
             html += generateLineItemSection(lineItems);
         }
 
-        html += `</div></div>`;
+        html += `
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
     });
 
     return html;
 }
+
+
 
 // Summary for Analytical Report
 function generateAnalyticalSummary() {
@@ -2044,17 +2094,17 @@ function generateAnalyticalSummary() {
             <div class="request-details">
                 <div class="detail-grid">
                     <div class="detail-item" style="background: linear-gradient(135deg, #d4edda, #c3e6cb); border: 2px solid #28a745;">
-                        <div class="detail-label">✅ Approve</div>
+                        <div class="detail-label">✅ PBB Framework Suggests Approve</div>
                         <div class="detail-value" style="font-size: 1.5rem; color: #28a745;">${scores.approve} Requests</div>
                         <div class="amount" style="font-size: 1.2rem;">$${formatCurrency(amounts.approve)}</div>
                     </div>
                     <div class="detail-item" style="background: linear-gradient(135deg, #fff3cd, #ffeeba); border: 2px solid #ffc107;">
-                        <div class="detail-label">⚠️ Modify</div>
+                        <div class="detail-label">⚠️ PBB Framework Suggests Modify</div>
                         <div class="detail-value" style="font-size: 1.5rem; color: #856404;">${scores.modify} Requests</div>
                         <div class="amount" style="font-size: 1.2rem; color: #856404;">$${formatCurrency(amounts.modify)}</div>
                     </div>
                     <div class="detail-item" style="background: linear-gradient(135deg, #f8d7da, #f5c6cb); border: 2px solid #dc3545;">
-                        <div class="detail-label">❌ Defer</div>
+                        <div class="detail-label">❌ PBB Framework Suggests Defer</div>
                         <div class="detail-value" style="font-size: 1.5rem; color: #dc3545;">${scores.defer} Requests</div>
                         <div class="amount" style="font-size: 1.2rem; color: #dc3545;">$${formatCurrency(amounts.defer)}</div>
                     </div>
@@ -4000,7 +4050,7 @@ function downloadPdfReport() {
                 printHtml += `</div><div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px;">`;
                 
                 // Fourth row - Scoring criteria
-                const scoringFields = ['CHANGE IN DEMAND FOR THE PROGRAM', 'MANDATED TO PROVIDE PROGRAM', 'RELIANCE ON CITY TO PROVIDE PROGRAM', 'PORTION OF THE COMMUNITY SERVED'];
+                const scoringFields = ['CHANGE IN DEMAND FOR THE PROGRAM', 'MANDATED TO PROVIDE PROGRAM', 'RELIANCE ON ORGANIZATION TO PROVIDE PROGRAM', 'PORTION OF THE COMMUNITY SERVED'];
                 scoringFields.forEach(field => {
                     const value = findFieldValue(item, field);
                     if (value !== null) {
@@ -4282,7 +4332,7 @@ function generatePDFDetailedRequests() {
                 html += `</div><div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;">`;
                 
                 // Fourth row - Scoring details (no formatting needed)
-                const scoringFields = ['CHANGE IN DEMAND FOR THE PROGRAM', 'MANDATED TO PROVIDE PROGRAM', 'RELIANCE ON CITY TO PROVIDE PROGRAM', 'PORTION OF THE COMMUNITY SERVED'];
+                const scoringFields = ['CHANGE IN DEMAND FOR THE PROGRAM', 'MANDATED TO PROVIDE PROGRAM', 'RELIANCE ON ORGANIZATION TO PROVIDE PROGRAM', 'PORTION OF THE COMMUNITY SERVED'];
                 scoringFields.forEach(field => {
                     const value = findFieldValue(item, field);
                     if (value !== null) {
@@ -4360,4 +4410,50 @@ function formatFieldValue(field, value) {
         }
     }
     return value;
+}
+
+// ===== COLLAPSIBLE SECTION CONTROLS =====
+
+function toggleCollapsible(sectionId) {
+    const content = document.getElementById(sectionId);
+    const toggle = document.getElementById(sectionId + '-toggle');
+    
+    if (content.classList.contains('expanded')) {
+        content.classList.remove('expanded');
+        toggle.classList.remove('expanded');
+    } else {
+        content.classList.add('expanded');
+        toggle.classList.add('expanded');
+    }
+}
+
+function toggleRequestAccordion(accordionId) {
+    const content = document.getElementById(accordionId);
+    const arrow = document.getElementById(accordionId + '-arrow');
+    
+    if (content.classList.contains('expanded')) {
+        content.classList.remove('expanded');
+        arrow.classList.remove('expanded');
+    } else {
+        content.classList.add('expanded');
+        arrow.classList.add('expanded');
+    }
+}
+
+function expandAllRequests() {
+    document.querySelectorAll('.request-accordion-content').forEach(content => {
+        content.classList.add('expanded');
+    });
+    document.querySelectorAll('.request-accordion-arrow').forEach(arrow => {
+        arrow.classList.add('expanded');
+    });
+}
+
+function collapseAllRequests() {
+    document.querySelectorAll('.request-accordion-content').forEach(content => {
+        content.classList.remove('expanded');
+    });
+    document.querySelectorAll('.request-accordion-arrow').forEach(arrow => {
+        arrow.classList.remove('expanded');
+    });
 }

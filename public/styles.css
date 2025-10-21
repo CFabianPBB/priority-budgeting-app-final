@@ -1166,3 +1166,91 @@ tr:hover {
         padding: 8px 6px;
     }
 }
+
+/* ===== COLLAPSIBLE TABLE OF CONTENTS SECTIONS ===== */
+.toc-section {
+    margin: 20px 0;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.toc-section-header {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    padding: 15px 20px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background 0.3s ease;
+    user-select: none;
+}
+
+.toc-section-header:hover {
+    background: linear-gradient(135deg, #5568d3, #653a8b);
+}
+
+.toc-section-header h2,
+.toc-section-header h3 {
+    margin: 0;
+    font-size: 1.3rem;
+    font-weight: 600;
+    flex: 1;
+}
+
+.toc-toggle-icon {
+    font-size: 1.5rem;
+    font-weight: bold;
+    transition: transform 0.3s ease;
+    margin-left: 15px;
+}
+
+.toc-section.collapsed .toc-toggle-icon {
+    transform: rotate(-90deg);
+}
+
+.toc-section-content {
+    background: white;
+    max-height: none;
+    overflow: visible;
+    transition: max-height 0.4s ease, padding 0.4s ease;
+    padding: 20px;
+}
+
+.toc-section.collapsed .toc-section-content {
+    max-height: 0 !important;
+    padding: 0 20px !important;
+    overflow: hidden;
+}
+
+/* Expand/Collapse All buttons for TOC */
+.toc-controls {
+    text-align: center;
+    margin: 20px 0;
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+.toc-control-btn {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    padding: 10px 25px;
+    border-radius: 25px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 10px rgba(102, 126, 234, 0.3);
+}
+
+.toc-control-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(102, 126, 234, 0.4);
+}
+
+.toc-control-btn:active {
+    transform: translateY(0);
+}

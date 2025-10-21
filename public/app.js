@@ -301,7 +301,7 @@ function parseSheetWithDebug(workbook, sheetName) {
 
 // ADDITIONAL FIX: Enhanced setup filters to use proper field names
 function setupFilters() {
-    console.log('\n=== Setting up filters ===');
+    console.log('\n=== Setting up filters (DUAL SOURCE) ===');
     
     const filters = {
         fund: new Set(['all']),
@@ -312,7 +312,8 @@ function setupFilters() {
         status: new Set(['all'])
     };
 
-    console.log('Collecting filter values...');
+    // SOURCE 1: Collect from Budget Request Data
+    console.log('Collecting filter values from Budget Request data...');
     
     // Collect unique values from all line items (Personnel + NonPersonnel)
     const allLineItems = [...budgetData.personnel, ...budgetData.nonPersonnel];
@@ -320,10 +321,10 @@ function setupFilters() {
     allLineItems.forEach((item, idx) => {
         if (idx < 5) console.log(`Line item ${idx}:`, item);
         
-        // FIXED: Use explicit field names instead of fuzzy matching
+        // Use explicit field names instead of fuzzy matching
         if (item.Fund) filters.fund.add(item.Fund);
         if (item.Department) filters.department.add(item.Department);
-        if (item['Cost Center']) filters.department.add(item['Cost Center']); // Cost Center as department
+        if (item['Cost Center']) filters.department.add(item['Cost Center']);
         if (item.Division) filters.division.add(item.Division);
         if (item.Program) filters.program.add(item.Program);
         if (item.Status) filters.status.add(item.Status);
@@ -335,7 +336,23 @@ function setupFilters() {
         if (item.Status) filters.status.add(item.Status);
     });
 
-    console.log('Filter values found:', {
+    // SOURCE 2: Collect from Current Budget (Program Inventory) if available
+    if (currentBudgetData.length > 0) {
+        console.log('Collecting filter values from Current Budget (Program Inventory)...');
+        
+        currentBudgetData.forEach((item, idx) => {
+            if (idx < 3) console.log(`Current Budget item ${idx}:`, item);
+            
+            // User Group is the department
+            if (item['User Group']) filters.department.add(item['User Group']);
+            // Program Name
+            if (item['Program']) filters.program.add(item['Program']);
+            // Division if available
+            if (item['Division']) filters.division.add(item['Division']);
+        });
+    }
+
+    console.log('Filter values found (from BOTH sources):', {
         fund: Array.from(filters.fund),
         department: Array.from(filters.department),
         division: Array.from(filters.division),
@@ -357,6 +374,7 @@ function setupFilters() {
         select.addEventListener('change', updateStats);
     });
 }
+
 
 
 function populateSelect(selectId, values) {
@@ -779,7 +797,12 @@ function generateFilterSummary() {
     });
 
     let html = `
-        <div class="section-header" id="report-filters">Report Filters & Summary</div>
+       <div class="toc-section" id="toc-section-filters">
+           <div class="toc-section-header" onclick="toggleTOCSection('toc-section-filters')">
+               <h2>1. Report Filters & Summary</h2>
+               <span class="toc-toggle-icon">▼</span>
+           </div>
+           <div class="toc-section-content">
         <div class="request-card">
             <div class="request-header">
                 <div class="request-title">Applied Filters</div>
@@ -859,6 +882,8 @@ function generateFilterSummary() {
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
             </div>
         </div>
     `;
@@ -4821,6 +4846,30 @@ function collapseAllStandardRequests() {
     });
     document.querySelectorAll('[id^="standard-qa-"][id$="-toggle"], [id^="standard-line-items-"][id$="-toggle"]').forEach(toggle => {
         toggle.classList.remove('expanded');
+    });
+}
+
+// ===== COLLAPSIBLE TABLE OF CONTENTS SECTION CONTROLS =====
+
+// Toggle individual TOC section
+function toggleTOCSection(sectionId) {
+    const section = document.getElementById(sectionId);
+    if (section) {
+        section.classList.toggle('collapsed');
+    }
+}
+
+// Expand all TOC sections
+function expandAllTOCSections() {
+    document.querySelectorAll('.toc-section').forEach(section => {
+        section.classList.remove('collapsed');
+    });
+}
+
+// Collapse all TOC sections
+function collapseAllTOCSections() {
+    document.querySelectorAll('.toc-section').forEach(section => {
+        section.classList.add('collapsed');
     });
 }
 

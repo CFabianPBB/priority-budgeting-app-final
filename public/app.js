@@ -7,6 +7,8 @@ let budgetData = {
     budgetSummary: []
 };
 let filteredData = [];
+let currentBudgetData = []; // ← ADD THIS LINE
+
 
 // DOM elements
 const uploadArea = document.getElementById('uploadArea');
@@ -24,6 +26,96 @@ uploadArea.addEventListener('click', () => fileInput.click());
 uploadArea.addEventListener('dragover', handleDragOver);
 uploadArea.addEventListener('drop', handleDrop);
 fileInput.addEventListener('change', handleFileSelect);
+
+// ===== CURRENT BUDGET FILE UPLOAD HANDLING =====
+const currentBudgetUploadArea = document.getElementById('currentBudgetUploadArea');
+const currentBudgetFileInput = document.getElementById('currentBudgetFileInput');
+const currentBudgetStatus = document.getElementById('currentBudgetStatus');
+
+if (currentBudgetUploadArea) {
+    currentBudgetUploadArea.addEventListener('click', () => currentBudgetFileInput.click());
+    currentBudgetUploadArea.addEventListener('dragover', handleCurrentBudgetDragOver);
+    currentBudgetUploadArea.addEventListener('drop', handleCurrentBudgetDrop);
+}
+
+if (currentBudgetFileInput) {
+    currentBudgetFileInput.addEventListener('change', handleCurrentBudgetFileSelect);
+}
+
+function handleCurrentBudgetDragOver(e) {
+    e.preventDefault();
+    currentBudgetUploadArea.classList.add('dragover');
+}
+
+function handleCurrentBudgetDrop(e) {
+    e.preventDefault();
+    currentBudgetUploadArea.classList.remove('dragover');
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+        processCurrentBudgetFile(files[0]);
+    }
+}
+
+function handleCurrentBudgetFileSelect(e) {
+    if (e.target.files.length > 0) {
+        processCurrentBudgetFile(e.target.files[0]);
+    }
+}
+
+function processCurrentBudgetFile(file) {
+    if (!file.name.match(/\.(xlsx|xls)$/)) {
+        showCurrentBudgetMessage('Please select a valid Excel file (.xlsx or .xls)', 'error');
+        return;
+    }
+
+    showCurrentBudgetMessage('Processing current budget file...', 'loading');
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            
+            console.log('Current Budget - Available sheets:', workbook.SheetNames);
+            
+            // Parse the Programs sheet (or first sheet if "Programs" doesn't exist)
+            const programsSheet = workbook.Sheets['Programs'] || workbook.Sheets[workbook.SheetNames[0]];
+            currentBudgetData = XLSX.utils.sheet_to_json(programsSheet, { defval: '' });
+            
+            console.log(`Loaded ${currentBudgetData.length} programs from current budget`);
+            console.log('Sample program:', currentBudgetData[0]);
+            
+            if (currentBudgetData.length > 0) {
+                showCurrentBudgetMessage(`✅ Successfully loaded ${currentBudgetData.length} programs with current budget data!`, 'success');
+                
+                // If budget requests are already loaded, update the stats
+                if (budgetData.requestSummary.length > 0) {
+                    updateStats();
+                }
+            } else {
+                showCurrentBudgetMessage('No data found in the current budget file', 'error');
+            }
+        } catch (error) {
+            console.error('Error processing current budget file:', error);
+            showCurrentBudgetMessage('Error processing file: ' + error.message, 'error');
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function showCurrentBudgetMessage(message, type) {
+    const className = type === 'error' ? 'error-message' : 
+                     type === 'success' ? 'success-message' : 
+                     'loading';
+    
+    currentBudgetStatus.innerHTML = `<div class="${className}">${message}</div>`;
+    
+    if (type === 'success') {
+        setTimeout(() => {
+            currentBudgetStatus.innerHTML = '';
+        }, 3000);
+    }
+}
 
 function handleDragOver(e) {
     e.preventDefault();
@@ -76,9 +168,16 @@ function processFile(file) {
                 updateStats();
                 filtersSection.style.display = 'block';
                 generateBtn.disabled = false;
+                
+                // NEW: Show the current budget upload section
+                const currentBudgetSection = document.getElementById('currentBudgetSection');
+                if (currentBudgetSection) {
+                    currentBudgetSection.style.display = 'block';
+                }
             } else {
                 showMessage('No data found in the Request Summary sheet', 'error');
             }
+            
         } catch (error) {
             console.error('Error processing file:', error);
             showMessage('Error processing file: ' + error.message, 'error');
@@ -889,6 +988,40 @@ function getPrimaryValue(lineItems, fieldType) {
     return null;
 }
 
+// ===== MATCH PROGRAM WITH CURRENT BUDGET =====
+function getCurrentBudgetForProgram(department, programName) {
+    if (currentBudgetData.length === 0) {
+        return null; // No current budget data loaded
+    }
+    
+    console.log(`Looking for match: Dept="${department}", Program="${programName}"`);
+    
+    // Try to find exact match by User Group (Department) and Program Name
+    const match = currentBudgetData.find(prog => {
+        const userGroup = (prog['User Group'] || '').toString().trim().toUpperCase();
+        const progName = (prog['Program'] || '').toString().trim().toUpperCase();
+        const deptUpper = (department || '').toString().trim().toUpperCase();
+        const progNameUpper = (programName || '').toString().trim().toUpperCase();
+        
+        return userGroup === deptUpper && progName === progNameUpper;
+    });
+    
+    if (match) {
+        console.log(`✅ Match found! Current budget: $${match['Total Program Cost']}`);
+        return {
+            totalCost: match['Total Program Cost'] || 0,
+            personnel: match['Personnel'] || 0,
+            nonPersonnel: match['NonPersonnel'] || 0,
+            revenue: match['Revenue'] || 0,
+            fte: match['FTE'] || 0,
+            description: match['Description'] || ''
+        };
+    }
+    
+    console.log(`❌ No match found for "${department}" - "${programName}"`);
+    return null; // No match found
+}
+
 // Helper function to convert Markdown-style formatting to HTML
 function markdownToHtml(text) {
     if (!text) return text;
@@ -1536,7 +1669,7 @@ function generateProgramSummary() {
     
     const programData = {};
     
-    // Aggregate data by program within each department
+    // STEP 1: Aggregate data from budget REQUESTS (Personnel + NonPersonnel line items)
     filteredData.forEach(request => {
         const requestId = getRequestId(request);
         const lineItems = getLineItemsForRequest(requestId);
@@ -1556,10 +1689,12 @@ function generateProgramSummary() {
             if (!programData[dept][program]) {
                 programData[dept][program] = {
                     quartile: quartile,
-                    totalCost: 0, // This would come from existing budget data
+                    totalCost: 0,
                     requestedAmount: 0,
                     proposedTotalCost: 0,
-                    requestCount: 0
+                    requestCount: 0,
+                    isNewProgram: false,
+                    hasRequests: true // This program has requests
                 };
             }
             
@@ -1567,10 +1702,19 @@ function generateProgramSummary() {
             programData[dept][program].requestedAmount += amounts.total / lineItems.length;
             programData[dept][program].requestCount++;
             
-            // For demo purposes, we'll estimate total cost as 8x the requested amount
-            // In a real implementation, this would come from existing budget data
+            // Get current budget from uploaded data or use $0 for new programs
             if (programData[dept][program].totalCost === 0) {
-                programData[dept][program].totalCost = amounts.total * 8; // Rough estimate
+                const currentBudget = getCurrentBudgetForProgram(dept, program);
+                if (currentBudget) {
+                    programData[dept][program].totalCost = currentBudget.totalCost;
+                    programData[dept][program].isNewProgram = false;
+                    console.log(`Using real budget for ${program}: $${currentBudget.totalCost}`);
+                } else {
+                    // New program - no current budget
+                    programData[dept][program].totalCost = 0;
+                    programData[dept][program].isNewProgram = true;
+                    console.log(`New program (no current budget): ${program}`);
+                }
             }
             
             // Calculate proposed total
@@ -1578,9 +1722,43 @@ function generateProgramSummary() {
                 programData[dept][program].totalCost + programData[dept][program].requestedAmount;
         });
     });
+    
+    // STEP 2: Add ALL programs from current budget that DON'T have requests
+    if (currentBudgetData.length > 0) {
+        console.log('Adding programs from current budget that have no requests...');
+        
+        currentBudgetData.forEach(budgetProg => {
+            const dept = budgetProg['User Group'] || 'Unknown Department';
+            const program = budgetProg['Program'] || 'Unknown Program';
+            const totalCost = budgetProg['Total Program Cost'] || 0;
+            
+            // Skip if this program already has requests (already in programData)
+            if (programData[dept] && programData[dept][program]) {
+                return; // Already processed in Step 1
+            }
+            
+            // This program exists in current budget but has NO requests
+            if (!programData[dept]) {
+                programData[dept] = {};
+            }
+            
+            programData[dept][program] = {
+                quartile: 'N/A', // No quartile since no request
+                totalCost: totalCost,
+                requestedAmount: 0, // No new requests
+                proposedTotalCost: totalCost, // Same as current
+                requestCount: 0,
+                isNewProgram: false,
+                hasRequests: false // This program has NO requests
+            };
+            
+            console.log(`Added program with no requests: ${dept} - ${program} ($${totalCost})`);
+        });
+    }
 
+    // STEP 3: Generate HTML output
     let html = `<div class="section-header" id="program-summary">Program Summary</div>
-                <p>Below is a summary of programs and their total requested amount and potential new total cost, organized by department and quartile alignment.</p>`;
+                <p>Below is a summary of programs showing current budget, requested amounts, and proposed totals, organized by department and quartile alignment.</p>`;
     
     // Generate table for each department
     Object.entries(programData).forEach(([dept, programs]) => {
@@ -1601,20 +1779,35 @@ function generateProgramSummary() {
                             <tr style="background: #667eea; color: white;">
                                 <th style="padding: 12px 8px; text-align: center; width: 80px;">Quartile</th>
                                 <th style="padding: 12px 8px; text-align: left;">Program</th>
-                                <th style="padding: 12px 8px; text-align: right; width: 120px;">Total Cost</th>
+                                <th style="padding: 12px 8px; text-align: right; width: 120px;">Current Budget</th>
                                 <th style="padding: 12px 8px; text-align: right; width: 120px;">Requested Amount</th>
-                                <th style="padding: 12px 8px; text-align: right; width: 140px;">Proposed Total Cost</th>
+                                <th style="padding: 12px 8px; text-align: right; width: 140px;">Proposed Total</th>
                             </tr>
                         </thead>
                         <tbody>
         `;
         
-        // Sort programs by quartile (1=Most Aligned first)
+        // Sort programs: 
+        // 1. Programs with requests come first (sorted by quartile)
+        // 2. Programs without requests come last (alphabetically)
         const sortedPrograms = Object.entries(programs).sort((a, b) => {
-            const quartileOrder = {'Most Aligned': 1, 'More Aligned': 2, 'Less Aligned': 3, 'Least Aligned': 4};
-            const aOrder = quartileOrder[a[1].quartile] || 5;
-            const bOrder = quartileOrder[b[1].quartile] || 5;
-            return aOrder - bOrder;
+            const aHasRequests = a[1].hasRequests;
+            const bHasRequests = b[1].hasRequests;
+            
+            // Programs with requests come first
+            if (aHasRequests && !bHasRequests) return -1;
+            if (!aHasRequests && bHasRequests) return 1;
+            
+            // Within programs with requests, sort by quartile
+            if (aHasRequests && bHasRequests) {
+                const quartileOrder = {'Most Aligned': 1, 'More Aligned': 2, 'Less Aligned': 3, 'Least Aligned': 4, 'N/A': 5};
+                const aOrder = quartileOrder[a[1].quartile] || 5;
+                const bOrder = quartileOrder[b[1].quartile] || 5;
+                return aOrder - bOrder;
+            }
+            
+            // Within programs without requests, sort alphabetically
+            return a[0].localeCompare(b[0]);
         });
         
         sortedPrograms.forEach(([program, data]) => {
@@ -1622,22 +1815,49 @@ function generateProgramSummary() {
             departmentTotal.requestedAmount += data.requestedAmount;
             departmentTotal.proposedTotalCost += data.proposedTotalCost;
             
-            const quartileBadge = data.quartile !== 'N/A' ? 
-                `<span class="quartile-badge quartile-${data.quartile.toLowerCase().replace(' ', '-')}" style="font-size: 0.8rem; padding: 4px 8px;">${data.quartile.replace(' Aligned', '')}</span>` : 
-                '<span style="color: #666;">N/A</span>';
+            // Quartile badge or "No Request" indicator
+            let quartileBadge;
+            if (data.hasRequests) {
+                quartileBadge = data.quartile !== 'N/A' ? 
+                    `<span class="quartile-badge quartile-${data.quartile.toLowerCase().replace(' ', '-')}" style="font-size: 0.8rem; padding: 4px 8px;">${data.quartile.replace(' Aligned', '')}</span>` : 
+                    '<span style="color: #666;">N/A</span>';
+            } else {
+                quartileBadge = '<span style="color: #999; font-size: 0.7rem; font-style: italic;">No Request</span>';
+            }
+            
+            // New program badge
+            const newProgramBadge = data.isNewProgram ? 
+                '<span style="background: #17a2b8; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; margin-left: 5px;">NEW PROGRAM</span>' : 
+                '';
+            
+            // Calculate percentage increase
+            let percentIncrease = '';
+            if (data.totalCost > 0 && data.requestedAmount > 0) {
+                const pct = ((data.requestedAmount / data.totalCost) * 100).toFixed(1);
+                percentIncrease = ` (+${pct}%)`;
+            } else if (data.totalCost === 0 && data.requestedAmount > 0) {
+                percentIncrease = ' (New)';
+            }
+            
+            // Row styling based on whether it has requests
+            const rowStyle = data.hasRequests ? '' : 'background: #f9f9f9; opacity: 0.8;';
             
             html += `
-                <tr style="border-bottom: 1px solid #e0e0e0;">
+                <tr style="border-bottom: 1px solid #e0e0e0; ${rowStyle}">
                     <td style="padding: 10px 8px; text-align: center;">${quartileBadge}</td>
-                    <td style="padding: 10px 8px;">${program}</td>
+                    <td style="padding: 10px 8px;">${program}${newProgramBadge}</td>
                     <td style="padding: 10px 8px; text-align: right; color: #333;">$${formatCurrency(Math.round(data.totalCost))}</td>
-                    <td style="padding: 10px 8px; text-align: right; color: #ffc107; font-weight: 600;">$${formatCurrency(Math.round(data.requestedAmount))}</td>
-                    <td style="padding: 10px 8px; text-align: right; color: #28a745; font-weight: 600;">$${formatCurrency(Math.round(data.proposedTotalCost))}</td>
+                    <td style="padding: 10px 8px; text-align: right; color: ${data.requestedAmount > 0 ? '#ffc107' : '#999'}; font-weight: ${data.requestedAmount > 0 ? '600' : 'normal'};">$${formatCurrency(Math.round(data.requestedAmount))}</td>
+                    <td style="padding: 10px 8px; text-align: right; color: #28a745; font-weight: 600;">$${formatCurrency(Math.round(data.proposedTotalCost))}${percentIncrease}</td>
                 </tr>
             `;
         });
         
         // Add department total row
+        const deptPctIncrease = departmentTotal.totalCost > 0 ? 
+            ((departmentTotal.requestedAmount / departmentTotal.totalCost) * 100).toFixed(1) : 
+            'N/A';
+        
         html += `
                 <tr style="background: #f8f9ff; border-top: 2px solid #667eea; font-weight: 600;">
                     <td style="padding: 12px 8px; text-align: center; color: #667eea;">TOTAL</td>
@@ -1650,12 +1870,15 @@ function generateProgramSummary() {
         </table>
         
         <div style="margin-top: 15px; padding: 10px; background: #f0f8ff; border-radius: 5px; border-left: 4px solid #667eea;">
-            <strong>Department Impact Summary:</strong> ${dept} has ${Object.keys(programs).length} programs requesting 
+            <strong>Department Impact Summary:</strong> ${dept} has ${Object.keys(programs).length} total programs 
+            (${Object.values(programs).filter(p => p.hasRequests).length} with requests, 
+            ${Object.values(programs).filter(p => !p.hasRequests).length} without requests).
+            ${departmentTotal.requestedAmount > 0 ? `Requesting 
             <span style="color: #ffc107; font-weight: 600;">$${formatCurrency(Math.round(departmentTotal.requestedAmount))}</span> 
             in additional funding, which would increase the department's total budget from 
             <span style="color: #333;">$${formatCurrency(Math.round(departmentTotal.totalCost))}</span> to 
             <span style="color: #28a745; font-weight: 600;">$${formatCurrency(Math.round(departmentTotal.proposedTotalCost))}</span> 
-            (${((departmentTotal.requestedAmount / departmentTotal.totalCost) * 100).toFixed(1)}% increase).
+            (${deptPctIncrease}% increase).` : 'No new funding requests for this department.'}
         </div>
         
         </div>
@@ -1665,6 +1888,8 @@ function generateProgramSummary() {
 
     return html;
 }
+
+
 
 function generateDepartmentSummary() {
     const departments = {};

@@ -1517,6 +1517,333 @@ tr:hover {
     box-shadow: var(--shadow-md);
 }
 
+/* ========== DECISION DASHBOARD STYLES ========== */
+.decision-hero {
+    background: linear-gradient(135deg, var(--tyler-blue) 0%, #2a4a73 100%);
+    border-radius: 16px;
+    padding: 32px;
+    color: white;
+    margin-bottom: 24px;
+}
+
+.decision-hero-header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 24px;
+}
+
+.decision-hero-icon {
+    width: 56px;
+    height: 56px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.decision-hero-icon svg {
+    width: 28px;
+    height: 28px;
+    stroke: white;
+}
+
+.decision-hero h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.decision-hero p {
+    opacity: 0.85;
+    margin: 4px 0 0;
+    font-size: 0.95rem;
+}
+
+.decision-amount-banner {
+    background: rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 20px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.decision-amount-label {
+    font-size: 0.9rem;
+    opacity: 0.85;
+}
+
+.decision-amount-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #10b981;
+}
+
+.decision-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 1200px) {
+    .decision-cards-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .decision-cards-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.decision-card {
+    background: white;
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: var(--shadow-md);
+    border: 2px solid transparent;
+    transition: all var(--transition-base);
+}
+
+.decision-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+}
+
+.decision-card.approve { border-color: var(--green-500); }
+.decision-card.modify { border-color: var(--amber-500); }
+.decision-card.defer { border-color: var(--slate-400); }
+.decision-card.reject { border-color: var(--red-500); }
+
+.decision-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.decision-card-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+}
+
+.decision-card.approve .decision-card-icon { background: #dcfce7; color: var(--green-600); }
+.decision-card.modify .decision-card-icon { background: #fef3c7; color: var(--amber-600); }
+.decision-card.defer .decision-card-icon { background: #f1f5f9; color: var(--slate-600); }
+.decision-card.reject .decision-card-icon { background: #fee2e2; color: var(--red-600); }
+
+.decision-card-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.decision-card.approve .decision-card-badge { background: #dcfce7; color: var(--green-700); }
+.decision-card.modify .decision-card-badge { background: #fef3c7; color: var(--amber-700); }
+.decision-card.defer .decision-card-badge { background: #f1f5f9; color: var(--slate-600); }
+.decision-card.reject .decision-card-badge { background: #fee2e2; color: var(--red-700); }
+
+.decision-card-value {
+    font-size: 3rem;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+
+.decision-card.approve .decision-card-value { color: var(--green-600); }
+.decision-card.modify .decision-card-value { color: var(--amber-600); }
+.decision-card.defer .decision-card-value { color: var(--slate-600); }
+.decision-card.reject .decision-card-value { color: var(--red-600); }
+
+.decision-card-label {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--slate-700);
+    margin-bottom: 8px;
+}
+
+.decision-card-amount {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--slate-500);
+    margin-bottom: 12px;
+}
+
+.decision-card-bar {
+    height: 6px;
+    background: var(--slate-100);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.decision-card-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+}
+
+.decision-card.approve .decision-card-bar-fill { background: var(--green-500); }
+.decision-card.modify .decision-card-bar-fill { background: var(--amber-500); }
+.decision-card.defer .decision-card-bar-fill { background: var(--slate-400); }
+.decision-card.reject .decision-card-bar-fill { background: var(--red-500); }
+
+.decision-card-desc {
+    font-size: 0.8rem;
+    color: var(--slate-500);
+    line-height: 1.4;
+}
+
+/* Dashboard Actions */
+.dashboard-actions {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 32px;
+    flex-wrap: wrap;
+}
+
+.btn-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    background: white;
+    color: var(--slate-700);
+    border: 2px solid var(--slate-200);
+}
+
+.btn-action:hover {
+    background: var(--slate-50);
+    border-color: var(--slate-300);
+    transform: translateY(-2px);
+}
+
+.btn-action.primary {
+    background: linear-gradient(135deg, var(--tyler-blue) 0%, #2a4a73 100%);
+    color: white;
+    border-color: transparent;
+}
+
+.btn-action.primary:hover {
+    box-shadow: 0 4px 12px rgba(30, 58, 95, 0.3);
+}
+
+.btn-action.warning {
+    background: linear-gradient(135deg, var(--amber-500) 0%, var(--amber-600) 100%);
+    color: white;
+    border-color: transparent;
+}
+
+.btn-action.secondary {
+    background: linear-gradient(135deg, var(--emerald-500) 0%, var(--teal-500) 100%);
+    color: white;
+    border-color: transparent;
+}
+
+/* Confidence Section */
+.confidence-section {
+    background: white;
+    border-radius: 16px;
+    padding: 28px;
+    box-shadow: var(--shadow-md);
+}
+
+.confidence-header {
+    margin-bottom: 24px;
+}
+
+.confidence-header h3 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--tyler-blue);
+    margin: 0 0 4px;
+}
+
+.confidence-header p {
+    color: var(--slate-500);
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.confidence-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.confidence-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    background: var(--slate-50);
+    border-radius: 12px;
+    border-left: 4px solid;
+}
+
+.confidence-item.high { border-color: var(--green-500); }
+.confidence-item.medium { border-color: var(--amber-500); }
+.confidence-item.low { border-color: var(--red-500); }
+
+.confidence-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.confidence-item.high .confidence-indicator { background: var(--green-500); }
+.confidence-item.medium .confidence-indicator { background: var(--amber-500); }
+.confidence-item.low .confidence-indicator { background: var(--red-500); }
+
+.confidence-info {
+    flex: 1;
+}
+
+.confidence-label {
+    font-weight: 600;
+    color: var(--slate-700);
+    font-size: 0.95rem;
+}
+
+.confidence-desc {
+    font-size: 0.8rem;
+    color: var(--slate-500);
+}
+
+.confidence-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--slate-700);
+}
+
+/* White Paper Download Button */
+.btn-download.whitepaper {
+    background: linear-gradient(135deg, var(--tyler-blue) 0%, #2a4a73 100%);
+    color: white;
+}
+
+.btn-download.whitepaper:hover {
+    box-shadow: 0 4px 12px rgba(30, 58, 95, 0.3);
+}
+
 /* ========== ARCHETYPE TABLE STYLES ========== */
 .archetypes-table-section {
     margin-top: 32px;

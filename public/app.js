@@ -597,6 +597,21 @@ function updateStats() {
             <p>Least Aligned</p>
         </div>
     `;
+    
+    // Update UI navigation after data loads
+    const uniqueDepts = new Set();
+    filteredData.forEach(request => {
+        const requestId = getRequestId(request);
+        const lineItems = getLineItemsForRequest(requestId);
+        lineItems.forEach(item => {
+            const dept = getPrimaryValue([item], 'department');
+            if (dept) uniqueDepts.add(dept);
+        });
+    });
+    
+    if (typeof updateUIAfterDataLoad === 'function') {
+        updateUIAfterDataLoad(totalRequests, totalAmount, uniqueDepts.size);
+    }
 }
 
 function formatCurrency(amount) {
@@ -753,6 +768,10 @@ function displayReport() {
 
     // Render charts after HTML is added to DOM
     setTimeout(renderCharts, 100);
+    
+    // Enable navigation and update dashboard
+    if (typeof enableReportNav === 'function') enableReportNav();
+    if (typeof updateDecisionDashboard === 'function') updateDecisionDashboard();
 }
 
 

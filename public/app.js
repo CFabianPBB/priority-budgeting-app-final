@@ -2527,13 +2527,528 @@ function generateAnalyticalTableOfContents() {
 
 // Download functions for analytical report
 function downloadAnalyticalWordReport() {
-    alert('Analytical Word Report download coming soon! Use the PDF option for now.');
-    // You can implement this similar to downloadWordReport but using the analytical content
+    if (filteredData.length === 0) {
+        alert('Please generate a report first.');
+        return;
+    }
+    
+    const reportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    let totalAmount = 0, totalOngoing = 0, totalOnetime = 0;
+    const dStats = { approve: 0, modify: 0, defer: 0, reject: 0 };
+    const dAmounts = { approve: 0, modify: 0, defer: 0, reject: 0 };
+    
+    filteredData.forEach(request => {
+        const amounts = getRequestAmount(request);
+        totalAmount += amounts.total;
+        totalOngoing += amounts.ongoing;
+        totalOnetime += amounts.onetime;
+        const analysis = scoreRequest(request);
+        const disp = (analysis.disposition || '').toLowerCase();
+        if (dStats[disp] !== undefined) { dStats[disp]++; dAmounts[disp] += amounts.total; }
+    });
+    
+    // Build summary table rows
+    let summaryRows = '';
+    filteredData.forEach(request => {
+        const requestId = getRequestId(request);
+        const description = getRequestDescription(request);
+        const lineItems = getLineItemsForRequest(requestId);
+        const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
+        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        const amounts = getRequestAmount(request);
+        const analysis = scoreRequest(request);
+        const shortDesc = description && description.length > 30 ? description.substring(0, 30) + '...' : (description || 'N/A');
+        
+        const dispColor = analysis.disposition === 'APPROVE' ? '#10b981' : 
+                         analysis.disposition === 'MODIFY' ? '#f59e0b' : 
+                         analysis.disposition === 'DEFER' ? '#64748b' : '#ef4444';
+        
+        summaryRows += `
+            <tr>
+                <td style="padding: 8px; border: 1px solid #e2e8f0;">${requestId}</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0;">${shortDesc}</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0;">${primaryDept}</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0;">${primaryQuartile}</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: right;">$${formatCurrency(amounts.total)}</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: center;">${analysis.totalScore}/12</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0; background: ${dispColor}; color: white; font-weight: bold; text-align: center;">${analysis.disposition}</td>
+            </tr>
+        `;
+    });
+    
+    // Build detailed analysis for each request
+    let detailedAnalysis = '';
+    filteredData.forEach((request, index) => {
+        const requestId = getRequestId(request);
+        const description = getRequestDescription(request);
+        const lineItems = getLineItemsForRequest(requestId);
+        const qa = getRequestQA(requestId);
+        const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
+        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        const amounts = getRequestAmount(request);
+        const analysis = scoreRequest(request);
+        
+        const dispColor = analysis.disposition === 'APPROVE' ? '#10b981' : 
+                         analysis.disposition === 'MODIFY' ? '#f59e0b' : 
+                         analysis.disposition === 'DEFER' ? '#64748b' : '#ef4444';
+        
+        // Q&A section
+        let qaHtml = '';
+        if (qa.length > 0) {
+            qa.forEach(qItem => {
+                let question = '', answer = '';
+                Object.keys(qItem).forEach(key => {
+                    const lowerKey = key.toLowerCase();
+                    if (lowerKey.includes('question') && !lowerKey.includes('type') && qItem[key]) question = qItem[key];
+                    if (lowerKey.includes('answer') && qItem[key]) answer = qItem[key];
+                });
+                if (question && answer && answer.trim()) {
+                    qaHtml += `<div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 10px; margin: 8px 0;"><strong style="color: #1e3a5f;">${question}</strong><br/>${answer}</div>`;
+                }
+            });
+        }
+        
+        detailedAnalysis += `
+            <div style="page-break-inside: avoid; margin-bottom: 30px; border: 2px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #1e3a5f, #2a4a73); color: white; padding: 15px;">
+                    <strong style="font-size: 16px;">Request ${requestId}: ${description || 'No Description'}</strong>
+                </div>
+                <div style="padding: 15px;">
+                    <table style="width: 100%; margin-bottom: 15px;">
+                        <tr>
+                            <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">Department</div><div style="font-weight: 600;">${primaryDept}</div></td>
+                            <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">Quartile</div><div style="font-weight: 600;">${primaryQuartile}</div></td>
+                            <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">Total Amount</div><div style="font-weight: 600; color: #10b981;">$${formatCurrency(amounts.total)}</div></td>
+                            <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">Ongoing</div><div style="font-weight: 600;">$${formatCurrency(amounts.ongoing)}</div></td>
+                            <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">One-time</div><div style="font-weight: 600;">$${formatCurrency(amounts.onetime)}</div></td>
+                            <td style="width: 16%; padding: 8px; background: ${dispColor}; border-radius: 4px; text-align: center; color: white;"><div style="font-size: 10px;">Recommendation</div><div style="font-weight: 700;">${analysis.disposition}</div></td>
+                        </tr>
+                    </table>
+                    
+                    <h4 style="color: #1e3a5f; margin: 15px 0 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">PBB Scoring (${analysis.totalScore}/12 Total)</h4>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                        <tr style="background: #f8fafc;">
+                            <td style="padding: 8px; width: 25%;"><strong>1. Program Alignment</strong></td>
+                            <td style="padding: 8px; width: 10%; text-align: center; font-weight: 700;">${analysis.quartileScore}/2</td>
+                            <td style="padding: 8px;">${analysis.quartileReason}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px;"><strong>2. Outcome Evidence</strong></td>
+                            <td style="padding: 8px; text-align: center; font-weight: 700;">${analysis.outcomeScore}/2</td>
+                            <td style="padding: 8px;">${analysis.outcomeReason}</td>
+                        </tr>
+                        <tr style="background: #f8fafc;">
+                            <td style="padding: 8px;"><strong>3. Funding Strategy</strong></td>
+                            <td style="padding: 8px; text-align: center; font-weight: 700;">${analysis.fundingScore}/2</td>
+                            <td style="padding: 8px;">${analysis.fundingReason}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px;"><strong>4. Mandate/Risk</strong></td>
+                            <td style="padding: 8px; text-align: center; font-weight: 700;">${analysis.mandateScore}/2</td>
+                            <td style="padding: 8px;">${analysis.mandateReason}</td>
+                        </tr>
+                        <tr style="background: #f8fafc;">
+                            <td style="padding: 8px;"><strong>5. Efficiency/ROI</strong></td>
+                            <td style="padding: 8px; text-align: center; font-weight: 700;">${analysis.efficiencyScore}/2</td>
+                            <td style="padding: 8px;">${analysis.efficiencyReason}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px;"><strong>6. Access</strong></td>
+                            <td style="padding: 8px; text-align: center; font-weight: 700;">${analysis.accessScore}/2</td>
+                            <td style="padding: 8px;">${analysis.accessReason}</td>
+                        </tr>
+                    </table>
+                    
+                    <div style="margin-top: 15px; padding: 12px; background: #f0f9ff; border-radius: 6px; border-left: 4px solid #0ea5e9;">
+                        <strong style="color: #0369a1;">Overall Rationale:</strong><br/>
+                        ${analysis.narrative}
+                    </div>
+                    
+                    ${qaHtml ? `<h4 style="color: #1e3a5f; margin: 20px 0 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">Request Context & Details</h4>${qaHtml}` : ''}
+                </div>
+            </div>
+        `;
+    });
+    
+    const wordHtml = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
+        <head><meta charset="UTF-8"><title>PBB Analysis Report</title></head>
+        <body style="font-family: Arial, sans-serif; margin: 40px; line-height: 1.5;">
+            <div style="text-align: center; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 3px solid #10b981;">
+                <h1 style="color: #1e3a5f; font-size: 28px; margin-bottom: 10px;">🎯 PBB Analysis & Recommendations Report</h1>
+                <p style="color: #64748b; font-size: 14px;">Priority Based Budgeting Framework Analysis</p>
+                <p style="color: #64748b; font-size: 12px;">Generated on ${reportDate}</p>
+            </div>
+            
+            <div style="background: #fff7ed; border: 2px solid #f59e0b; padding: 15px; border-radius: 8px; margin-bottom: 30px;">
+                <p style="margin: 0; color: #92400e;"><strong>⚠️ Advisory Report:</strong> This analysis represents what a textbook PBB framework would suggest. These are recommendations to inform decision-making, not actual funding decisions.</p>
+            </div>
+            
+            <h2 style="color: #1e3a5f; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">Executive Summary</h2>
+            <p>This report analyzes <strong>${filteredData.length} budget requests</strong> totaling <strong style="color: #10b981;">$${formatCurrency(totalAmount)}</strong>.</p>
+            
+            <table style="width: 100%; border-collapse: separate; border-spacing: 10px; margin: 20px 0;">
+                <tr>
+                    <td style="width: 25%; padding: 20px; text-align: center; background: linear-gradient(135deg, #d1fae5, #a7f3d0); border-radius: 8px;">
+                        <div style="font-size: 32px; font-weight: bold; color: #059669;">${dStats.approve}</div>
+                        <div style="color: #065f46; font-weight: 600;">✓ APPROVE</div>
+                        <div style="font-size: 12px; color: #065f46;">$${formatCurrency(dAmounts.approve)}</div>
+                    </td>
+                    <td style="width: 25%; padding: 20px; text-align: center; background: linear-gradient(135deg, #fef3c7, #fde68a); border-radius: 8px;">
+                        <div style="font-size: 32px; font-weight: bold; color: #d97706;">${dStats.modify}</div>
+                        <div style="color: #92400e; font-weight: 600;">⚠ MODIFY</div>
+                        <div style="font-size: 12px; color: #92400e;">$${formatCurrency(dAmounts.modify)}</div>
+                    </td>
+                    <td style="width: 25%; padding: 20px; text-align: center; background: linear-gradient(135deg, #e2e8f0, #cbd5e1); border-radius: 8px;">
+                        <div style="font-size: 32px; font-weight: bold; color: #475569;">${dStats.defer}</div>
+                        <div style="color: #334155; font-weight: 600;">⏸ DEFER</div>
+                        <div style="font-size: 12px; color: #334155;">$${formatCurrency(dAmounts.defer)}</div>
+                    </td>
+                    <td style="width: 25%; padding: 20px; text-align: center; background: linear-gradient(135deg, #fee2e2, #fecaca); border-radius: 8px;">
+                        <div style="font-size: 32px; font-weight: bold; color: #dc2626;">${dStats.reject}</div>
+                        <div style="color: #991b1b; font-weight: 600;">✗ REJECT</div>
+                        <div style="font-size: 12px; color: #991b1b;">$${formatCurrency(dAmounts.reject)}</div>
+                    </td>
+                </tr>
+            </table>
+            
+            <h2 style="color: #1e3a5f; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-top: 40px;">Summary Table</h2>
+            <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                <thead>
+                    <tr style="background: #1e3a5f; color: white;">
+                        <th style="padding: 10px; text-align: left;">ID</th>
+                        <th style="padding: 10px; text-align: left;">Description</th>
+                        <th style="padding: 10px; text-align: left;">Department</th>
+                        <th style="padding: 10px; text-align: left;">Quartile</th>
+                        <th style="padding: 10px; text-align: right;">Amount</th>
+                        <th style="padding: 10px; text-align: center;">Score</th>
+                        <th style="padding: 10px; text-align: center;">Recommendation</th>
+                    </tr>
+                </thead>
+                <tbody>${summaryRows}</tbody>
+            </table>
+            
+            <h2 style="color: #1e3a5f; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-top: 40px;">Detailed Request Analysis</h2>
+            ${detailedAnalysis}
+            
+            <div style="margin-top: 40px; padding: 20px; background: #f1f5f9; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; color: #64748b; font-size: 12px;">Generated by PBB Budget Request Analyzer • Tyler Technologies Budget Intelligence</p>
+            </div>
+        </body>
+        </html>
+    `;
+    
+    const blob = new Blob([wordHtml], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `PBB_Analysis_Report_${new Date().toISOString().split('T')[0]}.doc`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 }
 
 function downloadAnalyticalPdfReport() {
-    alert('Analytical PDF Report download coming soon! You can print the analytical report using your browser\'s print function (Ctrl+P).');
-    // You can implement this similar to downloadPdfReport but using the analytical content
+    if (filteredData.length === 0) {
+        alert('Please generate a report first.');
+        return;
+    }
+    
+    const reportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    let totalAmount = 0, totalOngoing = 0, totalOnetime = 0;
+    const dStats = { approve: 0, modify: 0, defer: 0, reject: 0 };
+    const dAmounts = { approve: 0, modify: 0, defer: 0, reject: 0 };
+    const deptStats = {};
+    
+    filteredData.forEach(request => {
+        const amounts = getRequestAmount(request);
+        totalAmount += amounts.total;
+        totalOngoing += amounts.ongoing;
+        totalOnetime += amounts.onetime;
+        const analysis = scoreRequest(request);
+        const disp = (analysis.disposition || '').toLowerCase();
+        if (dStats[disp] !== undefined) { dStats[disp]++; dAmounts[disp] += amounts.total; }
+        
+        const requestId = getRequestId(request);
+        const lineItems = getLineItemsForRequest(requestId);
+        const dept = getPrimaryValue(lineItems, 'department') || 'Unknown';
+        if (!deptStats[dept]) deptStats[dept] = { count: 0, amount: 0 };
+        deptStats[dept].count++;
+        deptStats[dept].amount += amounts.total;
+    });
+    
+    // Build summary table rows
+    let tableRows = '';
+    filteredData.forEach(request => {
+        const requestId = getRequestId(request);
+        const description = getRequestDescription(request);
+        const lineItems = getLineItemsForRequest(requestId);
+        const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
+        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        const amounts = getRequestAmount(request);
+        const analysis = scoreRequest(request);
+        const shortDesc = description && description.length > 35 ? description.substring(0, 35) + '...' : (description || 'N/A');
+        
+        const qBadge = primaryQuartile.includes('Most') || primaryQuartile.includes('More') ? 'badge-high' : 'badge-low';
+        const dispBadge = analysis.disposition === 'APPROVE' ? 'badge-approve' : 
+                         analysis.disposition === 'MODIFY' ? 'badge-modify' : 
+                         analysis.disposition === 'DEFER' ? 'badge-defer' : 'badge-reject';
+        
+        tableRows += `<tr>
+            <td>${requestId}</td>
+            <td>${shortDesc}</td>
+            <td>${primaryDept}</td>
+            <td><span class="badge ${qBadge}">${primaryQuartile}</span></td>
+            <td class="amount">$${formatCurrency(amounts.total)}</td>
+            <td style="text-align: center;">${analysis.totalScore}/12</td>
+            <td><span class="badge ${dispBadge}">${analysis.disposition}</span></td>
+        </tr>`;
+    });
+    
+    // Build detailed analysis pages for ALL requests
+    let detailedPagesHtml = '';
+    filteredData.forEach((request, index) => {
+        const requestId = getRequestId(request);
+        const description = getRequestDescription(request);
+        const lineItems = getLineItemsForRequest(requestId);
+        const qa = getRequestQA(requestId);
+        const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
+        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        const amounts = getRequestAmount(request);
+        const analysis = scoreRequest(request);
+        
+        const dispColor = analysis.disposition === 'APPROVE' ? '#10b981' : 
+                         analysis.disposition === 'MODIFY' ? '#f59e0b' : 
+                         analysis.disposition === 'DEFER' ? '#64748b' : '#ef4444';
+        
+        // Q&A Section
+        let qaHtml = '';
+        if (qa.length > 0) {
+            qa.forEach(qItem => {
+                let question = '', answer = '';
+                Object.keys(qItem).forEach(key => {
+                    const lowerKey = key.toLowerCase();
+                    if (lowerKey.includes('question') && !lowerKey.includes('type') && qItem[key]) question = qItem[key];
+                    if (lowerKey.includes('answer') && qItem[key]) answer = qItem[key];
+                });
+                if (!question) {
+                    const questionKeys = ['Question', 'C', 'Col_2', 'Col_C'];
+                    for (const key of questionKeys) {
+                        if (qItem[key] && qItem[key].toString().trim()) { question = qItem[key]; break; }
+                    }
+                }
+                if (question && answer && answer.trim()) {
+                    qaHtml += `<div class="qa-item"><div class="qa-question">${question}</div><div class="qa-answer">${answer}</div></div>`;
+                }
+            });
+        }
+        
+        // Line Items with all fields
+        let lineItemsHtml = '';
+        lineItems.forEach((item, idx) => {
+            const itemQuartile = getPrimaryValue([item], 'quartile');
+            const qClass = itemQuartile && (itemQuartile.includes('Most') || itemQuartile.includes('More')) ? 'badge-high' : 'badge-low';
+            
+            let fieldsHtml = '<div class="field-grid">';
+            const allFields = ['REQUESTID', 'REQUEST TYPE', 'STATUS', 'ONGOING COST', 'ONETIME COST', 'FUND', 'DEPARTMENT', 'PROGRAM', 'PROGRAMID', 'QUARTILE'];
+            allFields.forEach(field => {
+                const value = findFieldValue(item, field);
+                if (value !== null) {
+                    const displayValue = formatFieldValue(field, value);
+                    fieldsHtml += `<div class="field-item"><div class="field-label">${field}</div><div class="field-value">${displayValue}</div></div>`;
+                }
+            });
+            fieldsHtml += '</div>';
+            
+            lineItemsHtml += `<div class="line-item-card"><div class="line-item-header">Line Item ${idx + 1} ${itemQuartile ? `<span class="badge ${qClass}">${itemQuartile}</span>` : ''}</div>${fieldsHtml}</div>`;
+        });
+        
+        detailedPagesHtml += `
+            <div class="request-page page-break">
+                <div class="page-header"><span class="page-title">Request Analysis</span><span class="page-number">${index + 1} of ${filteredData.length}</span></div>
+                <div class="request-card">
+                    <div class="request-header" style="background: linear-gradient(135deg, ${dispColor}, ${dispColor}dd);">Request ${requestId}: ${description || 'No Description'}</div>
+                    <div class="request-body">
+                        <div class="meta-grid">
+                            <div class="meta-item"><div class="meta-label">Department</div><div class="meta-value">${primaryDept}</div></div>
+                            <div class="meta-item"><div class="meta-label">Quartile</div><div class="meta-value">${primaryQuartile}</div></div>
+                            <div class="meta-item"><div class="meta-label">Total Amount</div><div class="meta-value amount">$${formatCurrency(amounts.total)}</div></div>
+                            <div class="meta-item"><div class="meta-label">Ongoing</div><div class="meta-value">$${formatCurrency(amounts.ongoing)}</div></div>
+                            <div class="meta-item"><div class="meta-label">One-time</div><div class="meta-value">$${formatCurrency(amounts.onetime)}</div></div>
+                            <div class="meta-item highlight" style="background: ${dispColor};"><div class="meta-label" style="color: white;">Recommendation</div><div class="meta-value" style="color: white; font-weight: 700;">${analysis.disposition} (${analysis.totalScore}/12)</div></div>
+                        </div>
+                        
+                        <h4 class="section-header">PBB Scoring Breakdown</h4>
+                        <div class="scoring-grid">
+                            <div class="score-card"><div class="score-name">1. Program Alignment</div><div class="score-value">${analysis.quartileScore}/2</div><div class="score-reason">${analysis.quartileReason}</div></div>
+                            <div class="score-card"><div class="score-name">2. Outcome Evidence</div><div class="score-value">${analysis.outcomeScore}/2</div><div class="score-reason">${analysis.outcomeReason}</div></div>
+                            <div class="score-card"><div class="score-name">3. Funding Strategy</div><div class="score-value">${analysis.fundingScore}/2</div><div class="score-reason">${analysis.fundingReason}</div></div>
+                            <div class="score-card"><div class="score-name">4. Mandate/Risk</div><div class="score-value">${analysis.mandateScore}/2</div><div class="score-reason">${analysis.mandateReason}</div></div>
+                            <div class="score-card"><div class="score-name">5. Efficiency/ROI</div><div class="score-value">${analysis.efficiencyScore}/2</div><div class="score-reason">${analysis.efficiencyReason}</div></div>
+                            <div class="score-card"><div class="score-name">6. Access</div><div class="score-value">${analysis.accessScore}/2</div><div class="score-reason">${analysis.accessReason}</div></div>
+                        </div>
+                        
+                        <div class="rationale-box"><strong>Overall Rationale:</strong> ${analysis.narrative}</div>
+                        
+                        ${qaHtml ? `<h4 class="section-header">Request Context & Details</h4><div class="qa-section">${qaHtml}</div>` : ''}
+                        
+                        <h4 class="section-header">Line Item Details</h4>
+                        ${lineItemsHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    const pdfHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PBB Analysis Report</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@page { size: A4; margin: 0.5in; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; background: white; font-size: 10px; }
+
+/* Cover Page - Green Theme */
+.cover-page { height: 100vh; display: flex; flex-direction: column; background: linear-gradient(135deg, #059669 0%, #10b981 50%, #059669 100%); color: white; page-break-after: always; }
+.cover-header { padding: 40px 60px; }
+.cover-brand { font-size: 14px; font-weight: 500; letter-spacing: 0.05em; opacity: 0.9; }
+.cover-main { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 0 60px; }
+.cover-title { font-size: 42px; font-weight: 700; line-height: 1.1; margin-bottom: 20px; }
+.cover-subtitle { font-size: 20px; font-weight: 300; opacity: 0.9; margin-bottom: 40px; }
+.cover-stats { display: flex; gap: 40px; margin-top: 30px; }
+.cover-stat-value { font-size: 32px; font-weight: 700; }
+.cover-stat-label { font-size: 12px; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.05em; }
+.cover-footer { padding: 40px 60px; border-top: 1px solid rgba(255,255,255,0.2); display: flex; justify-content: space-between; font-size: 12px; opacity: 0.7; }
+
+/* Content Pages */
+.content-page, .request-page { padding: 35px 45px; }
+.page-header { display: flex; justify-content: space-between; padding-bottom: 10px; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px; }
+.page-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; font-weight: 600; }
+.page-number { font-size: 10px; color: #64748b; }
+.section-title { font-size: 22px; font-weight: 700; color: #059669; margin-bottom: 6px; }
+.section-subtitle { font-size: 13px; color: #64748b; margin-bottom: 20px; }
+.section-header { font-size: 13px; font-weight: 700; color: #059669; margin: 20px 0 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; }
+.page-break { page-break-before: always; }
+
+/* Summary Cards */
+.summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 25px; }
+.summary-card { padding: 16px; border-radius: 10px; text-align: center; }
+.summary-card.approve { background: linear-gradient(135deg, #d1fae5, #a7f3d0); border: 2px solid #10b981; }
+.summary-card.modify { background: linear-gradient(135deg, #fef3c7, #fde68a); border: 2px solid #f59e0b; }
+.summary-card.defer { background: linear-gradient(135deg, #e2e8f0, #cbd5e1); border: 2px solid #64748b; }
+.summary-card.reject { background: linear-gradient(135deg, #fee2e2, #fecaca); border: 2px solid #ef4444; }
+.summary-card-value { font-size: 28px; font-weight: 700; }
+.summary-card.approve .summary-card-value { color: #059669; }
+.summary-card.modify .summary-card-value { color: #d97706; }
+.summary-card.defer .summary-card-value { color: #475569; }
+.summary-card.reject .summary-card-value { color: #dc2626; }
+.summary-card-label { font-size: 11px; font-weight: 600; margin-top: 3px; }
+.summary-card-amount { font-size: 12px; margin-top: 6px; font-weight: 500; }
+
+/* Data Table */
+.data-table { width: 100%; border-collapse: collapse; font-size: 9px; }
+.data-table thead { background: #059669; color: white; }
+.data-table th { padding: 8px 6px; text-align: left; font-weight: 600; text-transform: uppercase; font-size: 8px; }
+.data-table td { padding: 8px 6px; border-bottom: 1px solid #e2e8f0; }
+.data-table tr:nth-child(even) { background: #f8fafc; }
+
+/* Badges */
+.badge { display: inline-block; padding: 2px 6px; border-radius: 10px; font-size: 8px; font-weight: 600; }
+.badge-approve { background: #10b981; color: white; }
+.badge-modify { background: #f59e0b; color: white; }
+.badge-defer { background: #64748b; color: white; }
+.badge-reject { background: #ef4444; color: white; }
+.badge-high { background: #10b981; color: white; }
+.badge-low { background: #64748b; color: white; }
+.amount { color: #059669; font-weight: 600; }
+
+/* Request Cards */
+.request-card { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
+.request-header { background: linear-gradient(135deg, #059669, #10b981); color: white; padding: 12px 16px; font-weight: 600; font-size: 13px; }
+.request-body { padding: 16px; }
+.meta-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 15px; }
+.meta-item { background: #f8fafc; padding: 8px; border-radius: 5px; text-align: center; border: 1px solid #e2e8f0; }
+.meta-item.highlight { border: none; }
+.meta-label { font-size: 8px; color: #64748b; font-weight: 600; margin-bottom: 2px; }
+.meta-value { font-size: 11px; color: #1e293b; font-weight: 500; }
+
+/* Scoring Grid */
+.scoring-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 15px; }
+.score-card { background: #f8fafc; padding: 10px; border-radius: 6px; border: 1px solid #e2e8f0; }
+.score-name { font-size: 9px; font-weight: 600; color: #059669; margin-bottom: 3px; }
+.score-value { font-size: 16px; font-weight: 700; color: #1e3a5f; margin-bottom: 4px; }
+.score-reason { font-size: 8px; color: #64748b; line-height: 1.4; }
+
+/* Rationale Box */
+.rationale-box { margin: 15px 0; padding: 12px; background: #f0fdf4; border-radius: 6px; border-left: 4px solid #10b981; font-size: 10px; line-height: 1.5; }
+
+/* Q&A Section */
+.qa-section { margin-bottom: 15px; }
+.qa-item { background: #fffbeb; border-left: 3px solid #f59e0b; padding: 10px; margin-bottom: 8px; border-radius: 0 5px 5px 0; }
+.qa-question { font-weight: 600; color: #1e3a5f; font-size: 10px; margin-bottom: 4px; }
+.qa-answer { color: #475569; font-size: 9px; line-height: 1.4; }
+
+/* Line Items */
+.line-item-card { margin-bottom: 10px; padding: 10px; background: #f8fafc; border-radius: 6px; border-left: 3px solid #667eea; }
+.line-item-header { font-weight: 600; font-size: 10px; color: #1e3a5f; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.field-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+.field-item { background: white; padding: 5px; border-radius: 3px; border: 1px solid #e2e8f0; text-align: center; }
+.field-label { font-size: 6px; color: #64748b; font-weight: 600; text-transform: uppercase; }
+.field-value { font-size: 8px; color: #1e293b; font-weight: 500; word-break: break-word; }
+
+@media print { 
+    .page-break { page-break-before: always; } 
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .request-card { break-inside: avoid; }
+    .score-card { break-inside: avoid; }
+}
+</style></head><body>
+
+<!-- COVER PAGE -->
+<div class="cover-page">
+    <div class="cover-header"><span class="cover-brand">🎯 PBB FRAMEWORK ANALYSIS • TYLER TECHNOLOGIES</span></div>
+    <div class="cover-main">
+        <h1 class="cover-title">PBB Analysis &<br>Recommendations Report</h1>
+        <p class="cover-subtitle">Comprehensive Priority Based Budgeting Framework Scoring</p>
+        <div class="cover-stats">
+            <div class="cover-stat"><div class="cover-stat-value">${filteredData.length}</div><div class="cover-stat-label">Requests Analyzed</div></div>
+            <div class="cover-stat"><div class="cover-stat-value">$${formatCurrency(totalAmount)}</div><div class="cover-stat-label">Total Amount</div></div>
+            <div class="cover-stat"><div class="cover-stat-value">${dStats.approve}</div><div class="cover-stat-label">Recommended Approvals</div></div>
+        </div>
+    </div>
+    <div class="cover-footer"><span>Generated on ${reportDate}</span><span>Advisory Analysis • Not Binding Decisions</span></div>
+</div>
+
+<!-- EXECUTIVE SUMMARY -->
+<div class="content-page page-break">
+    <div class="page-header"><span class="page-title">Executive Summary</span></div>
+    <h2 class="section-title">PBB Framework Recommendations</h2>
+    <p class="section-subtitle">Analysis of ${filteredData.length} budget requests totaling $${formatCurrency(totalAmount)}</p>
+    
+    <div class="summary-cards">
+        <div class="summary-card approve"><div class="summary-card-value">${dStats.approve}</div><div class="summary-card-label">✓ Approve</div><div class="summary-card-amount">$${formatCurrency(dAmounts.approve)}</div></div>
+        <div class="summary-card modify"><div class="summary-card-value">${dStats.modify}</div><div class="summary-card-label">⚠ Modify</div><div class="summary-card-amount">$${formatCurrency(dAmounts.modify)}</div></div>
+        <div class="summary-card defer"><div class="summary-card-value">${dStats.defer}</div><div class="summary-card-label">⏸ Defer</div><div class="summary-card-amount">$${formatCurrency(dAmounts.defer)}</div></div>
+        <div class="summary-card reject"><div class="summary-card-value">${dStats.reject}</div><div class="summary-card-label">✗ Reject</div><div class="summary-card-amount">$${formatCurrency(dAmounts.reject)}</div></div>
+    </div>
+    
+    <h3 style="font-size: 16px; color: #1e3a5f; margin: 25px 0 12px;">All Requests Summary</h3>
+    <table class="data-table">
+        <thead><tr><th>ID</th><th>Description</th><th>Department</th><th>Quartile</th><th>Amount</th><th>Score</th><th>Recommendation</th></tr></thead>
+        <tbody>${tableRows}</tbody>
+    </table>
+</div>
+
+<!-- DETAILED REQUEST ANALYSIS PAGES -->
+${detailedPagesHtml}
+
+</body></html>`;
+    
+    const newWindow = window.open('', '_blank');
+    newWindow.document.write(pdfHtml);
+    newWindow.document.close();
+    newWindow.focus();
+    setTimeout(() => alert('Comprehensive PBB Analysis Report opened!\\n\\nTo save as PDF:\\n1. Press Ctrl+P (Cmd+P on Mac)\\n2. Select "Save as PDF"\\n3. Click Save'), 500);
 }
 
 function generateRequestQASection(qa) {
@@ -3804,34 +4319,29 @@ function generateWordDetailedRequests() {
 }
 
 function downloadPdfReport() {
-    const reportDate = new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
-
-    const totalAmount = filteredData.reduce((sum, request) => {
-        const amounts = getRequestAmount(request);
-        return sum + amounts.total;
-    }, 0);
-
-    // Calculate summary stats for the report
-    let totalOngoing = 0;
-    let totalOnetime = 0;
-    const quartileStats = {
-        'Most Aligned': 0,
-        'More Aligned': 0,
-        'Less Aligned': 0,
-        'Least Aligned': 0
-    };
+    if (filteredData.length === 0) {
+        alert('Please generate a report first.');
+        return;
+    }
+    
+    const reportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    let totalAmount = 0, totalOngoing = 0, totalOnetime = 0;
+    const quartileStats = { 'Most Aligned': 0, 'More Aligned': 0, 'Less Aligned': 0, 'Least Aligned': 0 };
+    const deptStats = {};
     
     filteredData.forEach(request => {
         const amounts = getRequestAmount(request);
+        totalAmount += amounts.total;
         totalOngoing += amounts.ongoing;
         totalOnetime += amounts.onetime;
         
         const requestId = getRequestId(request);
         const lineItems = getLineItemsForRequest(requestId);
+        const dept = getPrimaryValue(lineItems, 'department') || 'Unknown';
+        
+        if (!deptStats[dept]) deptStats[dept] = { count: 0, amount: 0 };
+        deptStats[dept].count++;
+        deptStats[dept].amount += amounts.total;
         
         lineItems.forEach(item => {
             const quartile = getPrimaryValue([item], 'quartile');
@@ -3840,647 +4350,443 @@ function downloadPdfReport() {
             }
         });
     });
-
-    // Create a print-optimized HTML document
-    let printHtml = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Priority Based Budgeting Report</title>
-            <style>
-                @page { 
-                    size: A4; 
-                    margin: 0.75in; 
-                    @top-center {
-                        content: "Priority Based Budgeting Report - Page " counter(page);
-                    }
-                }
-                
-                body { 
-                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-                    line-height: 1.5; 
-                    color: #333; 
-                    font-size: 12px;
-                    margin: 0;
-                    padding: 0;
-                }
-                
-                .print-instruction {
-                    background: #fff3cd;
-                    border: 2px solid #ffc107;
-                    padding: 15px;
-                    margin: 20px 0;
-                    border-radius: 8px;
-                    text-align: center;
-                    font-weight: bold;
-                    color: #856404;
-                }
-                
-                .header { 
-                    text-align: center; 
-                    margin-bottom: 40px; 
-                    padding-bottom: 20px;
-                    border-bottom: 3px solid #667eea;
-                }
-                
-                .header h1 { 
-                    color: #667eea; 
-                    font-size: 28px; 
-                    margin-bottom: 10px; 
-                }
-                
-                .header p { 
-                    color: #666; 
-                    font-size: 14px; 
-                    margin: 5px 0;
-                }
-                
-                .section-header { 
-                    color: #667eea; 
-                    font-size: 18px; 
-                    font-weight: 600; 
-                    margin: 30px 0 20px 0; 
-                    border-bottom: 2px solid #e0e0e0; 
-                    padding-bottom: 10px; 
-                    page-break-after: avoid;
-                }
-                
-                .stats-container {
-                    display: grid;
-                    grid-template-columns: repeat(4, 1fr);
-                    gap: 15px;
-                    margin: 20px 0;
-                    page-break-inside: avoid;
-                }
-                
-                .stat-card {
-                    background: linear-gradient(135deg, #667eea, #764ba2);
-                    color: white;
-                    padding: 20px;
-                    border-radius: 10px;
-                    text-align: center;
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                }
-                
-                .stat-value {
-                    font-size: 24px;
-                    font-weight: bold;
-                    display: block;
-                    margin-bottom: 8px;
-                }
-                
-                .stat-label {
-                    font-size: 11px;
-                    opacity: 0.9;
-                }
-                
-                .card { 
-                    border: 2px solid #e0e0e0; 
-                    margin: 20px 0; 
-                    border-radius: 8px; 
-                    page-break-inside: avoid;
-                    background: white;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }
-                
-                .card-header { 
-                    background: linear-gradient(135deg, #667eea, #764ba2); 
-                    color: white; 
-                    padding: 15px 20px; 
-                    font-size: 16px; 
-                    font-weight: 600; 
-                    border-radius: 6px 6px 0 0;
-                }
-                
-                .card-body { 
-                    padding: 20px; 
-                }
-                
-                table { 
-                    width: 100%; 
-                    border-collapse: collapse; 
-                    margin: 15px 0; 
-                    font-size: 11px;
-                    page-break-inside: auto;
-                }
-                
-                th { 
-                    background: #667eea; 
-                    color: white; 
-                    padding: 12px 8px; 
-                    text-align: left; 
-                    font-weight: 600; 
-                    font-size: 12px;
-                }
-                
-                td { 
-                    padding: 10px 8px; 
-                    border-bottom: 1px solid #ddd; 
-                    vertical-align: top;
-                }
-                
-                tr:nth-child(even) { 
-                    background: #f8f9ff; 
-                }
-                
-                .quartile-badge { 
-                    display: inline-block; 
-                    padding: 4px 12px; 
-                    border-radius: 15px; 
-                    font-size: 10px; 
-                    font-weight: 600; 
-                    color: white;
-                }
-                
-                .quartile-most-aligned { background: #28a745; }
-                .quartile-more-aligned { background: #17a2b8; }
-                .quartile-less-aligned { background: #ffc107; color: black; }
-                .quartile-least-aligned { background: #dc3545; }
-                
-                .amount { 
-                    font-weight: 600; 
-                    color: #28a745; 
-                    font-size: 13px;
-                }
-                
-                .page-break { 
-                    page-break-before: always; 
-                }
-                
-                .detail-section {
-                    margin: 20px 0;
-                    padding: 15px;
-                    background: #f8f9ff;
-                    border-radius: 8px;
-                    border-left: 4px solid #667eea;
-                }
-                
-                .detail-grid {
-                    display: grid;
-                    grid-template-columns: repeat(2, 1fr);
-                    gap: 10px;
-                    margin: 10px 0;
-                }
-                
-                .detail-item {
-                    padding: 8px;
-                    background: white;
-                    border-radius: 5px;
-                    border: 1px solid #e0e0e0;
-                }
-                
-                .detail-label {
-                    font-size: 10px;
-                    color: #666;
-                    font-weight: 600;
-                    margin-bottom: 3px;
-                }
-                
-                .detail-value {
-                    font-size: 12px;
-                    color: #333;
-                    font-weight: 500;
-                }
-                
-                .qa-section {
-                    background: #fff8f0;
-                    border-left: 4px solid #ffc107;
-                    padding: 15px;
-                    margin: 15px 0;
-                    border-radius: 0 8px 8px 0;
-                    page-break-inside: avoid;
-                }
-                
-                .qa-question {
-                    font-weight: 600;
-                    color: #667eea;
-                    font-size: 13px;
-                    margin-bottom: 8px;
-                }
-                
-                .qa-answer {
-                    line-height: 1.6;
-                    color: #333;
-                    font-size: 12px;
-                }
-                
-                .chart-placeholder {
-                    background: linear-gradient(45deg, #667eea, #764ba2);
-                    color: white;
-                    padding: 40px 20px;
-                    text-align: center;
-                    margin: 20px 0;
-                    border-radius: 8px;
-                    font-size: 16px;
-                    font-weight: 600;
-                }
-                
-                @media print {
-                    .print-instruction { display: none; }
-                    body { font-size: 11px; }
-                    .page-break { page-break-before: always; }
-                    .card { break-inside: avoid; }
-                    .detail-section { break-inside: avoid; }
-                    .qa-section { break-inside: avoid; }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="print-instruction">
-                📄 To save as PDF: Press Ctrl+P (or Cmd+P on Mac), then select "Save as PDF" as your destination
-            </div>
-            
-            <div class="header">
-                <h1>Priority Based Budgeting Report</h1>
-                <p>Budget Request Analysis and Recommendations</p>
-                <p>Generated on ${reportDate}</p>
-            </div>
-
-            <div class="section-header">Executive Summary</div>
-            <p>This comprehensive report analyzes <strong>${filteredData.length} budget requests</strong> totaling <strong class="amount">$${formatCurrency(totalAmount)}</strong> in requested funding. The requests span multiple departments and programs, with varying levels of alignment to organizational priorities.</p>
-            
-            <div class="stats-container">
-                <div class="stat-card">
-                    <span class="stat-value">${filteredData.length}</span>
-                    <div class="stat-label">Total Requests</div>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-value">$${formatCurrency(totalOngoing)}</span>
-                    <div class="stat-label">Ongoing Requests</div>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-value">$${formatCurrency(totalOnetime)}</span>
-                    <div class="stat-label">One-time Requests</div>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-value">$${formatCurrency(totalAmount)}</span>
-                    <div class="stat-label">Total Amount</div>
-                </div>
-            </div>
-
-            <div class="section-header">Request Summary</div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Request ID</th>
-                        <th>Description</th>
-                        <th>Department</th>
-                        <th>Quartile</th>
-                        <th style="text-align: right;">Amount</th>
-                    </tr>
-                </thead>
-                <tbody>
-    `;
-
-    // Add request summary table
-    filteredData.forEach((request) => {
+    
+    // Build request table rows
+    let tableRows = '';
+    filteredData.forEach(request => {
         const requestId = getRequestId(request);
         const description = getRequestDescription(request);
         const lineItems = getLineItemsForRequest(requestId);
         const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
         const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
         const amounts = getRequestAmount(request);
-
-        const shortDesc = description && description.length > 40 ? 
-            description.substring(0, 40) + '...' : (description || 'N/A');
-
-        const quartileBadge = primaryQuartile !== 'N/A' ? 
-            `<span class="quartile-badge quartile-${primaryQuartile.toLowerCase().replace(' ', '-')}">${primaryQuartile.replace(' Aligned', '')}</span>` : 'N/A';
-
-        printHtml += `
-            <tr>
-                <td><strong>${requestId}</strong></td>
-                <td>${shortDesc}</td>
-                <td>${primaryDept}</td>
-                <td>${quartileBadge}</td>
-                <td style="text-align: right;" class="amount">$${formatCurrency(amounts.total)}</td>
-            </tr>
-        `;
+        const shortDesc = description && description.length > 40 ? description.substring(0, 40) + '...' : (description || 'N/A');
+        
+        const qBadge = primaryQuartile.includes('Most') || primaryQuartile.includes('More') ? 'badge-high' : 'badge-low';
+        
+        tableRows += `<tr>
+            <td>${requestId}</td>
+            <td>${shortDesc}</td>
+            <td>${primaryDept}</td>
+            <td><span class="badge ${qBadge}">${primaryQuartile}</span></td>
+            <td class="amount">$${formatCurrency(amounts.total)}</td>
+        </tr>`;
     });
-
-    printHtml += `
-                </tbody>
-            </table>
-    `;
-
-    // Add Program Summary to PDF
-    printHtml += `
-        <div class="section-header">Program Summary</div>
-        <p>Below is a summary of programs and their total requested amount and potential new total cost, organized by department and quartile alignment.</p>
-    `;
-
-    // Generate program data for PDF
+    
+    // Build department summary
+    let deptRows = '';
+    Object.entries(deptStats).sort((a, b) => b[1].amount - a[1].amount).forEach(([dept, stats]) => {
+        deptRows += `<tr>
+            <td>${dept}</td>
+            <td style="text-align: center;">${stats.count}</td>
+            <td class="amount">$${formatCurrency(stats.amount)}</td>
+            <td style="text-align: center;">${((stats.amount / totalAmount) * 100).toFixed(1)}%</td>
+        </tr>`;
+    });
+    
+    // ===== BUILD PROGRAM SUMMARY DATA =====
     const programData = {};
-
     filteredData.forEach(request => {
         const requestId = getRequestId(request);
         const lineItems = getLineItemsForRequest(requestId);
         const amounts = getRequestAmount(request);
-
+        
         lineItems.forEach(item => {
             const dept = getPrimaryValue([item], 'department') || 'Unknown Department';
             const program = getPrimaryValue([item], 'program') || 'Unknown Program';
             const quartile = getPrimaryValue([item], 'quartile') || 'N/A';
-
-            if (!programData[dept]) {
-                programData[dept] = {};
-            }
-
+            
+            if (!programData[dept]) programData[dept] = {};
             if (!programData[dept][program]) {
-                programData[dept][program] = {
-                    quartile: quartile,
-                    totalCost: 0,
-                    requestedAmount: 0,
-                    proposedTotalCost: 0
-                };
+                programData[dept][program] = { quartile: quartile, totalCost: 0, requestedAmount: 0, proposedTotalCost: 0 };
             }
-
             programData[dept][program].requestedAmount += amounts.total / lineItems.length;
-
             if (programData[dept][program].totalCost === 0) {
                 programData[dept][program].totalCost = amounts.total * 8;
             }
-
-            programData[dept][program].proposedTotalCost =
-                programData[dept][program].totalCost + programData[dept][program].requestedAmount;
+            programData[dept][program].proposedTotalCost = programData[dept][program].totalCost + programData[dept][program].requestedAmount;
         });
     });
-
-    // Generate Program Summary tables for PDF
+    
+    // Build Program Summary HTML
+    let programSummaryHtml = '';
     Object.entries(programData).forEach(([dept, programs]) => {
-        let departmentTotal = { totalCost: 0, requestedAmount: 0, proposedTotalCost: 0 };
-
-        printHtml += `
-            <div class="card">
-                <div class="card-header">${dept}</div>
-                <div class="card-body">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Quartile</th>
-                                <th>Program</th>
-                                <th style="text-align: right;">Total Cost</th>
-                                <th style="text-align: right;">Requested</th>
-                                <th style="text-align: right;">Proposed Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-        `;
-
+        let deptTotal = { totalCost: 0, requestedAmount: 0, proposedTotalCost: 0 };
+        let programRows = '';
+        
         const sortedPrograms = Object.entries(programs).sort((a, b) => {
             const quartileOrder = { 'Most Aligned': 1, 'More Aligned': 2, 'Less Aligned': 3, 'Least Aligned': 4 };
-            const aOrder = quartileOrder[a[1].quartile] || 5;
-            const bOrder = quartileOrder[b[1].quartile] || 5;
-            return aOrder - bOrder;
+            return (quartileOrder[a[1].quartile] || 5) - (quartileOrder[b[1].quartile] || 5);
         });
-
+        
         sortedPrograms.forEach(([program, data]) => {
-            departmentTotal.totalCost += data.totalCost;
-            departmentTotal.requestedAmount += data.requestedAmount;
-            departmentTotal.proposedTotalCost += data.proposedTotalCost;
-
-            const quartileBadge = data.quartile !== 'N/A' ?
-                `<span class="quartile-badge quartile-${data.quartile.toLowerCase().replace(' ', '-')}">${data.quartile.replace(' Aligned', '')}</span>` : 'N/A';
-
-            printHtml += `
-                <tr>
-                    <td>${quartileBadge}</td>
-                    <td>${program}</td>
-                    <td style="text-align: right;">$${formatCurrency(Math.round(data.totalCost))}</td>
-                    <td style="text-align: right;" class="amount">$${formatCurrency(Math.round(data.requestedAmount))}</td>
-                    <td style="text-align: right;" class="amount">$${formatCurrency(Math.round(data.proposedTotalCost))}</td>
-                </tr>
-            `;
+            deptTotal.totalCost += data.totalCost;
+            deptTotal.requestedAmount += data.requestedAmount;
+            deptTotal.proposedTotalCost += data.proposedTotalCost;
+            
+            const qClass = data.quartile.includes('Most') ? 'badge-q1' : data.quartile.includes('More') ? 'badge-q2' : data.quartile.includes('Less') ? 'badge-q3' : 'badge-q4';
+            programRows += `<tr>
+                <td><span class="badge ${qClass}">${data.quartile}</span></td>
+                <td>${program}</td>
+                <td style="text-align: right;">$${formatCurrency(Math.round(data.totalCost))}</td>
+                <td style="text-align: right;" class="amount">$${formatCurrency(Math.round(data.requestedAmount))}</td>
+                <td style="text-align: right;" class="amount">$${formatCurrency(Math.round(data.proposedTotalCost))}</td>
+            </tr>`;
         });
-
-        printHtml += `
-                <tr style="background: #f8f9ff; border-top: 2px solid #667eea; font-weight: 600;">
-                    <td>TOTAL</td>
-                    <td>${dept} Total</td>
-                    <td style="text-align: right;">$${formatCurrency(Math.round(departmentTotal.totalCost))}</td>
-                    <td style="text-align: right;" class="amount">$${formatCurrency(Math.round(departmentTotal.requestedAmount))}</td>
-                    <td style="text-align: right;" class="amount">$${formatCurrency(Math.round(departmentTotal.proposedTotalCost))}</td>
-                </tr>
-            </tbody>
-        </table>
-    
-        <p style="margin-top: 15px; padding: 10px; background: #f0f8ff; border-radius: 5px; font-size: 12px;">
-            <strong>Impact:</strong> ${Object.keys(programs).length} programs requesting 
-            <span class="amount">$${formatCurrency(Math.round(departmentTotal.requestedAmount))}</span>, 
-            increasing budget from $${formatCurrency(Math.round(departmentTotal.totalCost))} to 
-            <span class="amount">$${formatCurrency(Math.round(departmentTotal.proposedTotalCost))}</span> 
-            (${((departmentTotal.requestedAmount / departmentTotal.totalCost) * 100).toFixed(1)}% increase).
-        </p>
-    
-        </div>
-    </div>
+        
+        programSummaryHtml += `
+            <div class="dept-card">
+                <div class="dept-header">${dept}</div>
+                <div class="dept-body">
+                    <table class="data-table">
+                        <thead><tr><th>Quartile</th><th>Program</th><th style="text-align: right;">Current Cost</th><th style="text-align: right;">Requested</th><th style="text-align: right;">Proposed Total</th></tr></thead>
+                        <tbody>
+                            ${programRows}
+                            <tr class="total-row">
+                                <td colspan="2"><strong>${dept} Total</strong></td>
+                                <td style="text-align: right;"><strong>$${formatCurrency(Math.round(deptTotal.totalCost))}</strong></td>
+                                <td style="text-align: right;" class="amount"><strong>$${formatCurrency(Math.round(deptTotal.requestedAmount))}</strong></td>
+                                <td style="text-align: right;" class="amount"><strong>$${formatCurrency(Math.round(deptTotal.proposedTotalCost))}</strong></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="impact-note">
+                        <strong>Impact:</strong> ${Object.keys(programs).length} programs requesting $${formatCurrency(Math.round(deptTotal.requestedAmount))}, 
+                        increasing budget from $${formatCurrency(Math.round(deptTotal.totalCost))} to $${formatCurrency(Math.round(deptTotal.proposedTotalCost))} 
+                        (${((deptTotal.requestedAmount / deptTotal.totalCost) * 100).toFixed(1)}% increase)
+                    </div>
+                </div>
+            </div>
         `;
     });
-
-    // Add detailed request sections
+    
+    // ===== BUILD DETAILED REQUEST PAGES =====
+    let detailedRequestsHtml = '';
     filteredData.forEach((request, index) => {
         const requestId = getRequestId(request);
         const description = getRequestDescription(request);
         const lineItems = getLineItemsForRequest(requestId);
         const qa = getRequestQA(requestId);
         const amounts = getRequestAmount(request);
-
-        printHtml += `
-            <div class="page-break">
-                <div class="card">
-                    <div class="card-header">Request ${requestId}: ${description}</div>
-                    <div class="card-body">
-                        <div class="detail-grid">
-                            <div class="detail-item">
-                                <div class="detail-label">Request ID</div>
-                                <div class="detail-value">${requestId}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Total Amount</div>
-                                <div class="detail-value amount">$${formatCurrency(amounts.total)}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Line Items</div>
-                                <div class="detail-value">${lineItems.length}</div>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-label">Department</div>
-                                <div class="detail-value">${getPrimaryValue(lineItems, 'department') || 'N/A'}</div>
-                            </div>
-                        </div>
-        `;
-
-        // Add Q&A sections with corrected question detection
+        const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
+        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        
+        // Q&A Section
+        let qaHtml = '';
         if (qa.length > 0) {
             qa.forEach(qItem => {
-                let question = '';
-                let answer = '';
-                
+                let question = '', answer = '';
                 Object.keys(qItem).forEach(key => {
                     const lowerKey = key.toLowerCase();
-                    // Look for Column C (Question) instead of Column F (Question Type) - SAME FIX AS UI
-                    if (lowerKey.includes('question') && !lowerKey.includes('type') && qItem[key]) {
-                        question = qItem[key];
-                    }
-                    if (lowerKey.includes('answer') && qItem[key]) {
-                        answer = qItem[key];
-                    }
+                    if (lowerKey.includes('question') && !lowerKey.includes('type') && qItem[key]) question = qItem[key];
+                    if (lowerKey.includes('answer') && qItem[key]) answer = qItem[key];
                 });
-                
-                // If no question found with above logic, try direct column references
                 if (!question) {
-                    // Try common column names for the actual question text
                     const questionKeys = ['Question', 'C', 'Col_2', 'Col_C'];
                     for (const key of questionKeys) {
-                        if (qItem[key] && qItem[key].toString().trim()) {
-                            question = qItem[key];
-                            break;
-                        }
+                        if (qItem[key] && qItem[key].toString().trim()) { question = qItem[key]; break; }
                     }
                 }
-                
                 if (question && answer && answer.trim()) {
-                    printHtml += `
-                        <div class="qa-section">
-                            <div class="qa-question">${question}</div>
-                            <div class="qa-answer">${answer}</div>
-                        </div>
-                    `;
+                    qaHtml += `<div class="qa-item"><div class="qa-question">${question}</div><div class="qa-answer">${answer}</div></div>`;
                 }
             });
-        }
-
-        // Add detailed line items (replace the existing line items summary section)
-        if (lineItems.length > 0) {
-            printHtml += `
-                <div class="detail-section" style="page-break-inside: avoid;">
-                    <h4 style="margin-bottom: 15px; color: #667eea;">Line Item Details</h4>
-            `;
-            
-            lineItems.forEach((item, idx) => {
-                const quartile = getPrimaryValue([item], 'quartile');
-                const quartileBadge = quartile ? 
-                    `<span class="quartile-badge quartile-${quartile.toLowerCase().replace(' ', '-')}" style="margin-left: 10px;">${quartile}</span>` : '';
-
-                printHtml += `
-                    <div style="margin: 15px 0; padding: 15px; background: #f8f9ff; border-radius: 5px; border-left: 4px solid #667eea; page-break-inside: avoid;">
-                        <div style="font-weight: 600; margin-bottom: 10px; font-size: 14px;">Line Item ${idx + 1} ${quartileBadge}</div>
-                        
-                        <!-- Comprehensive field display matching UI layout -->
-                        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 12px;">
-                `;
-                
-                // First row - Basic Info
-                const basicFields = ['REQUESTID', 'REQUEST DESCRIPTION', 'REQUEST TYPE', 'STATUS', 'ONGOING COST'];
-                basicFields.forEach(field => {
-                    const value = findFieldValue(item, field);
-                    if (value !== null) {
-                        const displayValue = formatFieldValue(field, value);
-                        printHtml += `
-                            <div style="background: white; padding: 8px; border-radius: 4px; border: 1px solid #e0e0e0; text-align: center;">
-                                <div style="font-size: 9px; color: #666; font-weight: 600; margin-bottom: 3px;">${field}</div>
-                                <div style="font-size: 11px; color: #333; font-weight: 500;">${displayValue}</div>
-                            </div>
-                        `;
-                    }
-                });
-
-                printHtml += `</div><div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 12px;">`;
-
-                // Second row - Financial
-                const financialFields = ['ONETIME COST', 'NUMBEROFITEMS', 'COST CENTER', 'ACCTTYPE', 'ACCTCODE'];
-                financialFields.forEach(field => {
-                    const value = findFieldValue(item, field);
-                    if (value !== null) {
-                        const displayValue = formatFieldValue(field, value);
-                        printHtml += `
-                            <div style="background: white; padding: 8px; border-radius: 4px; border: 1px solid #e0e0e0; text-align: center;">
-                                <div style="font-size: 9px; color: #666; font-weight: 600; margin-bottom: 3px;">${field}</div>
-                                <div style="font-size: 11px; color: #333; font-weight: 500;">${displayValue}</div>
-                            </div>
-                        `;
-                    }
-                });
-                
-                printHtml += `</div><div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 12px;">`;
-                
-                // Third row - Organizational
-                const orgFields = ['FUND', 'DEPARTMENT', 'ACCOUNT CATEGORY', 'PROGRAM', 'PROGRAMID'];
-                orgFields.forEach(field => {
-                    const value = findFieldValue(item, field);
-                    if (value !== null) {
-                        printHtml += `
-                            <div style="background: white; padding: 8px; border-radius: 4px; border: 1px solid #e0e0e0; text-align: center;">
-                                <div style="font-size: 9px; color: #666; font-weight: 600; margin-bottom: 3px;">${field}</div>
-                                <div style="font-size: 11px; color: #333; font-weight: 500;">${value}</div>
-                            </div>
-                        `;
-                    }
-                });
-                
-                printHtml += `</div><div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px;">`;
-                
-                // Fourth row - Scoring criteria
-                const scoringFields = ['CHANGE IN DEMAND FOR THE PROGRAM', 'MANDATED TO PROVIDE PROGRAM', 'RELIANCE ON ORGANIZATION TO PROVIDE PROGRAM', 'PORTION OF THE COMMUNITY SERVED'];
-                scoringFields.forEach(field => {
-                    const value = findFieldValue(item, field);
-                    if (value !== null) {
-                        printHtml += `
-                            <div style="background: #fff8f0; padding: 8px; border-radius: 4px; border: 1px solid #ffc107; text-align: center;">
-                                <div style="font-size: 8px; color: #666; font-weight: 600; margin-bottom: 3px;">${field}</div>
-                                <div style="font-size: 10px; color: #333; font-weight: 500;">${value}</div>
-                            </div>
-                        `;
-                    }
-                });
-                
-                printHtml += `</div>`;
-                
-                // Fifth row - Additional fields
-                const additionalFields = ['QUARTILE', 'COST RECOVERY OF PROGRAM'];
-                const foundAdditional = additionalFields.filter(field => findFieldValue(item, field) !== null);
-                
-                if (foundAdditional.length > 0) {
-                    printHtml += `<div style="display: grid; grid-template-columns: repeat(${foundAdditional.length}, 1fr); gap: 8px;">`;
-                    foundAdditional.forEach(field => {
-                        const value = findFieldValue(item, field);
-                        printHtml += `
-                            <div style="background: #f0f8f0; padding: 8px; border-radius: 4px; border: 1px solid #28a745; text-align: center;">
-                                <div style="font-size: 9px; color: #666; font-weight: 600; margin-bottom: 3px;">${field}</div>
-                                <div style="font-size: 11px; color: #333; font-weight: 500;">${value}</div>
-                            </div>
-                        `;
-                    });
-                    printHtml += `</div>`;
-                }
-                
-                printHtml += `</div>`;
-            });
-            
-            printHtml += `</div>`;
         }
         
-        printHtml += `</div></div>`;
+        // Line Items Section
+        let lineItemsHtml = '';
+        lineItems.forEach((item, idx) => {
+            const itemQuartile = getPrimaryValue([item], 'quartile');
+            const qClass = itemQuartile && (itemQuartile.includes('Most') || itemQuartile.includes('More')) ? 'badge-high' : 'badge-low';
+            
+            // Build field grids
+            let fieldsHtml = '<div class="field-grid">';
+            
+            // Row 1 - Basic Info
+            const basicFields = ['REQUESTID', 'REQUEST DESCRIPTION', 'REQUEST TYPE', 'STATUS', 'ONGOING COST'];
+            basicFields.forEach(field => {
+                const value = findFieldValue(item, field);
+                if (value !== null) {
+                    const displayValue = formatFieldValue(field, value);
+                    fieldsHtml += `<div class="field-item"><div class="field-label">${field}</div><div class="field-value">${displayValue}</div></div>`;
+                }
+            });
+            fieldsHtml += '</div><div class="field-grid">';
+            
+            // Row 2 - Financial
+            const financialFields = ['ONETIME COST', 'NUMBEROFITEMS', 'COST CENTER', 'ACCTTYPE', 'ACCTCODE'];
+            financialFields.forEach(field => {
+                const value = findFieldValue(item, field);
+                if (value !== null) {
+                    const displayValue = formatFieldValue(field, value);
+                    fieldsHtml += `<div class="field-item"><div class="field-label">${field}</div><div class="field-value">${displayValue}</div></div>`;
+                }
+            });
+            fieldsHtml += '</div><div class="field-grid">';
+            
+            // Row 3 - Organizational
+            const orgFields = ['FUND', 'DEPARTMENT', 'ACCOUNT CATEGORY', 'PROGRAM', 'PROGRAMID'];
+            orgFields.forEach(field => {
+                const value = findFieldValue(item, field);
+                if (value !== null) {
+                    fieldsHtml += `<div class="field-item"><div class="field-label">${field}</div><div class="field-value">${value}</div></div>`;
+                }
+            });
+            fieldsHtml += '</div><div class="field-grid scoring">';
+            
+            // Row 4 - Scoring Criteria
+            const scoringFields = ['CHANGE IN DEMAND FOR THE PROGRAM', 'MANDATED TO PROVIDE PROGRAM', 'RELIANCE ON ORGANIZATION TO PROVIDE PROGRAM', 'PORTION OF THE COMMUNITY SERVED'];
+            scoringFields.forEach(field => {
+                const value = findFieldValue(item, field);
+                if (value !== null) {
+                    fieldsHtml += `<div class="field-item scoring"><div class="field-label">${field}</div><div class="field-value">${value}</div></div>`;
+                }
+            });
+            fieldsHtml += '</div>';
+            
+            // Row 5 - Additional
+            const additionalFields = ['QUARTILE', 'COST RECOVERY OF PROGRAM'];
+            const foundAdditional = additionalFields.filter(f => findFieldValue(item, f) !== null);
+            if (foundAdditional.length > 0) {
+                fieldsHtml += '<div class="field-grid additional">';
+                foundAdditional.forEach(field => {
+                    const value = findFieldValue(item, field);
+                    fieldsHtml += `<div class="field-item additional"><div class="field-label">${field}</div><div class="field-value">${value}</div></div>`;
+                });
+                fieldsHtml += '</div>';
+            }
+            
+            lineItemsHtml += `
+                <div class="line-item-card">
+                    <div class="line-item-header">Line Item ${idx + 1} ${itemQuartile ? `<span class="badge ${qClass}">${itemQuartile}</span>` : ''}</div>
+                    ${fieldsHtml}
+                </div>
+            `;
+        });
+        
+        detailedRequestsHtml += `
+            <div class="request-detail-page page-break">
+                <div class="page-header"><span class="page-title">Request Detail</span><span class="page-number">Request ${index + 1} of ${filteredData.length}</span></div>
+                <div class="request-card">
+                    <div class="request-header">Request ${requestId}: ${description || 'No Description'}</div>
+                    <div class="request-body">
+                        <div class="request-meta-grid">
+                            <div class="meta-item"><div class="meta-label">Request ID</div><div class="meta-value">${requestId}</div></div>
+                            <div class="meta-item"><div class="meta-label">Total Amount</div><div class="meta-value amount">$${formatCurrency(amounts.total)}</div></div>
+                            <div class="meta-item"><div class="meta-label">Department</div><div class="meta-value">${primaryDept}</div></div>
+                            <div class="meta-item"><div class="meta-label">Quartile</div><div class="meta-value">${primaryQuartile}</div></div>
+                            <div class="meta-item"><div class="meta-label">Line Items</div><div class="meta-value">${lineItems.length}</div></div>
+                            <div class="meta-item"><div class="meta-label">Ongoing</div><div class="meta-value">$${formatCurrency(amounts.ongoing)}</div></div>
+                        </div>
+                        ${qaHtml ? `<div class="qa-section"><h4>Request Context & Details</h4>${qaHtml}</div>` : ''}
+                        <div class="line-items-section"><h4>Line Item Details</h4>${lineItemsHtml}</div>
+                    </div>
+                </div>
+            </div>
+        `;
     });
+    
+    const pdfHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Priority Based Budgeting Report</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@page { size: A4; margin: 0.5in; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; background: white; font-size: 11px; }
 
-    printHtml += `
-        </body>
-        </html>
-    `;
+/* Cover Page */
+.cover-page { height: 100vh; display: flex; flex-direction: column; background: linear-gradient(135deg, #1e3a5f 0%, #2a4a73 50%, #1e3a5f 100%); color: white; page-break-after: always; }
+.cover-header { padding: 40px 60px; }
+.cover-brand { font-size: 14px; font-weight: 500; letter-spacing: 0.05em; opacity: 0.9; }
+.cover-main { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 0 60px; }
+.cover-title { font-size: 44px; font-weight: 700; line-height: 1.1; margin-bottom: 20px; }
+.cover-subtitle { font-size: 22px; font-weight: 300; opacity: 0.9; margin-bottom: 40px; }
+.cover-stats { display: flex; gap: 40px; margin-top: 30px; }
+.cover-stat-value { font-size: 32px; font-weight: 700; color: #10b981; }
+.cover-stat-label { font-size: 13px; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.05em; }
+.cover-footer { padding: 40px 60px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; font-size: 12px; opacity: 0.7; }
 
-    // Open in new window for printing
+/* Content Pages */
+.content-page { padding: 40px 50px; }
+.page-header { display: flex; justify-content: space-between; padding-bottom: 12px; border-bottom: 2px solid #e2e8f0; margin-bottom: 25px; }
+.page-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; font-weight: 600; }
+.page-number { font-size: 11px; color: #64748b; }
+.section-title { font-size: 24px; font-weight: 700; color: #1e3a5f; margin-bottom: 6px; }
+.section-subtitle { font-size: 14px; color: #64748b; margin-bottom: 20px; }
+.page-break { page-break-before: always; }
+
+/* Stats Grid */
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
+.stat-card { padding: 20px; border-radius: 10px; text-align: center; background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+.stat-value { font-size: 26px; font-weight: 700; display: block; }
+.stat-label { font-size: 11px; opacity: 0.9; margin-top: 4px; }
+
+/* Quartile Grid */
+.quartile-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 30px; }
+.quartile-card { padding: 16px; border-radius: 8px; text-align: center; }
+.quartile-card.q1 { background: linear-gradient(135deg, #d1fae5, #a7f3d0); border: 2px solid #10b981; }
+.quartile-card.q2 { background: linear-gradient(135deg, #dbeafe, #bfdbfe); border: 2px solid #3b82f6; }
+.quartile-card.q3 { background: linear-gradient(135deg, #fef3c7, #fde68a); border: 2px solid #f59e0b; }
+.quartile-card.q4 { background: linear-gradient(135deg, #fee2e2, #fecaca); border: 2px solid #ef4444; }
+.quartile-value { font-size: 20px; font-weight: 700; }
+.quartile-card.q1 .quartile-value { color: #059669; }
+.quartile-card.q2 .quartile-value { color: #2563eb; }
+.quartile-card.q3 .quartile-value { color: #d97706; }
+.quartile-card.q4 .quartile-value { color: #dc2626; }
+.quartile-label { font-size: 10px; font-weight: 600; margin-top: 4px; color: #475569; }
+
+/* Findings Grid */
+.findings-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-top: 20px; }
+.finding-card { padding: 15px; background: #f8fafc; border-radius: 10px; border-left: 4px solid #1e3a5f; }
+.finding-title { font-size: 12px; font-weight: 600; color: #1e3a5f; margin-bottom: 6px; }
+.finding-text { font-size: 11px; color: #475569; }
+
+/* Data Tables */
+.data-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 10px; }
+.data-table thead { background: #1e3a5f; color: white; }
+.data-table th { padding: 10px 8px; text-align: left; font-weight: 600; text-transform: uppercase; font-size: 9px; }
+.data-table td { padding: 10px 8px; border-bottom: 1px solid #e2e8f0; }
+.data-table tr:nth-child(even) { background: #f8fafc; }
+.total-row { background: #e2e8f0 !important; border-top: 2px solid #1e3a5f; }
+
+/* Badges */
+.badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 9px; font-weight: 600; }
+.badge-high { background: #10b981; color: white; }
+.badge-low { background: #64748b; color: white; }
+.badge-q1 { background: #10b981; color: white; }
+.badge-q2 { background: #3b82f6; color: white; }
+.badge-q3 { background: #f59e0b; color: white; }
+.badge-q4 { background: #ef4444; color: white; }
+.amount { color: #10b981; font-weight: 600; }
+
+/* Department Cards */
+.dept-card { margin-bottom: 25px; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; page-break-inside: avoid; }
+.dept-header { background: linear-gradient(135deg, #1e3a5f, #2a4a73); color: white; padding: 12px 16px; font-weight: 600; font-size: 13px; }
+.dept-body { padding: 15px; }
+.impact-note { margin-top: 12px; padding: 10px; background: #f0f9ff; border-radius: 6px; font-size: 11px; color: #0369a1; border-left: 3px solid #0ea5e9; }
+
+/* Request Detail Pages */
+.request-detail-page { padding: 30px 40px; }
+.request-card { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+.request-header { background: linear-gradient(135deg, #1e3a5f, #2a4a73); color: white; padding: 15px 20px; font-weight: 600; font-size: 14px; }
+.request-body { padding: 20px; }
+.request-meta-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 20px; }
+.meta-item { background: #f8fafc; padding: 10px; border-radius: 6px; text-align: center; border: 1px solid #e2e8f0; }
+.meta-label { font-size: 9px; color: #64748b; font-weight: 600; margin-bottom: 3px; }
+.meta-value { font-size: 12px; color: #1e293b; font-weight: 500; }
+
+/* Q&A Section */
+.qa-section { margin: 20px 0; }
+.qa-section h4 { color: #1e3a5f; font-size: 13px; margin-bottom: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
+.qa-item { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; margin-bottom: 10px; border-radius: 0 6px 6px 0; }
+.qa-question { font-weight: 600; color: #1e3a5f; font-size: 11px; margin-bottom: 6px; }
+.qa-answer { color: #475569; font-size: 11px; line-height: 1.5; }
+
+/* Line Items Section */
+.line-items-section { margin-top: 20px; }
+.line-items-section h4 { color: #1e3a5f; font-size: 13px; margin-bottom: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
+.line-item-card { margin-bottom: 15px; padding: 12px; background: #f8fafc; border-radius: 8px; border-left: 4px solid #667eea; page-break-inside: avoid; }
+.line-item-header { font-weight: 600; font-size: 12px; color: #1e3a5f; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+.field-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 8px; }
+.field-item { background: white; padding: 6px; border-radius: 4px; border: 1px solid #e2e8f0; text-align: center; }
+.field-item.scoring { background: #fffbeb; border-color: #f59e0b; }
+.field-item.additional { background: #f0fdf4; border-color: #10b981; }
+.field-label { font-size: 7px; color: #64748b; font-weight: 600; margin-bottom: 2px; text-transform: uppercase; }
+.field-value { font-size: 9px; color: #1e293b; font-weight: 500; word-break: break-word; }
+
+@media print { 
+    .page-break { page-break-before: always; } 
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .dept-card { break-inside: avoid; }
+    .line-item-card { break-inside: avoid; }
+    .qa-item { break-inside: avoid; }
+}
+</style></head><body>
+
+<!-- COVER PAGE -->
+<div class="cover-page">
+    <div class="cover-header"><span class="cover-brand">TYLER TECHNOLOGIES • BUDGET INTELLIGENCE</span></div>
+    <div class="cover-main">
+        <h1 class="cover-title">Priority Based Budgeting<br>Report</h1>
+        <p class="cover-subtitle">Comprehensive Budget Request Analysis</p>
+        <div class="cover-stats">
+            <div class="cover-stat"><div class="cover-stat-value">${filteredData.length}</div><div class="cover-stat-label">Budget Requests</div></div>
+            <div class="cover-stat"><div class="cover-stat-value">$${formatCurrency(totalAmount)}</div><div class="cover-stat-label">Total Amount</div></div>
+            <div class="cover-stat"><div class="cover-stat-value">${Object.keys(deptStats).length}</div><div class="cover-stat-label">Departments</div></div>
+        </div>
+    </div>
+    <div class="cover-footer"><span>Generated on ${reportDate}</span><span>Confidential • For Internal Use Only</span></div>
+</div>
+
+<!-- EXECUTIVE SUMMARY -->
+<div class="content-page page-break">
+    <div class="page-header"><span class="page-title">Executive Summary</span></div>
+    <h2 class="section-title">Budget Request Overview</h2>
+    <p class="section-subtitle">Analysis of ${filteredData.length} budget requests totaling $${formatCurrency(totalAmount)}</p>
+    
+    <div class="stats-grid">
+        <div class="stat-card"><span class="stat-value">${filteredData.length}</span><div class="stat-label">Total Requests</div></div>
+        <div class="stat-card"><span class="stat-value">$${formatCurrency(totalOngoing)}</span><div class="stat-label">Ongoing</div></div>
+        <div class="stat-card"><span class="stat-value">$${formatCurrency(totalOnetime)}</span><div class="stat-label">One-time</div></div>
+        <div class="stat-card"><span class="stat-value">$${formatCurrency(totalAmount)}</span><div class="stat-label">Total Amount</div></div>
+    </div>
+    
+    <h3 style="font-size: 16px; color: #1e3a5f; margin: 25px 0 15px;">Quartile Distribution</h3>
+    <div class="quartile-grid">
+        <div class="quartile-card q1"><div class="quartile-value">$${formatCurrency(quartileStats['Most Aligned'])}</div><div class="quartile-label">Most Aligned (Q1)</div></div>
+        <div class="quartile-card q2"><div class="quartile-value">$${formatCurrency(quartileStats['More Aligned'])}</div><div class="quartile-label">More Aligned (Q2)</div></div>
+        <div class="quartile-card q3"><div class="quartile-value">$${formatCurrency(quartileStats['Less Aligned'])}</div><div class="quartile-label">Less Aligned (Q3)</div></div>
+        <div class="quartile-card q4"><div class="quartile-value">$${formatCurrency(quartileStats['Least Aligned'])}</div><div class="quartile-label">Least Aligned (Q4)</div></div>
+    </div>
+    
+    <h3 style="font-size: 16px; color: #1e3a5f; margin: 25px 0 15px;">Key Findings</h3>
+    <div class="findings-grid">
+        <div class="finding-card"><div class="finding-title">High Priority Requests</div><div class="finding-text">$${formatCurrency(quartileStats['Most Aligned'] + quartileStats['More Aligned'])} (${totalAmount > 0 ? Math.round((quartileStats['Most Aligned'] + quartileStats['More Aligned']) / totalAmount * 100) : 0}%) in Q1/Q2 aligned programs</div></div>
+        <div class="finding-card"><div class="finding-title">Funding Mix</div><div class="finding-text">Ongoing: $${formatCurrency(totalOngoing)} | One-time: $${formatCurrency(totalOnetime)}</div></div>
+        <div class="finding-card"><div class="finding-title">Department Coverage</div><div class="finding-text">${Object.keys(deptStats).length} departments with budget requests submitted</div></div>
+        <div class="finding-card"><div class="finding-title">Average Request</div><div class="finding-text">$${formatCurrency(Math.round(totalAmount / filteredData.length))} per request</div></div>
+    </div>
+</div>
+
+<!-- DEPARTMENT SUMMARY -->
+<div class="content-page page-break">
+    <div class="page-header"><span class="page-title">Department Summary</span></div>
+    <h2 class="section-title">Requests by Department</h2>
+    <p class="section-subtitle">Budget request distribution across organizational units</p>
+    <table class="data-table">
+        <thead><tr><th>Department</th><th style="text-align: center;">Requests</th><th>Total Amount</th><th style="text-align: center;">% of Total</th></tr></thead>
+        <tbody>${deptRows}</tbody>
+    </table>
+</div>
+
+<!-- REQUEST SUMMARY TABLE -->
+<div class="content-page page-break">
+    <div class="page-header"><span class="page-title">Request Summary</span></div>
+    <h2 class="section-title">All Budget Requests</h2>
+    <p class="section-subtitle">Complete listing of all ${filteredData.length} budget requests</p>
+    <table class="data-table">
+        <thead><tr><th>ID</th><th>Description</th><th>Department</th><th>Quartile</th><th style="text-align: right;">Amount</th></tr></thead>
+        <tbody>${tableRows}</tbody>
+    </table>
+</div>
+
+<!-- PROGRAM SUMMARY -->
+<div class="content-page page-break">
+    <div class="page-header"><span class="page-title">Program Summary</span></div>
+    <h2 class="section-title">Programs by Department</h2>
+    <p class="section-subtitle">Program-level budget analysis showing current costs, requested amounts, and proposed totals</p>
+    ${programSummaryHtml}
+</div>
+
+<!-- DETAILED REQUEST PAGES -->
+${detailedRequestsHtml}
+
+</body></html>`;
+    
     const newWindow = window.open('', '_blank');
-    newWindow.document.write(printHtml);
+    newWindow.document.write(pdfHtml);
     newWindow.document.close();
-    
-    // Focus the new window
     newWindow.focus();
-    
-    // Show instruction alert
-    setTimeout(() => {
-        alert('Your report has opened in a new window. To save as PDF:\n\n1. Press Ctrl+P (or Cmd+P on Mac)\n2. Select "Save as PDF" as destination\n3. Click Save\n\nThe yellow instruction bar will not appear in the printed PDF.');
-    }, 500);
+    setTimeout(() => alert('Comprehensive PDF Report opened!\\n\\nTo save as PDF:\\n1. Press Ctrl+P (Cmd+P on Mac)\\n2. Select "Save as PDF"\\n3. Click Save'), 500);
 }
 
 function captureChartAsImage(chartId) {

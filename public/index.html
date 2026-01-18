@@ -3,486 +3,486 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Priority Based Budgeting Report Generator</title>
+    <title>PBB Budget Request Analyzer</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Priority Based Budgeting</h1>
-            <p>Budget Request Report Generator</p>
-        </div>
-
-        <div class="upload-section">
-            <div class="upload-area" id="uploadArea">
-                <div class="upload-icon">📄</div>
-                <h3>Upload Budget Request Data</h3>
-                <p>Drag and drop your Excel file here or click to browse</p>
-                <input type="file" id="fileInput" accept=".xlsx,.xls" style="display: none;">
+    <!-- ========== HEADER BAR ========== -->
+    <header class="app-header">
+        <div class="header-left">
+            <!-- Tyler T Logo -->
+            <div class="header-logo">
+                <svg viewBox="0 0 159 159" class="tyler-t-logo">
+                    <g fill="currentColor" fill-rule="evenodd">
+                        <path d="M13.005,44.421 C20.188,44.421 26.01,50.244 26.01,57.426 C26.01,64.612 20.188,70.438 13.002,70.435 C5.821,70.432 0,64.61 0,57.426 C0,50.244 5.821,44.421 13.005,44.421"/>
+                        <path d="M35.148,66.562 C42.327,66.562 48.15,72.385 48.15,79.569 C48.15,86.754 42.327,92.58 35.148,92.575 C27.964,92.573 22.143,86.754 22.143,79.569 C22.139,72.385 27.959,66.567 35.148,66.562"/>
+                        <path d="M57.289,88.699 C64.47,88.699 70.293,94.526 70.293,101.709 C70.293,108.895 64.47,114.719 57.289,114.714 C50.102,114.714 44.281,108.893 44.281,101.709 C44.281,94.531 50.101,88.705 57.289,88.699"/>
+                        <path d="M57.289,132.987 C64.47,132.987 70.293,138.812 70.293,145.993 C70.293,153.177 64.47,159.003 57.289,159 C50.102,159 44.281,153.177 44.281,145.993 C44.281,138.812 50.101,132.987 57.289,132.987"/>
+                        <path d="M79.43,110.848 C86.61,110.848 92.434,116.669 92.434,123.848 C92.434,131.033 86.61,136.862 79.43,136.858 C72.243,136.858 66.425,131.032 66.425,123.848 C66.42,116.674 72.243,110.848 79.43,110.848"/>
+                        <path d="M101.57,88.699 C108.752,88.699 114.575,94.526 114.575,101.709 C114.575,108.895 108.752,114.719 101.57,114.714 C94.389,114.714 88.568,108.893 88.568,101.709 C88.563,94.531 94.385,88.705 101.57,88.699"/>
+                        <path d="M57.289,44.421 C64.47,44.421 70.293,50.244 70.293,57.426 C70.293,64.612 64.47,70.438 57.289,70.435 C50.102,70.432 44.281,64.61 44.281,57.426 C44.281,50.244 50.101,44.421 57.289,44.421"/>
+                        <path d="M79.43,22.28 C86.61,22.28 92.434,28.101 92.434,35.285 C92.434,42.471 86.61,48.297 79.43,48.291 C72.243,48.291 66.425,42.469 66.425,35.285 C66.42,28.106 72.243,22.28 79.43,22.28"/>
+                        <path d="M101.57,44.421 C108.752,44.421 114.575,50.244 114.575,57.426 C114.575,64.612 108.752,70.438 101.57,70.435 C94.389,70.432 88.568,64.61 88.568,57.426 C88.563,50.244 94.385,44.421 101.57,44.421"/>
+                        <path d="M123.714,66.562 C130.895,66.562 136.721,72.385 136.721,79.569 C136.721,86.754 130.895,92.58 123.714,92.575 C116.532,92.573 110.706,86.754 110.706,79.569 C110.701,72.385 116.527,66.567 123.714,66.562"/>
+                        <path d="M145.854,88.699 C153.04,88.699 158.856,94.526 158.861,101.709 C158.856,108.895 153.04,114.719 145.854,114.714 C138.671,114.714 132.85,108.893 132.85,101.709 C132.845,94.531 138.668,88.705 145.854,88.699"/>
+                        <path d="M101.57,0.137 C108.752,0.137 114.575,5.958 114.575,13.141 C114.575,20.327 108.752,26.154 101.57,26.154 C94.389,26.154 88.568,20.325 88.568,13.141 C88.563,5.963 94.385,0.139 101.57,0.137"/>
+                    </g>
+                </svg>
             </div>
-            <div id="uploadStatus"></div>
-        </div>
-
-        <!-- NEW: Current Budget Upload Section -->
-        <div class="upload-section" id="currentBudgetSection" style="display: none;">
-            <div class="upload-area" id="currentBudgetUploadArea">
-                <div class="upload-icon">💰</div>
-                <h3>Upload Current Approved Budget (Optional)</h3>
-                <p>Upload your Program Inventory to show actual current costs instead of estimates</p>
-                <input type="file" id="currentBudgetFileInput" accept=".xlsx,.xls" style="display: none;">
+            <div class="header-title">
+                <span class="app-name">PBB Budget Request Analyzer</span>
+                <span class="header-divider">|</span>
+                <span class="org-name" id="headerOrgName">Upload Data to Begin</span>
             </div>
-            <div id="currentBudgetStatus"></div>
         </div>
-
-        <div class="filters-section" id="filtersSection">
-            <h2 style="margin-bottom: 20px; color: #333;">Filter Budget Requests</h2>
-            <div class="filters-grid">
-                <div class="filter-group">
-                    <label>Fund</label>
-                    <select id="fundFilter">
-                        <option value="all">All Funds</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Department</label>
-                    <select id="departmentFilter">
-                        <option value="all">All Departments</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Division</label>
-                    <select id="divisionFilter">
-                        <option value="all">All Divisions</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Program</label>
-                    <select id="programFilter">
-                        <option value="all">All Programs</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Request Type</label>
-                    <select id="requestTypeFilter">
-                        <option value="all">All Types</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Status</label>
-                    <select id="statusFilter">
-                        <option value="all">All Status</option>
-                    </select>
-                </div>
+        <div class="header-right">
+            <div class="header-org-selector" id="orgSelector" style="display: none;">
+                <svg class="org-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 21h18M3 7v14m0-14l9-4 9 4m-18 0h18M9 21v-4a2 2 0 012-2h2a2 2 0 012 2v4"/>
+                </svg>
+                <span id="selectedOrgName">Your Organization</span>
+                <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
             </div>
+            <div class="header-user">
+                <div class="user-avatar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="8" r="4"/>
+                        <path d="M4 21v-2a4 4 0 014-4h8a4 4 0 014 4v2"/>
+                    </svg>
+                </div>
+                <span class="user-name">Budget Analyst</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- ========== SIDEBAR NAVIGATION ========== -->
+    <aside class="sidebar" id="sidebar">
+        <button class="sidebar-toggle" id="sidebarToggle">
+            <svg class="toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+        </button>
+        
+        <nav class="sidebar-nav">
+            <a href="#" class="nav-item active" data-section="upload">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                </svg>
+                <span class="nav-label">Data Upload</span>
+            </a>
+            <a href="#" class="nav-item" data-section="filters" id="navFilters" style="opacity: 0.5; pointer-events: none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+                </svg>
+                <span class="nav-label">Filters</span>
+                <span class="nav-badge" id="filterBadge" style="display: none;">0</span>
+            </a>
+            <a href="#" class="nav-item" data-section="report" id="navReport" style="opacity: 0.5; pointer-events: none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+                <span class="nav-label">Reports</span>
+            </a>
+            <a href="#" class="nav-item" data-section="analysis" id="navAnalysis" style="opacity: 0.5; pointer-events: none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                </svg>
+                <span class="nav-label">PBB Analysis</span>
+            </a>
+        </nav>
+
+        <!-- Sidebar Footer - Data Status -->
+        <div class="sidebar-footer">
+            <div class="data-status">
+                <div class="status-indicator" id="dataStatusDot"></div>
+                <span class="status-text" id="dataStatusText">No Data</span>
+            </div>
+            <div class="data-count" id="dataCount" style="display: none;">
+                <span id="requestCount">0</span> requests loaded
+            </div>
+        </div>
+    </aside>
+
+    <!-- ========== MAIN CONTENT AREA ========== -->
+    <main class="main-content" id="mainContent">
+        <div class="content-wrapper">
             
-            <div class="stats-cards" id="statsCards">
-                <!-- Stats will be populated here -->
-            </div>
-
-            <div style="text-align: center;">
-                <button class="generate-btn" id="generateBtn" disabled>Generate Report</button>
-                <div class="progress-bar" id="progressBar" style="display: none;">
-                    <div class="progress-fill" id="progressFill"></div>
+            <!-- Page Header -->
+            <div class="page-header">
+                <div class="page-title-section">
+                    <h1 class="page-title" id="pageTitle">Data Upload</h1>
+                    <p class="page-subtitle" id="pageSubtitle">Upload your budget request files to begin analysis</p>
+                </div>
+                <div class="page-actions" id="pageActions">
+                    <!-- Dynamic action buttons will appear here -->
                 </div>
             </div>
-        </div>
 
-        <div class="report-section" id="reportSection">
-            <!-- UPDATED REPORT HEADER WITH NEW BUTTONS -->
-            <div class="report-header">
-                <h2>Priority Based Budgeting Report</h2>
-                <p id="reportDate"></p>
-                
-                <!-- UPDATED Download Buttons Section -->
-                <div class="download-buttons">
-                    <button class="download-btn" id="downloadWordBtn">📄 Download Word Document</button>
-                    <button class="download-btn pdf-btn" id="downloadPdfBtn">📊 Download PDF Report</button>
-                    <button class="download-btn excel-btn" id="exportPBBExcelBtn">📊 Export PBB Analysis to Excel</button>
+            <!-- ========== UPLOAD SECTION ========== -->
+            <section class="content-section" id="uploadSection">
+                <!-- Hero Stats Card (hidden until data loaded) -->
+                <div class="hero-card" id="heroStats" style="display: none;">
+                    <div class="hero-header">
+                        <div class="hero-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M9 12l2 2 4-4"/>
+                            </svg>
+                        </div>
+                        <div class="hero-title">
+                            <h2>Budget Requests Loaded</h2>
+                            <p>Ready for analysis and report generation</p>
+                        </div>
+                    </div>
+                    <div class="hero-stats-grid">
+                        <div class="hero-stat">
+                            <div class="stat-value" id="heroTotalRequests">0</div>
+                            <div class="stat-label">Total Requests</div>
+                            <div class="stat-bar">
+                                <div class="stat-bar-fill" style="width: 100%;"></div>
+                            </div>
+                        </div>
+                        <div class="hero-stat">
+                            <div class="stat-value" id="heroTotalAmount">$0</div>
+                            <div class="stat-label">Total Amount Requested</div>
+                            <div class="stat-bar emerald">
+                                <div class="stat-bar-fill" style="width: 100%;"></div>
+                            </div>
+                        </div>
+                        <div class="hero-stat">
+                            <div class="stat-value" id="heroDepartments">0</div>
+                            <div class="stat-label">Departments</div>
+                            <div class="stat-bar amber">
+                                <div class="stat-bar-fill" style="width: 100%;"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                
-                <!-- NEW Decision Tree Button -->
-                <div style="text-align: center; margin-top: 20px;">
-                    <button class="pbb-decision-tree-btn" id="showDecisionTreeBtn">
-                        <span style="font-size: 1.2rem;">❓</span>
-                        View PBB Decision Framework (24 Archetypes)
+
+                <!-- Upload Cards Grid -->
+                <div class="upload-grid">
+                    <!-- Primary Upload Card -->
+                    <div class="upload-card primary">
+                        <div class="upload-card-header">
+                            <div class="upload-icon-wrapper">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                                    <polyline points="14 2 14 8 20 8"/>
+                                    <line x1="12" y1="18" x2="12" y2="12"/>
+                                    <line x1="9" y1="15" x2="15" y2="15"/>
+                                </svg>
+                            </div>
+                            <div class="upload-card-title">
+                                <h3>Budget Request Data</h3>
+                                <p>Required - Upload your Excel budget file</p>
+                            </div>
+                            <span class="upload-badge required">Required</span>
+                        </div>
+                        <div class="upload-area" id="uploadArea">
+                            <div class="upload-dropzone" id="dropzone">
+                                <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                                    <polyline points="17 8 12 3 7 8"/>
+                                    <line x1="12" y1="3" x2="12" y2="15"/>
+                                </svg>
+                                <p class="dropzone-text">Drag and drop your Excel file here</p>
+                                <p class="dropzone-subtext">or click to browse • .xlsx, .xls supported</p>
+                                <input type="file" id="fileInput" accept=".xlsx,.xls" style="display: none;">
+                            </div>
+                        </div>
+                        <div class="upload-status" id="uploadStatus"></div>
+                    </div>
+
+                    <!-- Secondary Upload Card -->
+                    <div class="upload-card secondary" id="currentBudgetSection" style="display: none;">
+                        <div class="upload-card-header">
+                            <div class="upload-icon-wrapper emerald">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <line x1="12" y1="1" x2="12" y2="23"/>
+                                    <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
+                                </svg>
+                            </div>
+                            <div class="upload-card-title">
+                                <h3>Current Approved Budget</h3>
+                                <p>Optional - Adds actual costs to analysis</p>
+                            </div>
+                            <span class="upload-badge optional">Optional</span>
+                        </div>
+                        <div class="upload-area" id="currentBudgetUploadArea">
+                            <div class="upload-dropzone secondary" id="currentBudgetDropzone">
+                                <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                                    <polyline points="17 8 12 3 7 8"/>
+                                    <line x1="12" y1="3" x2="12" y2="15"/>
+                                </svg>
+                                <p class="dropzone-text">Upload Program Inventory</p>
+                                <p class="dropzone-subtext">Shows actual current costs instead of estimates</p>
+                                <input type="file" id="currentBudgetFileInput" accept=".xlsx,.xls" style="display: none;">
+                            </div>
+                        </div>
+                        <div class="upload-status" id="currentBudgetStatus"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========== FILTERS SECTION ========== -->
+            <section class="content-section" id="filtersSection" style="display: none;">
+                <div class="filters-card">
+                    <div class="filters-header">
+                        <div class="filters-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+                            </svg>
+                            <h2>Filter Budget Requests</h2>
+                        </div>
+                        <button class="btn-secondary" id="clearFiltersBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                            </svg>
+                            Clear Filters
+                        </button>
+                    </div>
+                    
+                    <div class="filters-grid">
+                        <div class="filter-group">
+                            <label>Fund</label>
+                            <select id="fundFilter">
+                                <option value="all">All Funds</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Department</label>
+                            <select id="departmentFilter">
+                                <option value="all">All Departments</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Division</label>
+                            <select id="divisionFilter">
+                                <option value="all">All Divisions</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Program</label>
+                            <select id="programFilter">
+                                <option value="all">All Programs</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Request Type</label>
+                            <select id="requestTypeFilter">
+                                <option value="all">All Types</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Status</label>
+                            <select id="statusFilter">
+                                <option value="all">All Status</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="stats-cards" id="statsCards">
+                    <!-- Stats will be populated dynamically -->
+                </div>
+
+                <!-- Generate Button -->
+                <div class="generate-section">
+                    <button class="btn-primary generate-btn" id="generateBtn" disabled>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="16" y1="13" x2="8" y2="13"/>
+                            <line x1="16" y1="17" x2="8" y2="17"/>
+                        </svg>
+                        Generate Report
                     </button>
+                    <div class="progress-bar" id="progressBar" style="display: none;">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========== REPORT SECTION ========== -->
+            <div class="report-section" id="reportSection" style="display: none;">
+                <div class="report-header">
+                    <div class="report-header-content">
+                        <h2>Priority Based Budgeting Report</h2>
+                        <p id="reportDate"></p>
+                    </div>
+                    
+                    <div class="download-buttons">
+                        <button class="btn-download word" id="downloadWordBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                <line x1="16" y1="13" x2="8" y2="13"/>
+                                <line x1="16" y1="17" x2="8" y2="17"/>
+                            </svg>
+                            Word Document
+                        </button>
+                        <button class="btn-download pdf" id="downloadPdfBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                            </svg>
+                            PDF Report
+                        </button>
+                        <button class="btn-download excel" id="exportPBBExcelBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                <line x1="3" y1="9" x2="21" y2="9"/>
+                                <line x1="3" y1="15" x2="21" y2="15"/>
+                                <line x1="9" y1="3" x2="9" y2="21"/>
+                                <line x1="15" y1="3" x2="15" y2="21"/>
+                            </svg>
+                            Excel Export
+                        </button>
+                    </div>
+                    
+                    <div class="decision-tree-section">
+                        <button class="btn-framework" id="showDecisionTreeBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                            View PBB Decision Framework (24 Archetypes)
+                        </button>
+                    </div>
+                </div>
+                <div class="report-content" id="reportContent">
+                    <!-- Report content will be generated here -->
                 </div>
             </div>
-            <div class="report-content" id="reportContent">
-                <!-- Report content will be generated here -->
-            </div>
-        </div>
 
-        <!-- ANALYTICAL REPORT SECTION -->
-        <div class="report-section" id="analyticalReportSection" style="display: none; margin-top: 30px;">
-            <div class="report-header" style="background: linear-gradient(135deg, #28a745, #20c997);">
-                <h2>🎯 PBB Analysis & Recommendations Report</h2>
-                <p id="analyticalReportDate"></p>
-                <div class="download-buttons">
-                    <button class="download-btn" id="downloadAnalyticalWordBtn" style="background: linear-gradient(135deg, #28a745, #20c997);">📊 Download Analysis Report (Word)</button>
-                    <button class="download-btn pdf-btn" id="downloadAnalyticalPdfBtn">📈 Download Analysis Report (PDF)</button>
+            <!-- ========== ANALYTICAL REPORT SECTION ========== -->
+            <div class="report-section analytical" id="analyticalReportSection" style="display: none;">
+                <div class="report-header analytical">
+                    <div class="report-header-content">
+                        <h2>🎯 PBB Analysis & Recommendations Report</h2>
+                        <p id="analyticalReportDate"></p>
+                    </div>
+                    <div class="download-buttons">
+                        <button class="btn-download word" id="downloadAnalyticalWordBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                            </svg>
+                            Analysis Report (Word)
+                        </button>
+                        <button class="btn-download pdf" id="downloadAnalyticalPdfBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                            </svg>
+                            Analysis Report (PDF)
+                        </button>
+                    </div>
+                </div>
+                <div class="report-content" id="analyticalReportContent">
+                    <!-- Analytical report content will be generated here -->
                 </div>
             </div>
-            <div class="report-content" id="analyticalReportContent">
-                <!-- Analytical report content will be generated here -->
-            </div>
+
         </div>
+    </main>
 
-    </div>
-
-    <!-- DECISION TREE MODAL (hidden by default) -->
+    <!-- ========== DECISION TREE MODAL ========== -->
     <div id="decisionTreeModal" class="modal-overlay" style="display: none;">
         <div class="modal-container">
-            <!-- Modal Header -->
             <div class="modal-header">
                 <div>
                     <h2>Priority Based Budgeting Decision Framework</h2>
                     <p>Complete Guide to All 24 Budget Request Archetypes</p>
                 </div>
-                <button class="modal-close" id="closeDecisionTreeBtn">✕</button>
+                <button class="modal-close" id="closeDecisionTreeBtn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
             </div>
             
-            <!-- Modal Content -->
             <div class="modal-content">
-                <!-- Decision Flow -->
                 <div class="decision-flow">
                     <h3>How We Evaluate Budget Requests</h3>
                     
-                    <!-- Primary Question -->
                     <div class="primary-question">
                         <div class="question-badge">PRIMARY QUESTION</div>
                         <p class="question-text">Does this request ask for General Fund money?</p>
                     </div>
                     
-                    <!-- Two Paths -->
                     <div class="decision-paths">
-                        <!-- GF Request Path -->
                         <div class="decision-path gf-path">
                             <div class="path-badge gf-badge">YES → GF Request</div>
                             
                             <div class="decision-option approve-option">
-                                <p class="option-title">✅ High Priority (Q1/Q2)?</p>
-                                <p class="option-result">→ <strong>APPROVE</strong> (advancing strategic goals)</p>
+                                <p class="option-title">✅ Strong Approve</p>
+                                <p class="option-result">Q1/Q2 alignment + strong outcomes + strategic goals</p>
                             </div>
-                            
-                            <div class="decision-option approve-option">
-                                <p class="option-title">⚖️ Mandated?</p>
-                                <p class="option-result">→ <strong>APPROVE</strong> (but push for offsets)</p>
-                            </div>
-                            
                             <div class="decision-option modify-option">
-                                <p class="option-title">⚠️ Compliance/Risk?</p>
-                                <p class="option-result">→ <strong>MODIFY</strong> (require mitigation plan)</p>
+                                <p class="option-title">⚠️ Modify/Conditional</p>
+                                <p class="option-result">Needs offsets, phasing, or scope reduction</p>
                             </div>
-                            
-                            <div class="decision-option reject-option">
-                                <p class="option-title">❌ Low Priority + No Justification?</p>
-                                <p class="option-result">→ <strong>DEFER/REJECT</strong></p>
+                            <div class="decision-option defer-option">
+                                <p class="option-title">⏸️ Defer</p>
+                                <p class="option-result">Low priority or weak evidence - revisit next cycle</p>
                             </div>
                         </div>
                         
-                        <!-- Non-GF Path -->
                         <div class="decision-path nongf-path">
                             <div class="path-badge nongf-badge">NO → Non-GF Request</div>
                             
                             <div class="decision-option approve-option">
-                                <p class="option-title">💰 Offset Revenue (grants/fees)?</p>
-                                <p class="option-result">→ <strong>APPROVE</strong> (leveraging external resources)</p>
+                                <p class="option-title">✅ Approve</p>
+                                <p class="option-result">Grant funded, fee supported, or self-sustaining</p>
                             </div>
-                            
-                            <div class="decision-option approve-option">
-                                <p class="option-title">📈 Increases Strategic Impact?</p>
-                                <p class="option-result">→ <strong>APPROVE</strong> (investment to improve alignment)</p>
-                            </div>
-                            
                             <div class="decision-option consider-option">
-                                <p class="option-title">🤝 Partner/Absorb Alternative?</p>
-                                <p class="option-result">→ Consider alternative funding sources</p>
-                            </div>
-                            
-                            <div class="decision-option defer-option">
-                                <p class="option-title">❓ No Clear Value?</p>
-                                <p class="option-result">→ <strong>DEFER</strong></p>
+                                <p class="option-title">🔍 Consider Carefully</p>
+                                <p class="option-result">Verify sustainability and alignment</p>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- ALL 24 ARCHETYPES TABLE -->
                 <div class="archetypes-table-section">
-                    <h3>Complete Guide: All 24 Budget Request Archetypes</h3>
-                    <p style="color: #666; margin-bottom: 20px;">Each archetype represents a unique combination of Quartile, Mandate level, Funding type, and Evidence strength.</p>
+                    <h3>Complete 24-Archetype Decision Grid</h3>
+                    <p style="color: #64748b; margin-bottom: 20px;">Based on Quartile Alignment × Fund Source × Evidence Quality</p>
                     
-                    <div class="table-container">
-                        <table class="archetypes-table">
-                            <thead>
-                                <tr>
-                                    <th>#</th>
-                                    <th>Quartile</th>
-                                    <th>Mandate</th>
-                                    <th>Funding</th>
-                                    <th>Evidence</th>
-                                    <th>Recommendation</th>
-                                    <th>Key Consideration</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- HIGH QUARTILE ARCHETYPES (1-12) -->
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">1</td>
-                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
-                                    <td>Mandated</td>
-                                    <td><span class="badge badge-nongf">NonGF</span></td>
-                                    <td>Strong</td>
-                                    <td><span class="badge badge-approve">APPROVE</span></td>
-                                    <td>Perfect alignment - strategic priority + mandate + no GF impact</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">2</td>
-                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
-                                    <td>Mandated</td>
-                                    <td><span class="badge badge-gf">GF only</span></td>
-                                    <td>Strong</td>
-                                    <td><span class="badge badge-approve">APPROVE</span></td>
-                                    <td>Mission-critical with legal mandate backing strategic goals</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">3</td>
-                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
-                                    <td>Mandated</td>
-                                    <td><span class="badge badge-nongf">NonGF</span></td>
-                                    <td>Weak</td>
-                                    <td><span class="badge badge-approve">APPROVE</span></td>
-                                    <td>Mandate + external funding covers weak evidence</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">4</td>
-                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
-                                    <td>Mandated</td>
-                                    <td><span class="badge badge-gf">GF only</span></td>
-                                    <td>Weak</td>
-                                    <td><span class="badge badge-approve">APPROVE</span></td>
-                                    <td>Mandate requires compliance regardless of evidence gaps</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">5</td>
-                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
-                                    <td>Compliance</td>
-                                    <td><span class="badge badge-nongf">NonGF</span></td>
-                                    <td>Strong</td>
-                                    <td><span class="badge badge-approve">APPROVE</span></td>
-                                    <td>Strategic priority with strong case and low GF risk</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">6</td>
-                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
-                                    <td>Compliance</td>
-                                    <td><span class="badge badge-gf">GF only</span></td>
-                                    <td>Strong</td>
-                                    <td><span class="badge badge-modify">MODIFY</span></td>
-                                    <td>Strong case but push for cost recovery or revenue offsets</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">7</td>
-                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
-                                    <td>Compliance</td>
-                                    <td><span class="badge badge-nongf">NonGF</span></td>
-                                    <td>Weak</td>
-                                    <td><span class="badge badge-modify">MODIFY</span></td>
-                                    <td>Strategic priority but strengthen outcomes/evidence first</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">8</td>
-                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
-                                    <td>Compliance</td>
-                                    <td><span class="badge badge-gf">GF only</span></td>
-                                    <td>Weak</td>
-                                    <td><span class="badge badge-modify">MODIFY</span></td>
-                                    <td>Require evidence plan and measurable outcomes before approval</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">9</td>
-                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
-                                    <td>None</td>
-                                    <td><span class="badge badge-nongf">NonGF</span></td>
-                                    <td>Strong</td>
-                                    <td><span class="badge badge-approve">APPROVE</span></td>
-                                    <td>Strategic priority with strong evidence and self-sustaining funding</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">10</td>
-                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
-                                    <td>None</td>
-                                    <td><span class="badge badge-gf">GF only</span></td>
-                                    <td>Strong</td>
-                                    <td><span class="badge badge-modify">MODIFY</span></td>
-                                    <td>Good case but seek fee/grant offset opportunities first</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">11</td>
-                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
-                                    <td>None</td>
-                                    <td><span class="badge badge-nongf">NonGF</span></td>
-                                    <td>Weak</td>
-                                    <td><span class="badge badge-modify">MODIFY</span></td>
-                                    <td>Strengthen business case or run pilot to prove value</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">12</td>
-                                    <td><span class="badge badge-high">High (Q1/Q2)</span></td>
-                                    <td>None</td>
-                                    <td><span class="badge badge-gf">GF only</span></td>
-                                    <td>Weak</td>
-                                    <td><span class="badge badge-defer">DEFER</span></td>
-                                    <td>Build evidence and outcomes data before using limited GF</td>
-                                </tr>
-                                
-                                <!-- LOW QUARTILE ARCHETYPES (13-24) -->
-                                <tr class="archetype-row low-quartile-section">
-                                    <td class="archetype-num">13</td>
-                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
-                                    <td>Mandated</td>
-                                    <td><span class="badge badge-nongf">NonGF</span></td>
-                                    <td>Strong</td>
-                                    <td><span class="badge badge-approve">APPROVE</span></td>
-                                    <td>Legal mandate with no GF impact - proceed with compliance</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">14</td>
-                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
-                                    <td>Mandated</td>
-                                    <td><span class="badge badge-gf">GF only</span></td>
-                                    <td>Strong</td>
-                                    <td><span class="badge badge-approve">APPROVE</span></td>
-                                    <td>Legal requirement must be met despite low strategic alignment</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">15</td>
-                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
-                                    <td>Mandated</td>
-                                    <td><span class="badge badge-nongf">NonGF</span></td>
-                                    <td>Weak</td>
-                                    <td><span class="badge badge-approve">APPROVE ⚠️</span></td>
-                                    <td>Verify mandate truly applies to this specific program</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">16</td>
-                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
-                                    <td>Mandated</td>
-                                    <td><span class="badge badge-gf">GF only</span></td>
-                                    <td>Weak</td>
-                                    <td><span class="badge badge-approve">APPROVE ⚠️</span></td>
-                                    <td>Identify cheapest compliance path and timeline to add non-GF</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">17</td>
-                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
-                                    <td>Compliance</td>
-                                    <td><span class="badge badge-nongf">NonGF</span></td>
-                                    <td>Strong</td>
-                                    <td><span class="badge badge-modify">MODIFY ⚠️</span></td>
-                                    <td>Verify durability of non-GF funding terms and conditions</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">18</td>
-                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
-                                    <td>Compliance</td>
-                                    <td><span class="badge badge-gf">GF only</span></td>
-                                    <td>Strong</td>
-                                    <td><span class="badge badge-modify">MODIFY ⚠️</span></td>
-                                    <td>Assess impact scale versus alternative compliance approaches</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">19</td>
-                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
-                                    <td>Compliance</td>
-                                    <td><span class="badge badge-nongf">NonGF</span></td>
-                                    <td>Weak</td>
-                                    <td><span class="badge badge-defer">DEFER</span></td>
-                                    <td>Question realism of claimed benefits - prove value first</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">20</td>
-                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
-                                    <td>Compliance</td>
-                                    <td><span class="badge badge-gf">GF only</span></td>
-                                    <td>Weak</td>
-                                    <td><span class="badge badge-defer">DEFER</span></td>
-                                    <td>If truly imminent, treat as mandate; otherwise quantify risk</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">21</td>
-                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
-                                    <td>None</td>
-                                    <td><span class="badge badge-nongf">NonGF</span></td>
-                                    <td>Strong</td>
-                                    <td><span class="badge badge-approve">APPROVE ✅</span></td>
-                                    <td>No GF impact and self-sustaining - ensure no GF drift</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">22</td>
-                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
-                                    <td>None</td>
-                                    <td><span class="badge badge-gf">GF only</span></td>
-                                    <td>Strong</td>
-                                    <td><span class="badge badge-defer">DEFER</span></td>
-                                    <td>Competes with higher-priority needs - phase behind Q1/Q2</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">23</td>
-                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
-                                    <td>None</td>
-                                    <td><span class="badge badge-nongf">NonGF</span></td>
-                                    <td>Weak</td>
-                                    <td><span class="badge badge-defer">DEFER</span></td>
-                                    <td>Prove demand and willingness-to-pay before proceeding</td>
-                                </tr>
-                                <tr class="archetype-row">
-                                    <td class="archetype-num">24</td>
-                                    <td><span class="badge badge-low">Low (Q3/Q4)</span></td>
-                                    <td>None</td>
-                                    <td><span class="badge badge-gf">GF only</span></td>
-                                    <td>Weak</td>
-                                    <td><span class="badge badge-reject">REJECT</span></td>
-                                    <td>No compelling case for limited GF resources - reframe or defer</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                
-                <!-- Summary by Disposition -->
-                <div class="archetypes-summary">
-                    <h3>Summary by Disposition</h3>
                     <div class="summary-grid">
                         <div class="summary-card approve-card">
-                            <div class="summary-number">9</div>
+                            <div class="summary-number">10</div>
                             <div class="summary-label">✅ APPROVE</div>
-                            <p class="summary-description">Strong alignment with strategic goals and/or mandated requirements</p>
-                            <p class="summary-archetypes">#1, #2, #3, #4, #5, #9, #13, #14, #15, #16, #21</p>
+                            <p class="summary-description">Clear approval based on alignment, evidence, and funding</p>
                         </div>
-                        
                         <div class="summary-card modify-card">
                             <div class="summary-number">6</div>
                             <div class="summary-label">⚠️ MODIFY</div>
-                            <p class="summary-description">Conditional approval with required adjustments or offsets</p>
-                            <p class="summary-archetypes">#6, #7, #8, #10, #11, #17, #18</p>
+                            <p class="summary-description">Conditional approval with required adjustments</p>
                         </div>
-                        
                         <div class="summary-card defer-card">
-                            <div class="summary-number">8</div>
+                            <div class="summary-number">7</div>
                             <div class="summary-label">⏸️ DEFER</div>
-                            <p class="summary-description">Postpone until better evidence, funding, or priority alignment</p>
-                            <p class="summary-archetypes">#12, #19, #20, #22, #23</p>
+                            <p class="summary-description">Postpone until better conditions</p>
                         </div>
-                        
                         <div class="summary-card reject-card">
                             <div class="summary-number">1</div>
                             <div class="summary-label">❌ REJECT</div>
-                            <p class="summary-description">Does not meet minimum criteria for consideration</p>
-                            <p class="summary-archetypes">#24</p>
+                            <p class="summary-description">Does not meet minimum criteria</p>
                         </div>
                     </div>
                 </div>
@@ -490,12 +490,46 @@
         </div>
     </div>
 
+    <!-- ========== FOOTER ========== -->
+    <footer class="app-footer">
+        <div class="footer-content">
+            <div class="footer-brand">
+                <svg viewBox="0 0 159 159" class="footer-logo">
+                    <g fill="currentColor" fill-rule="evenodd">
+                        <path d="M13.005,44.421 C20.188,44.421 26.01,50.244 26.01,57.426 C26.01,64.612 20.188,70.438 13.002,70.435 C5.821,70.432 0,64.61 0,57.426 C0,50.244 5.821,44.421 13.005,44.421"/>
+                        <path d="M57.289,88.699 C64.47,88.699 70.293,94.526 70.293,101.709 C70.293,108.895 64.47,114.719 57.289,114.714 C50.102,114.714 44.281,108.893 44.281,101.709 C44.281,94.531 50.101,88.705 57.289,88.699"/>
+                        <path d="M101.57,88.699 C108.752,88.699 114.575,94.526 114.575,101.709 C114.575,108.895 108.752,114.719 101.57,114.714 C94.389,114.714 88.568,108.893 88.568,101.709 C88.563,94.531 94.385,88.705 101.57,88.699"/>
+                        <path d="M145.854,88.699 C153.04,88.699 158.856,94.526 158.861,101.709 C158.856,108.895 153.04,114.719 145.854,114.714 C138.671,114.714 132.85,108.893 132.85,101.709 C132.845,94.531 138.668,88.705 145.854,88.699"/>
+                    </g>
+                </svg>
+                <span>Powered by Tyler Technologies Budget Intelligence</span>
+            </div>
+            <div class="footer-links">
+                <a href="https://www.tylertech.com" target="_blank">Tyler Technologies</a>
+                <a href="#">Documentation</a>
+                <a href="#">Support</a>
+            </div>
+        </div>
+    </footer>
+
     <script src="app.js"></script>
     
-    <!-- Modal JavaScript -->
     <script>
-    // Modal handling code
+    // ========== SIDEBAR & NAVIGATION LOGIC ==========
     document.addEventListener('DOMContentLoaded', function() {
+        const sidebar = document.getElementById('sidebar');
+        const sidebarToggle = document.getElementById('sidebarToggle');
+        const mainContent = document.getElementById('mainContent');
+        
+        // Toggle sidebar
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('collapsed');
+                mainContent.classList.toggle('expanded');
+            });
+        }
+        
+        // Modal handling
         const showBtn = document.getElementById('showDecisionTreeBtn');
         const closeBtn = document.getElementById('closeDecisionTreeBtn');
         const modal = document.getElementById('decisionTreeModal');
@@ -512,7 +546,6 @@
             });
         }
         
-        // Close on background click
         if (modal) {
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) {
@@ -521,6 +554,43 @@
             });
         }
     });
+    
+    // Update UI when data is loaded (called from app.js)
+    function updateUIAfterDataLoad(requestCount, totalAmount, departmentCount) {
+        // Update header
+        document.getElementById('headerOrgName').textContent = 'Data Loaded';
+        
+        // Update sidebar status
+        document.getElementById('dataStatusDot').classList.add('loaded');
+        document.getElementById('dataStatusText').textContent = 'Data Loaded';
+        document.getElementById('dataCount').style.display = 'block';
+        document.getElementById('requestCount').textContent = requestCount;
+        
+        // Enable nav items
+        document.getElementById('navFilters').style.opacity = '1';
+        document.getElementById('navFilters').style.pointerEvents = 'auto';
+        
+        // Show hero stats
+        const heroStats = document.getElementById('heroStats');
+        if (heroStats) {
+            heroStats.style.display = 'block';
+            document.getElementById('heroTotalRequests').textContent = requestCount;
+            document.getElementById('heroTotalAmount').textContent = '$' + totalAmount.toLocaleString();
+            document.getElementById('heroDepartments').textContent = departmentCount;
+        }
+        
+        // Show filters section
+        document.getElementById('filtersSection').style.display = 'block';
+        document.getElementById('currentBudgetSection').style.display = 'block';
+    }
+    
+    // Enable report navigation after generation
+    function enableReportNav() {
+        document.getElementById('navReport').style.opacity = '1';
+        document.getElementById('navReport').style.pointerEvents = 'auto';
+        document.getElementById('navAnalysis').style.opacity = '1';
+        document.getElementById('navAnalysis').style.pointerEvents = 'auto';
+    }
     </script>
 </body>
 </html>

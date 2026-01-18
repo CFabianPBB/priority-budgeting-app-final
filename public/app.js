@@ -5297,6 +5297,8 @@ function exportPBBAnalysisToExcel() {
         'Program',
         'Quartile',
         'Total Amount',
+        'Archetype #',
+        'Decision Profile',
         'PBB Total Score (0-12)',
         'PBB Recommendation',
         '1. Program Alignment Score (0-2)',
@@ -5342,6 +5344,8 @@ function exportPBBAnalysisToExcel() {
             primaryProgram,
             primaryQuartile,
             amounts.total,
+            analysis.archetypeNumber,
+            analysis.gridKey,
             analysis.totalScore,
             analysis.disposition,
             analysis.quartileScore,
@@ -5371,6 +5375,8 @@ function exportPBBAnalysisToExcel() {
         { wch: 25 },  // Program
         { wch: 15 },  // Quartile
         { wch: 15 },  // Total Amount
+        { wch: 12 },  // Archetype #
+        { wch: 28 },  // Decision Profile
         { wch: 12 },  // PBB Score
         { wch: 15 },  // Recommendation
         { wch: 10 },  // Program Alignment Score

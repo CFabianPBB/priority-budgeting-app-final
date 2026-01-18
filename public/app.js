@@ -1318,6 +1318,8 @@ function scoreRequest(request) {
     analysis.verifyNow = gridDecision.verifyNow;
     analysis.strengthenWith = gridDecision.strengthenWith;
     analysis.gridKey = gridDecision.gridKey;
+    analysis.archetypeNumber = gridDecision.archetypeNumber;
+    analysis.keyConsideration = gridDecision.keyConsideration;
     
     // Generate enhanced narrative
     analysis.narrative = generateEnhancedNarrative(request, lineItems, qa, analysis);
@@ -1332,160 +1334,210 @@ function applyDecisionGrid(analysis) {
     // Create lookup key
     const gridKey = `${quartileBand}-${mandateLevel}-${fundingType}-${outcomesStrength}`;
     
-    // Decision grid mapping - REVISED to match funding philosophy
+    // Decision grid mapping with archetype numbers matching the 24 Archetypes table
     const grid = {
-        // HIGH RELEVANCE (Q1-Q2) - Strategic Priority Programs
+        // HIGH RELEVANCE (Q1-Q2) - Strategic Priority Programs (Archetypes 1-12)
         'High-Mandated-NonGF-Strong': {
+            archetypeNumber: 1,
             disposition: 'APPROVE',
             color: '#28a745',
+            keyConsideration: 'Perfect alignment - strategic priority + mandate + no GF impact',
             verifyNow: ['Statute/board reference', 'Allowability of non-GF sources'],
             strengthenWith: ['Final KPI list', 'Compliance milestones', 'Data source & cadence']
         },
         'High-Mandated-GFonly-Strong': {
+            archetypeNumber: 2,
             disposition: 'APPROVE',
             color: '#28a745',
+            keyConsideration: 'Mission-critical with legal mandate backing strategic goals',
             verifyNow: ['Confirm mandate scope & minimums'],
             strengthenWith: ['Cost offsets (phase-down plan, reallocation)', 'Sunset/true-up triggers']
         },
         'High-Mandated-NonGF-Weak': {
+            archetypeNumber: 3,
             disposition: 'APPROVE',
             color: '#28a745',
+            keyConsideration: 'Mandate + external funding covers weak evidence',
             verifyNow: ['That mandate truly requires this spend'],
             strengthenWith: ['Baseline→target KPIs', '90-day evaluation plan', 'Interim check-in']
         },
         'High-Mandated-GFonly-Weak': {
+            archetypeNumber: 4,
             disposition: 'APPROVE',
-            color: '#ffc107',
+            color: '#28a745',
+            keyConsideration: 'Mandate requires compliance regardless of evidence gaps',
             verifyNow: ['Minimum-viable compliance level'],
             strengthenWith: ['Add fee/grant search', 'Partner MOUs', 'Phased start', 'Sunset clause']
         },
         'High-Compliance-NonGF-Strong': {
+            archetypeNumber: 5,
             disposition: 'APPROVE',
             color: '#28a745',
+            keyConsideration: 'Strategic priority with strong case and low GF risk',
             verifyNow: ['Risk register link', 'Risk reduction metric'],
             strengthenWith: ['Cost avoidance calc', 'SLA updates', 'Internal control changes']
         },
         'High-Compliance-GFonly-Strong': {
+            archetypeNumber: 6,
             disposition: 'MODIFY',
             color: '#ffc107',
+            keyConsideration: 'Strong case but push for cost recovery',
             verifyNow: ['Materiality of risk', 'Alternatives'],
             strengthenWith: ['Add partial cost recovery', 'Internal reallocation', 'Pilot scope']
         },
         'High-Compliance-NonGF-Weak': {
+            archetypeNumber: 7,
             disposition: 'MODIFY',
             color: '#ffc107',
+            keyConsideration: 'Strengthen outcomes/evidence first',
             verifyNow: ['That non-GF is real & timely'],
             strengthenWith: ['KPIs', '6-mo pilot with go/no-go', 'Light-weight evaluation plan']
         },
         'High-Compliance-GFonly-Weak': {
-            disposition: 'DEFER',  // CHANGED from MODIFY
-            color: '#dc3545',
+            archetypeNumber: 8,
+            disposition: 'MODIFY',
+            color: '#ffc107',
+            keyConsideration: 'Require evidence plan before approval',
             verifyNow: ['Is this truly critical for safety/liability?'],
             strengthenWith: ['Strengthen outcomes evidence', 'Identify cost recovery', 'Narrow scope significantly', 'Stage gates with evaluation']
         },
         'High-None-NonGF-Strong': {
+            archetypeNumber: 9,
             disposition: 'APPROVE',
             color: '#28a745',
+            keyConsideration: 'Strategic with self-sustaining funding',
             verifyNow: ['No hidden GF backfill'],
             strengthenWith: ['Pay-for-itself math', 'Fee elasticity/grant terms', 'Partner commitments']
         },
         'High-None-GFonly-Strong': {
-            disposition: 'APPROVE',  // CHANGED from MODIFY
-            color: '#28a745',
+            archetypeNumber: 10,
+            disposition: 'MODIFY',
+            color: '#ffc107',
+            keyConsideration: 'Good case but seek fee/grant offset opportunities first',
             verifyNow: ['Alignment with strategic plan goals', 'Expected impact on outcomes'],
             strengthenWith: ['Explore cost recovery options', 'Unit-cost reduction opportunities', 'Potential partnerships']
         },
         'High-None-NonGF-Weak': {
+            archetypeNumber: 11,
             disposition: 'MODIFY',
             color: '#ffc107',
+            keyConsideration: 'Strengthen business case or run pilot to prove value',
             verifyNow: ['Outcome plausibility'],
             strengthenWith: ['KPIs & evaluation', 'Start as pilot', 'Tighten deliverables']
         },
         'High-None-GFonly-Weak': {
+            archetypeNumber: 12,
             disposition: 'DEFER',
             color: '#dc3545',
+            keyConsideration: 'Build evidence and outcomes data before using limited GF',
             verifyNow: ['Why should GF be used for this lower-evidence request?'],
             strengthenWith: ['Tie to priority KPIs with clear metrics', 'Find non-GF sources', 'Reduce scope or integrate with higher-priority work']
         },
         
-        // LOW RELEVANCE (Q3-Q4) - Lower Strategic Priority
+        // LOW RELEVANCE (Q3-Q4) - Lower Strategic Priority (Archetypes 13-24)
         'Low-Mandated-NonGF-Strong': {
+            archetypeNumber: 13,
             disposition: 'APPROVE',
             color: '#28a745',
+            keyConsideration: 'Legal mandate with no GF impact - proceed with compliance',
             verifyNow: ['Minimum compliance scope'],
             strengthenWith: ['Keep GF minimal', 'Escrow/offsets', 'Time-bound sunset']
         },
         'Low-Mandated-GFonly-Strong': {
+            archetypeNumber: 14,
             disposition: 'APPROVE',
-            color: '#ffc107',
+            color: '#28a745',
+            keyConsideration: 'Mandate overrides low quartile - fund minimum compliance',
             verifyNow: ['Is Q3/Q4 mapping correct?', 'Minimum compliance requirement'],
             strengthenWith: ['Identify fees/grants aggressively', 'Swap lower-impact spend', 'Phase implementation', 'Sunset provision']
         },
         'Low-Mandated-NonGF-Weak': {
+            archetypeNumber: 15,
             disposition: 'APPROVE',
-            color: '#ffc107',
+            color: '#28a745',
+            keyConsideration: 'Mandate + non-GF justifies proceeding despite weak evidence',
             verifyNow: ['That mandate truly applies to this program'],
             strengthenWith: ['KPI baseline→target', '90-day review', 'Non-GF documentation']
         },
         'Low-Mandated-GFonly-Weak': {
-            disposition: 'MODIFY',  // CHANGED from APPROVE
+            archetypeNumber: 16,
+            disposition: 'APPROVE',
             color: '#ffc107',
+            keyConsideration: 'Mandate-driven but add strong conditions and sunset',
             verifyNow: ['Absolute minimum compliance path', 'Can this be delayed?'],
             strengthenWith: ['Tight scope - minimum viable only', 'Aggressive cost offsets', 'Timeline to add non-GF within 6 months', 'Clear exit criteria']
         },
         'Low-Compliance-NonGF-Strong': {
+            archetypeNumber: 17,
             disposition: 'MODIFY',
             color: '#ffc107',
+            keyConsideration: 'Risk mitigation but ensure no GF creep',
             verifyNow: ['Non-GF terms & durability'],
             strengthenWith: ['No-GF pledge', 'Measurable risk reduction', 'Pilot + review']
         },
         'Low-Compliance-GFonly-Strong': {
-            disposition: 'DEFER',  // CHANGED from MODIFY
-            color: '#dc3545',
+            archetypeNumber: 18,
+            disposition: 'MODIFY',
+            color: '#ffc107',
+            keyConsideration: 'Compliance need but require cost offsets for low-priority program',
             verifyNow: ['Why is this low-priority program requiring GF for compliance?'],
             strengthenWith: ['Require cost recovery mechanism', 'Internal reallocation from Q3/Q4 programs', 'Consider program redesign or elimination']
         },
         'Low-Compliance-NonGF-Weak': {
+            archetypeNumber: 19,
             disposition: 'DEFER',
             color: '#dc3545',
+            keyConsideration: 'Weak case even with non-GF - prove value first',
             verifyNow: ['Realism of benefits'],
             strengthenWith: ['Basic KPI set', 'Partner LOIs', 'Phase to prove value']
         },
         'Low-Compliance-GFonly-Weak': {
+            archetypeNumber: 20,
             disposition: 'DEFER',
             color: '#dc3545',
+            keyConsideration: 'Low priority + GF only + weak evidence = defer',
             verifyNow: ['If imminent risk, treat as mandate'],
             strengthenWith: ['Pilot w/ non-GF', 'Quantify liability avoided', 'Combine with Q1/Q2 work or eliminate']
         },
         'Low-None-NonGF-Strong': {
+            archetypeNumber: 21,
             disposition: 'APPROVE',
             color: '#28a745',
+            keyConsideration: 'Self-sustaining with strong outcomes - proceed if no GF needed',
             verifyNow: ['No GF drift', 'Sustainability of non-GF sources'],
             strengthenWith: ['Full cost recovery plan', 'Service redesign to increase relevance', 'Path to Q1/Q2 alignment']
         },
         'Low-None-GFonly-Strong': {
+            archetypeNumber: 22,
             disposition: 'DEFER',
             color: '#dc3545',
+            keyConsideration: 'Competes with higher-priority needs - phase behind Q1/Q2',
             verifyNow: ['Why use limited GF on low-priority program?'],
             strengthenWith: ['Add fee/grant/partner funding', 'ROI calculation showing strategic value', 'Phase behind Q1/Q2 priorities', 'Consider program elimination']
         },
         'Low-None-NonGF-Weak': {
+            archetypeNumber: 23,
             disposition: 'DEFER',
             color: '#dc3545',
+            keyConsideration: 'Prove demand and willingness-to-pay before proceeding',
             verifyNow: ['Is there any compelling reason to continue this program?'],
             strengthenWith: ['Strong KPIs showing strategic value', 'Tighten scope drastically', 'Prove demand/willingness-to-pay', 'Consider elimination']
         },
         'Low-None-GFonly-Weak': {
+            archetypeNumber: 24,
             disposition: 'REJECT',
             color: '#dc3545',
+            keyConsideration: 'No compelling case for limited GF resources - reframe or eliminate',
             verifyNow: ['N/A - does not meet funding criteria'],
             strengthenWith: ['Reframe to demonstrate higher-Q outcome alignment', 'Secure 100% non-GF funding', 'Consolidate with higher-priority programs', 'Recommend program elimination']
         }
     };
     
     const decision = grid[gridKey] || {
+        archetypeNumber: 0,
         disposition: 'MODIFY',
         color: '#ffc107',
+        keyConsideration: 'Unable to categorize - manual review needed',
         verifyNow: ['Unable to categorize - manual review needed'],
         strengthenWith: ['Provide complete information on mandate, funding, and outcomes']
     };
@@ -2282,7 +2334,7 @@ function generateDetailedRequestReportAnalytical() {
                         ${analysis.disposition}
                     </span>
                     <span class="request-accordion-badge" style="background: #667eea;">
-                        ${analysis.totalScore}/12
+                        Archetype #${analysis.archetypeNumber}
                     </span>
                     <span class="request-accordion-arrow" id="${uniqueId}-arrow">▼</span>
                 </div>
@@ -2323,71 +2375,82 @@ function generateDetailedRequestReportAnalytical() {
                             </div>
                         </div>
                         
-                        <!-- PBB SCORING SECTION (Collapsible) -->
+                        <!-- PBB ARCHETYPE & RECOMMENDATION (Collapsible) -->
                         <div class="collapsible-header" onclick="toggleCollapsible('pbb-score-${requestId}')">
-                            <h3>📊 PBB Framework Analysis & Scoring</h3>
+                            <h3>🎯 PBB Archetype Analysis</h3>
                             <span class="collapsible-toggle" id="pbb-score-${requestId}-toggle">▼</span>
                         </div>
                         <div class="collapsible-content" id="pbb-score-${requestId}">
                             <div style="background: linear-gradient(135deg, #f8f9ff, #ffffff); padding: 25px; margin-bottom: 25px; border-radius: 8px; border: 2px solid ${analysis.dispositionColor};">
-                                <h3 style="color: ${analysis.dispositionColor}; margin-bottom: 20px; font-size: 1.5rem;">
-                                    📊 PBB Analysis Score: ${analysis.totalScore}/12 
-                                    <span style="font-size: 1.2rem; opacity: 0.8;">(Weighted: ${analysis.weightedPercentage}%)</span>
-                                </h3>
-                                <div style="background: #f0f0f0; border-radius: 10px; height: 30px; margin-bottom: 20px; overflow: hidden;">
-                                    <div style="background: linear-gradient(90deg, ${analysis.dispositionColor}, ${analysis.dispositionColor}dd); height: 100%; width: ${analysis.weightedPercentage}%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; transition: width 0.3s ease;">
-                                        ${analysis.weightedPercentage}%
+                                
+                                <!-- PRIMARY: Archetype Determination -->
+                                <div style="text-align: center; margin-bottom: 25px; padding: 25px; background: linear-gradient(135deg, ${analysis.dispositionColor}15, ${analysis.dispositionColor}05); border-radius: 12px; border: 2px solid ${analysis.dispositionColor};">
+                                    <div style="font-size: 0.9rem; color: #666; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">Budget Request Archetype</div>
+                                    <div style="font-size: 3rem; font-weight: 800; color: ${analysis.dispositionColor}; margin-bottom: 5px;">
+                                        #${analysis.archetypeNumber}
+                                    </div>
+                                    <div style="font-size: 1.8rem; font-weight: 700; color: ${analysis.dispositionColor}; margin-bottom: 15px;">
+                                        ${analysis.disposition}
+                                    </div>
+                                    <div style="font-size: 1.1rem; color: #444; font-style: italic; max-width: 600px; margin: 0 auto; line-height: 1.5;">
+                                        "${analysis.keyConsideration}"
                                     </div>
                                 </div>
                                 
-                                <!-- Score Breakdown with Explicit Reasons -->
-                                <div style="margin: 20px 0;">
-                                    <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #667eea;">
-                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                            <strong style="color: #667eea; font-size: 1.1rem;">1. Program Alignment (Quartile)</strong>
-                                            <span style="background: #667eea; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.quartileScore}/2</span>
+                                <!-- 4 DECISION FACTORS (What determines the archetype) -->
+                                <h4 style="color: #1e3a5f; margin: 25px 0 15px; font-size: 1.2rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">
+                                    📊 Decision Factors (4 inputs that determine archetype)
+                                </h4>
+                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 25px;">
+                                    <!-- Factor 1: Quartile -->
+                                    <div style="background: ${analysis.quartileBand === 'High' ? 'linear-gradient(135deg, #d1fae5, #a7f3d0)' : 'linear-gradient(135deg, #fee2e2, #fecaca)'}; padding: 15px; border-radius: 10px; text-align: center; border: 2px solid ${analysis.quartileBand === 'High' ? '#10b981' : '#ef4444'};">
+                                        <div style="font-size: 0.75rem; color: #666; text-transform: uppercase; margin-bottom: 5px;">Quartile</div>
+                                        <div style="font-size: 1.3rem; font-weight: 700; color: ${analysis.quartileBand === 'High' ? '#059669' : '#dc2626'};">
+                                            ${analysis.quartileBand === 'High' ? '🟢 High' : '🔴 Low'}
                                         </div>
-                                        <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.quartileReason}</em></p>
+                                        <div style="font-size: 0.85rem; color: #555;">${analysis.bestQuartile}</div>
                                     </div>
-                                    
-                                    <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #17a2b8;">
-                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                            <strong style="color: #17a2b8; font-size: 1.1rem;">2. Outcome Evidence</strong>
-                                            <span style="background: #17a2b8; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.outcomeScore}/2</span>
+                                    <!-- Factor 2: Mandate -->
+                                    <div style="background: ${analysis.mandateLevel === 'Mandated' ? 'linear-gradient(135deg, #dbeafe, #bfdbfe)' : analysis.mandateLevel === 'Compliance' ? 'linear-gradient(135deg, #fef3c7, #fde68a)' : 'linear-gradient(135deg, #f1f5f9, #e2e8f0)'}; padding: 15px; border-radius: 10px; text-align: center; border: 2px solid ${analysis.mandateLevel === 'Mandated' ? '#3b82f6' : analysis.mandateLevel === 'Compliance' ? '#f59e0b' : '#94a3b8'};">
+                                        <div style="font-size: 0.75rem; color: #666; text-transform: uppercase; margin-bottom: 5px;">Mandate</div>
+                                        <div style="font-size: 1.3rem; font-weight: 700; color: ${analysis.mandateLevel === 'Mandated' ? '#2563eb' : analysis.mandateLevel === 'Compliance' ? '#d97706' : '#64748b'};">
+                                            ${analysis.mandateLevel === 'Mandated' ? '⚖️ Mandated' : analysis.mandateLevel === 'Compliance' ? '⚠️ Compliance' : '➖ None'}
                                         </div>
-                                        <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.outcomeReason}</em></p>
                                     </div>
-                                    
-                                    <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #28a745;">
-                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                            <strong style="color: #28a745; font-size: 1.1rem;">3. Funding Strategy</strong>
-                                            <span style="background: #28a745; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.fundingScore}/2</span>
+                                    <!-- Factor 3: Funding -->
+                                    <div style="background: ${analysis.fundingType === 'NonGF' ? 'linear-gradient(135deg, #d1fae5, #a7f3d0)' : 'linear-gradient(135deg, #fee2e2, #fecaca)'}; padding: 15px; border-radius: 10px; text-align: center; border: 2px solid ${analysis.fundingType === 'NonGF' ? '#10b981' : '#ef4444'};">
+                                        <div style="font-size: 0.75rem; color: #666; text-transform: uppercase; margin-bottom: 5px;">Funding</div>
+                                        <div style="font-size: 1.3rem; font-weight: 700; color: ${analysis.fundingType === 'NonGF' ? '#059669' : '#dc2626'};">
+                                            ${analysis.fundingType === 'NonGF' ? '💚 Non-GF' : '🔴 GF Only'}
                                         </div>
-                                        <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.fundingReason}</em></p>
                                     </div>
-                                    
-                                    <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #ffc107;">
-                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                            <strong style="color: #856404; font-size: 1.1rem;">4. Mandate/Risk</strong>
-                                            <span style="background: #ffc107; color: #333; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.mandateScore}/2</span>
+                                    <!-- Factor 4: Evidence -->
+                                    <div style="background: ${analysis.outcomesStrength === 'Strong' ? 'linear-gradient(135deg, #d1fae5, #a7f3d0)' : 'linear-gradient(135deg, #fee2e2, #fecaca)'}; padding: 15px; border-radius: 10px; text-align: center; border: 2px solid ${analysis.outcomesStrength === 'Strong' ? '#10b981' : '#ef4444'};">
+                                        <div style="font-size: 0.75rem; color: #666; text-transform: uppercase; margin-bottom: 5px;">Evidence</div>
+                                        <div style="font-size: 1.3rem; font-weight: 700; color: ${analysis.outcomesStrength === 'Strong' ? '#059669' : '#dc2626'};">
+                                            ${analysis.outcomesStrength === 'Strong' ? '📊 Strong' : '📋 Weak'}
                                         </div>
-                                        <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.mandateReason}</em></p>
                                     </div>
-                                    
-                                    <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #6f42c1;">
-                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                            <strong style="color: #6f42c1; font-size: 1.1rem;">5. Efficiency/ROI</strong>
-                                            <span style="background: #6f42c1; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.efficiencyScore}/2</span>
+                                </div>
+                                
+                                <!-- ADDITIONAL CONSIDERATIONS (Efficiency & Access - informational only) -->
+                                <h4 style="color: #64748b; margin: 25px 0 15px; font-size: 1rem;">
+                                    📝 Additional Considerations (informational - do not affect archetype)
+                                </h4>
+                                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 25px; opacity: 0.85;">
+                                    <div style="background: #f8fafc; padding: 12px 15px; border-radius: 8px; border-left: 3px solid #6f42c1;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <span style="color: #6f42c1; font-weight: 600;">Efficiency/ROI</span>
+                                            <span style="background: #6f42c1; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.85rem;">${analysis.efficiencyScore}/2</span>
                                         </div>
-                                        <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.efficiencyReason}</em></p>
+                                        <p style="margin: 5px 0 0; font-size: 0.85rem; color: #666;">${analysis.efficiencyReason}</p>
                                     </div>
-                                    
-                                    <div style="margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #e83e8c;">
-                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                            <strong style="color: #e83e8c; font-size: 1.1rem;">6. Access</strong>
-                                            <span style="background: #e83e8c; color: white; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 1.1rem;">${analysis.accessScore}/2</span>
+                                    <div style="background: #f8fafc; padding: 12px 15px; border-radius: 8px; border-left: 3px solid #e83e8c;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                            <span style="color: #e83e8c; font-weight: 600;">Access/Equity</span>
+                                            <span style="background: #e83e8c; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.85rem;">${analysis.accessScore}/2</span>
                                         </div>
-                                        <p style="margin: 0; color: #555; font-size: 1rem; line-height: 1.6;"><em>${analysis.accessReason}</em></p>
+                                        <p style="margin: 5px 0 0; font-size: 0.85rem; color: #666;">${analysis.accessReason}</p>
                                     </div>
                                 </div>
                                 
@@ -2570,7 +2633,7 @@ function downloadAnalyticalWordReport() {
                 <td style="padding: 8px; border: 1px solid #e2e8f0;">${primaryDept}</td>
                 <td style="padding: 8px; border: 1px solid #e2e8f0;">${primaryQuartile}</td>
                 <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: right;">$${formatCurrency(amounts.total)}</td>
-                <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: center;">${analysis.totalScore}/12</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: center; font-weight: bold;">#${analysis.archetypeNumber}</td>
                 <td style="padding: 8px; border: 1px solid #e2e8f0; background: ${dispColor}; color: white; font-weight: bold; text-align: center;">${analysis.disposition}</td>
             </tr>
         `;
@@ -2625,36 +2688,43 @@ function downloadAnalyticalWordReport() {
                         </tr>
                     </table>
                     
-                    <h4 style="color: #1e3a5f; margin: 15px 0 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">PBB Scoring (${analysis.totalScore}/12 Total)</h4>
+                    <h4 style="color: #1e3a5f; margin: 15px 0 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">🎯 Archetype #${analysis.archetypeNumber}: ${analysis.disposition}</h4>
+                    <p style="font-style: italic; color: #555; margin-bottom: 15px;">"${analysis.keyConsideration}"</p>
+                    
+                    <h4 style="color: #64748b; margin: 15px 0 10px;">Decision Factors (4 inputs)</h4>
                     <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
                         <tr style="background: #f8fafc;">
-                            <td style="padding: 8px; width: 25%;"><strong>1. Program Alignment</strong></td>
-                            <td style="padding: 8px; width: 10%; text-align: center; font-weight: 700;">${analysis.quartileScore}/2</td>
+                            <td style="padding: 8px; width: 25%;"><strong>Quartile</strong></td>
+                            <td style="padding: 8px; width: 15%; text-align: center; font-weight: 700; color: ${analysis.quartileBand === 'High' ? '#059669' : '#dc2626'};">${analysis.quartileBand === 'High' ? '🟢 High' : '🔴 Low'}</td>
                             <td style="padding: 8px;">${analysis.quartileReason}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 8px;"><strong>2. Outcome Evidence</strong></td>
-                            <td style="padding: 8px; text-align: center; font-weight: 700;">${analysis.outcomeScore}/2</td>
-                            <td style="padding: 8px;">${analysis.outcomeReason}</td>
-                        </tr>
-                        <tr style="background: #f8fafc;">
-                            <td style="padding: 8px;"><strong>3. Funding Strategy</strong></td>
-                            <td style="padding: 8px; text-align: center; font-weight: 700;">${analysis.fundingScore}/2</td>
-                            <td style="padding: 8px;">${analysis.fundingReason}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px;"><strong>4. Mandate/Risk</strong></td>
-                            <td style="padding: 8px; text-align: center; font-weight: 700;">${analysis.mandateScore}/2</td>
+                            <td style="padding: 8px;"><strong>Mandate</strong></td>
+                            <td style="padding: 8px; text-align: center; font-weight: 700;">${analysis.mandateLevel === 'Mandated' ? '⚖️ Mandated' : analysis.mandateLevel === 'Compliance' ? '⚠️ Compliance' : '➖ None'}</td>
                             <td style="padding: 8px;">${analysis.mandateReason}</td>
                         </tr>
                         <tr style="background: #f8fafc;">
-                            <td style="padding: 8px;"><strong>5. Efficiency/ROI</strong></td>
-                            <td style="padding: 8px; text-align: center; font-weight: 700;">${analysis.efficiencyScore}/2</td>
+                            <td style="padding: 8px;"><strong>Funding</strong></td>
+                            <td style="padding: 8px; text-align: center; font-weight: 700; color: ${analysis.fundingType === 'NonGF' ? '#059669' : '#dc2626'};">${analysis.fundingType === 'NonGF' ? '💚 Non-GF' : '🔴 GF Only'}</td>
+                            <td style="padding: 8px;">${analysis.fundingReason}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px;"><strong>Evidence</strong></td>
+                            <td style="padding: 8px; text-align: center; font-weight: 700; color: ${analysis.outcomesStrength === 'Strong' ? '#059669' : '#dc2626'};">${analysis.outcomesStrength === 'Strong' ? '📊 Strong' : '📋 Weak'}</td>
+                            <td style="padding: 8px;">${analysis.outcomeReason}</td>
+                        </tr>
+                    </table>
+                    
+                    <h4 style="color: #64748b; margin: 15px 0 10px;">Additional Considerations (informational)</h4>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 11px; opacity: 0.85;">
+                        <tr style="background: #f8fafc;">
+                            <td style="padding: 8px; width: 25%;"><strong>Efficiency/ROI</strong></td>
+                            <td style="padding: 8px; width: 15%; text-align: center;">${analysis.efficiencyScore}/2</td>
                             <td style="padding: 8px;">${analysis.efficiencyReason}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 8px;"><strong>6. Access</strong></td>
-                            <td style="padding: 8px; text-align: center; font-weight: 700;">${analysis.accessScore}/2</td>
+                            <td style="padding: 8px;"><strong>Access/Equity</strong></td>
+                            <td style="padding: 8px; text-align: center;">${analysis.accessScore}/2</td>
                             <td style="padding: 8px;">${analysis.accessReason}</td>
                         </tr>
                     </table>
@@ -2721,7 +2791,7 @@ function downloadAnalyticalWordReport() {
                         <th style="padding: 10px; text-align: left;">Department</th>
                         <th style="padding: 10px; text-align: left;">Quartile</th>
                         <th style="padding: 10px; text-align: right;">Amount</th>
-                        <th style="padding: 10px; text-align: center;">Score</th>
+                        <th style="padding: 10px; text-align: center;">Archetype</th>
                         <th style="padding: 10px; text-align: center;">Recommendation</th>
                     </tr>
                 </thead>
@@ -2801,7 +2871,7 @@ function downloadAnalyticalPdfReport() {
             <td>${primaryDept}</td>
             <td><span class="badge ${qBadge}">${primaryQuartile}</span></td>
             <td class="amount">$${formatCurrency(amounts.total)}</td>
-            <td style="text-align: center;">${analysis.totalScore}/12</td>
+            <td style="text-align: center; font-weight: bold;">#${analysis.archetypeNumber}</td>
             <td><span class="badge ${dispBadge}">${analysis.disposition}</span></td>
         </tr>`;
     });
@@ -2870,23 +2940,32 @@ function downloadAnalyticalPdfReport() {
                 <div class="request-card">
                     <div class="request-header" style="background: linear-gradient(135deg, ${dispColor}, ${dispColor}dd);">Request ${requestId}: ${description || 'No Description'}</div>
                     <div class="request-body">
+                        <!-- Archetype Badge -->
+                        <div style="text-align: center; padding: 15px; margin-bottom: 15px; background: linear-gradient(135deg, ${dispColor}15, ${dispColor}05); border-radius: 8px; border: 2px solid ${dispColor};">
+                            <div style="font-size: 8px; color: #666; text-transform: uppercase;">Archetype</div>
+                            <div style="font-size: 24px; font-weight: 800; color: ${dispColor};">#${analysis.archetypeNumber} ${analysis.disposition}</div>
+                            <div style="font-size: 9px; color: #444; font-style: italic;">"${analysis.keyConsideration}"</div>
+                        </div>
+                        
                         <div class="meta-grid">
                             <div class="meta-item"><div class="meta-label">Department</div><div class="meta-value">${primaryDept}</div></div>
-                            <div class="meta-item"><div class="meta-label">Quartile</div><div class="meta-value">${primaryQuartile}</div></div>
                             <div class="meta-item"><div class="meta-label">Total Amount</div><div class="meta-value amount">$${formatCurrency(amounts.total)}</div></div>
                             <div class="meta-item"><div class="meta-label">Ongoing</div><div class="meta-value">$${formatCurrency(amounts.ongoing)}</div></div>
                             <div class="meta-item"><div class="meta-label">One-time</div><div class="meta-value">$${formatCurrency(amounts.onetime)}</div></div>
-                            <div class="meta-item highlight" style="background: ${dispColor};"><div class="meta-label" style="color: white;">Recommendation</div><div class="meta-value" style="color: white; font-weight: 700;">${analysis.disposition} (${analysis.totalScore}/12)</div></div>
                         </div>
                         
-                        <h4 class="section-header">PBB Scoring Breakdown</h4>
-                        <div class="scoring-grid">
-                            <div class="score-card"><div class="score-name">1. Program Alignment</div><div class="score-value">${analysis.quartileScore}/2</div><div class="score-reason">${analysis.quartileReason}</div></div>
-                            <div class="score-card"><div class="score-name">2. Outcome Evidence</div><div class="score-value">${analysis.outcomeScore}/2</div><div class="score-reason">${analysis.outcomeReason}</div></div>
-                            <div class="score-card"><div class="score-name">3. Funding Strategy</div><div class="score-value">${analysis.fundingScore}/2</div><div class="score-reason">${analysis.fundingReason}</div></div>
-                            <div class="score-card"><div class="score-name">4. Mandate/Risk</div><div class="score-value">${analysis.mandateScore}/2</div><div class="score-reason">${analysis.mandateReason}</div></div>
-                            <div class="score-card"><div class="score-name">5. Efficiency/ROI</div><div class="score-value">${analysis.efficiencyScore}/2</div><div class="score-reason">${analysis.efficiencyReason}</div></div>
-                            <div class="score-card"><div class="score-name">6. Access</div><div class="score-value">${analysis.accessScore}/2</div><div class="score-reason">${analysis.accessReason}</div></div>
+                        <h4 class="section-header">Decision Factors (4 inputs)</h4>
+                        <div class="scoring-grid" style="grid-template-columns: repeat(4, 1fr);">
+                            <div class="score-card" style="background: ${analysis.quartileBand === 'High' ? '#d1fae5' : '#fee2e2'};"><div class="score-name">Quartile</div><div class="score-value" style="color: ${analysis.quartileBand === 'High' ? '#059669' : '#dc2626'};">${analysis.quartileBand === 'High' ? '🟢 High' : '🔴 Low'}</div><div class="score-reason">${analysis.bestQuartile}</div></div>
+                            <div class="score-card"><div class="score-name">Mandate</div><div class="score-value">${analysis.mandateLevel === 'Mandated' ? '⚖️' : analysis.mandateLevel === 'Compliance' ? '⚠️' : '➖'}</div><div class="score-reason">${analysis.mandateLevel}</div></div>
+                            <div class="score-card" style="background: ${analysis.fundingType === 'NonGF' ? '#d1fae5' : '#fee2e2'};"><div class="score-name">Funding</div><div class="score-value" style="color: ${analysis.fundingType === 'NonGF' ? '#059669' : '#dc2626'};">${analysis.fundingType === 'NonGF' ? '💚 Non-GF' : '🔴 GF Only'}</div></div>
+                            <div class="score-card" style="background: ${analysis.outcomesStrength === 'Strong' ? '#d1fae5' : '#fee2e2'};"><div class="score-name">Evidence</div><div class="score-value" style="color: ${analysis.outcomesStrength === 'Strong' ? '#059669' : '#dc2626'};">${analysis.outcomesStrength === 'Strong' ? '📊 Strong' : '📋 Weak'}</div></div>
+                        </div>
+                        
+                        <h4 class="section-header" style="color: #64748b;">Additional Considerations</h4>
+                        <div class="scoring-grid" style="grid-template-columns: repeat(2, 1fr); opacity: 0.85;">
+                            <div class="score-card"><div class="score-name">Efficiency/ROI</div><div class="score-value">${analysis.efficiencyScore}/2</div><div class="score-reason">${analysis.efficiencyReason}</div></div>
+                            <div class="score-card"><div class="score-name">Access/Equity</div><div class="score-value">${analysis.accessScore}/2</div><div class="score-reason">${analysis.accessReason}</div></div>
                         </div>
                         
                         <div class="rationale-box"><strong>Overall Rationale:</strong> ${analysis.narrative}</div>
@@ -3034,7 +3113,7 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
     
     <h3 style="font-size: 16px; color: #1e3a5f; margin: 25px 0 12px;">All Requests Summary</h3>
     <table class="data-table">
-        <thead><tr><th>ID</th><th>Description</th><th>Department</th><th>Quartile</th><th>Amount</th><th>Score</th><th>Recommendation</th></tr></thead>
+        <thead><tr><th>ID</th><th>Description</th><th>Department</th><th>Quartile</th><th>Amount</th><th>Archetype</th><th>Recommendation</th></tr></thead>
         <tbody>${tableRows}</tbody>
     </table>
 </div>

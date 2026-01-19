@@ -3376,8 +3376,15 @@ function generateWordProgramSummary() {
             programData[dept][program].requestedAmount += amounts.total / lineItems.length;
             programData[dept][program].requestCount++;
             
+            // Get current budget from Program Inventory (same as in-app display)
             if (programData[dept][program].totalCost === 0) {
-                programData[dept][program].totalCost = amounts.total * 8;
+                const currentBudget = getCurrentBudgetForProgram(dept, program);
+                if (currentBudget) {
+                    programData[dept][program].totalCost = currentBudget.totalCost;
+                } else {
+                    // New program - no current budget
+                    programData[dept][program].totalCost = 0;
+                }
             }
             
             programData[dept][program].proposedTotalCost = 
@@ -4480,8 +4487,15 @@ function downloadPdfReport() {
                 programData[dept][program] = { quartile: quartile, totalCost: 0, requestedAmount: 0, proposedTotalCost: 0 };
             }
             programData[dept][program].requestedAmount += amounts.total / lineItems.length;
+            // Get current budget from Program Inventory (same as in-app display)
             if (programData[dept][program].totalCost === 0) {
-                programData[dept][program].totalCost = amounts.total * 8;
+                const currentBudget = getCurrentBudgetForProgram(dept, program);
+                if (currentBudget) {
+                    programData[dept][program].totalCost = currentBudget.totalCost;
+                } else {
+                    // New program - no current budget
+                    programData[dept][program].totalCost = 0;
+                }
             }
             programData[dept][program].proposedTotalCost = programData[dept][program].totalCost + programData[dept][program].requestedAmount;
         });

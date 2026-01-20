@@ -347,10 +347,7 @@
                 </div>
 
                 <div class="dashboard-actions">
-                    <button class="btn-action primary" onclick="downloadWhitePaperPDF()">
-                        📄 Download White Paper
-                    </button>
-                    <button class="btn-action" onclick="navigateToSection('report')">
+                    <button class="btn-action primary" onclick="navigateToSection('report')">
                         📊 View Full Report
                     </button>
                     <button class="btn-action secondary" onclick="navigateToSection('analysis')">
@@ -358,38 +355,6 @@
                     </button>
                 </div>
 
-                <div class="confidence-section">
-                    <div class="confidence-header">
-                        <h3>Decision Confidence Levels</h3>
-                        <p>How confident is the PBB framework in these recommendations?</p>
-                    </div>
-                    <div class="confidence-grid">
-                        <div class="confidence-item high">
-                            <div class="confidence-indicator"></div>
-                            <div class="confidence-info">
-                                <div class="confidence-label">High Confidence</div>
-                                <div class="confidence-desc">Clear-cut cases with strong alignment</div>
-                            </div>
-                            <div class="confidence-value" id="dashHighConfidence">0</div>
-                        </div>
-                        <div class="confidence-item medium">
-                            <div class="confidence-indicator"></div>
-                            <div class="confidence-info">
-                                <div class="confidence-label">Medium Confidence</div>
-                                <div class="confidence-desc">Some factors align, others need review</div>
-                            </div>
-                            <div class="confidence-value" id="dashMediumConfidence">0</div>
-                        </div>
-                        <div class="confidence-item low">
-                            <div class="confidence-indicator"></div>
-                            <div class="confidence-info">
-                                <div class="confidence-label">Low Confidence</div>
-                                <div class="confidence-desc">Edge cases requiring human judgment</div>
-                            </div>
-                            <div class="confidence-value" id="dashLowConfidence">0</div>
-                        </div>
-                    </div>
-                </div>
             </section>
 
             <!-- ========== REPORT SECTION ========== -->
@@ -403,7 +368,6 @@
                     <div class="download-buttons">
                         <button class="btn-download word" id="downloadWordBtn">📄 Word Document</button>
                         <button class="btn-download pdf" id="downloadPdfBtn">📊 PDF Report</button>
-                        <button class="btn-download whitepaper" onclick="downloadWhitePaperPDF()">📑 White Paper</button>
                         <button class="btn-download excel" id="exportPBBExcelBtn">📈 Excel Export</button>
                     </div>
                     
@@ -420,7 +384,7 @@
             <div class="report-section analytical" id="analyticalReportSection" style="display: none;">
                 <div class="report-header analytical">
                     <div class="report-header-content">
-                        <h2>🎯 PBB Analysis & Recommendations Report</h2>
+                        <h2>PBB Analysis & Recommendations Report</h2>
                         <p id="analyticalReportDate"></p>
                     </div>
                     <div class="download-buttons">
@@ -651,7 +615,7 @@
         if (typeof filteredData === 'undefined' || !filteredData.length) return;
         
         const stats = { approve: {count:0,amount:0}, modify: {count:0,amount:0}, defer: {count:0,amount:0}, reject: {count:0,amount:0} };
-        let highConf = 0, medConf = 0, lowConf = 0, totalAmount = 0;
+        let totalAmount = 0;
         
         filteredData.forEach(request => {
             const amounts = getRequestAmount(request);
@@ -659,7 +623,6 @@
             const analysis = scoreRequest(request);
             const disp = (analysis.disposition || '').toLowerCase();
             if (stats[disp]) { stats[disp].count++; stats[disp].amount += amounts.total; }
-            if (analysis.totalScore >= 10) highConf++; else if (analysis.totalScore >= 6) medConf++; else lowConf++;
         });
         
         const total = filteredData.length;
@@ -672,144 +635,7 @@
             document.getElementById(`dash${d.charAt(0).toUpperCase()+d.slice(1)}Bar`).style.width = (total > 0 ? (stats[d].count/total*100) : 0) + '%';
         });
         
-        document.getElementById('dashHighConfidence').textContent = highConf;
-        document.getElementById('dashMediumConfidence').textContent = medConf;
-        document.getElementById('dashLowConfidence').textContent = lowConf;
         document.getElementById('dashboardSection').style.display = 'block';
-    }
-    
-    // ========== WHITE PAPER PDF GENERATION ==========
-    function downloadWhitePaperPDF() {
-        if (typeof filteredData === 'undefined' || !filteredData.length) { alert('Please generate a report first.'); return; }
-        
-        const reportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-        let totalAmount = 0, totalOngoing = 0, totalOnetime = 0;
-        const dStats = { approve: 0, modify: 0, defer: 0, reject: 0 };
-        const dAmounts = { approve: 0, modify: 0, defer: 0, reject: 0 };
-        
-        filteredData.forEach(request => {
-            const amounts = getRequestAmount(request);
-            totalAmount += amounts.total; totalOngoing += amounts.ongoing; totalOnetime += amounts.onetime;
-            const analysis = scoreRequest(request);
-            const disp = (analysis.disposition || '').toLowerCase();
-            if (dStats[disp] !== undefined) { dStats[disp]++; dAmounts[disp] += amounts.total; }
-        });
-        
-        let tableRows = '';
-        filteredData.slice(0, 25).forEach(request => {
-            const requestId = getRequestId(request);
-            const description = getRequestDescription(request);
-            const lineItems = getLineItemsForRequest(requestId);
-            const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
-            const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
-            const amounts = getRequestAmount(request);
-            const analysis = scoreRequest(request);
-            const shortDesc = description && description.length > 30 ? description.substring(0, 30) + '...' : (description || 'N/A');
-            const qBadge = primaryQuartile.includes('Most') || primaryQuartile.includes('More') || primaryQuartile === 'Q1' || primaryQuartile === 'Q2' ? 'badge-high' : 'badge-low';
-            const dispBadge = analysis.disposition === 'APPROVE' ? 'badge-approve' : analysis.disposition === 'MODIFY' ? 'badge-modify' : analysis.disposition === 'DEFER' ? 'badge-defer' : 'badge-reject';
-            tableRows += `<tr><td>${requestId}</td><td>${shortDesc}</td><td>${primaryDept}</td><td><span class="badge ${qBadge}">${primaryQuartile}</span></td><td>$${formatCurrency(amounts.total)}</td><td>${analysis.totalScore}/12</td><td><span class="badge ${dispBadge}">${analysis.disposition}</span></td></tr>`;
-        });
-        if (filteredData.length > 25) tableRows += `<tr><td colspan="7" style="text-align:center;font-style:italic;color:#64748b;">... and ${filteredData.length - 25} more requests</td></tr>`;
-        
-        const whitePaperHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PBB Budget Analysis White Paper</title>
-<style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-@page { size: A4; margin: 0; }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Inter', sans-serif; line-height: 1.6; color: #1e293b; background: white; }
-.cover-page { height: 100vh; display: flex; flex-direction: column; background: linear-gradient(135deg, #1e3a5f 0%, #2a4a73 50%, #1e3a5f 100%); color: white; page-break-after: always; }
-.cover-header { padding: 40px 60px; display: flex; align-items: center; gap: 15px; }
-.cover-brand { font-size: 14px; font-weight: 500; letter-spacing: 0.05em; opacity: 0.9; }
-.cover-main { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 0 60px; }
-.cover-title { font-size: 48px; font-weight: 700; line-height: 1.1; margin-bottom: 20px; }
-.cover-subtitle { font-size: 24px; font-weight: 300; opacity: 0.9; margin-bottom: 40px; }
-.cover-stats { display: flex; gap: 40px; margin-top: 30px; }
-.cover-stat-value { font-size: 36px; font-weight: 700; color: #10b981; }
-.cover-stat-label { font-size: 14px; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.05em; }
-.cover-footer { padding: 40px 60px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; font-size: 12px; opacity: 0.7; }
-.content-page { padding: 50px 60px; min-height: 100vh; }
-.page-header { display: flex; justify-content: space-between; padding-bottom: 15px; border-bottom: 2px solid #e2e8f0; margin-bottom: 30px; }
-.page-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; }
-.section-title { font-size: 28px; font-weight: 700; color: #1e3a5f; margin-bottom: 8px; }
-.section-subtitle { font-size: 16px; color: #64748b; margin-bottom: 30px; }
-.summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 40px; }
-.summary-card { padding: 24px; border-radius: 12px; text-align: center; }
-.summary-card.approve { background: linear-gradient(135deg, #d1fae5, #a7f3d0); border: 2px solid #10b981; }
-.summary-card.modify { background: linear-gradient(135deg, #fef3c7, #fde68a); border: 2px solid #f59e0b; }
-.summary-card.defer { background: linear-gradient(135deg, #e2e8f0, #cbd5e1); border: 2px solid #64748b; }
-.summary-card.reject { background: linear-gradient(135deg, #fee2e2, #fecaca); border: 2px solid #ef4444; }
-.summary-card-value { font-size: 42px; font-weight: 700; }
-.summary-card.approve .summary-card-value { color: #059669; }
-.summary-card.modify .summary-card-value { color: #d97706; }
-.summary-card.defer .summary-card-value { color: #475569; }
-.summary-card.reject .summary-card-value { color: #dc2626; }
-.summary-card-label { font-size: 14px; font-weight: 600; margin-top: 5px; text-transform: uppercase; }
-.summary-card-amount { font-size: 16px; margin-top: 10px; font-weight: 500; }
-.findings-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; margin-top: 30px; }
-.finding-card { padding: 25px; background: #f8fafc; border-radius: 12px; border-left: 4px solid #1e3a5f; }
-.finding-title { font-size: 16px; font-weight: 600; color: #1e3a5f; margin-bottom: 10px; }
-.finding-text { font-size: 14px; color: #475569; line-height: 1.6; }
-.data-table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 11px; }
-.data-table thead { background: #1e3a5f; color: white; }
-.data-table th { padding: 12px 10px; text-align: left; font-weight: 600; text-transform: uppercase; font-size: 10px; }
-.data-table td { padding: 12px 10px; border-bottom: 1px solid #e2e8f0; }
-.badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 10px; font-weight: 600; }
-.badge-approve { background: #10b981; color: white; }
-.badge-modify { background: #f59e0b; color: white; }
-.badge-defer { background: #64748b; color: white; }
-.badge-reject { background: #ef4444; color: white; }
-.badge-high { background: #10b981; color: white; }
-.badge-low { background: #64748b; color: white; }
-@media print { .page-break { page-break-before: always; } body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-</style></head><body>
-<div class="cover-page">
-    <div class="cover-header"><span class="cover-brand">TYLER TECHNOLOGIES • BUDGET INTELLIGENCE</span></div>
-    <div class="cover-main">
-        <h1 class="cover-title">Priority Based Budgeting<br>Analysis Report</h1>
-        <p class="cover-subtitle">Framework Recommendations and Strategic Budget Assessment</p>
-        <div class="cover-stats">
-            <div class="cover-stat"><div class="cover-stat-value">${filteredData.length}</div><div class="cover-stat-label">Budget Requests</div></div>
-            <div class="cover-stat"><div class="cover-stat-value">$${formatCurrency(totalAmount)}</div><div class="cover-stat-label">Total Amount</div></div>
-            <div class="cover-stat"><div class="cover-stat-value">${dStats.approve}</div><div class="cover-stat-label">Recommended Approvals</div></div>
-        </div>
-    </div>
-    <div class="cover-footer"><span>Generated on ${reportDate}</span><span>Confidential • For Internal Use Only</span></div>
-</div>
-
-<div class="content-page page-break">
-    <div class="page-header"><span class="page-title">Executive Summary</span></div>
-    <h2 class="section-title">PBB Framework Recommendations</h2>
-    <p class="section-subtitle">Summary of budget request analysis across ${filteredData.length} requests totaling $${formatCurrency(totalAmount)}</p>
-    <div class="summary-cards">
-        <div class="summary-card approve"><div class="summary-card-value">${dStats.approve}</div><div class="summary-card-label">✓ Approve</div><div class="summary-card-amount">$${formatCurrency(dAmounts.approve)}</div></div>
-        <div class="summary-card modify"><div class="summary-card-value">${dStats.modify}</div><div class="summary-card-label">⚠ Modify</div><div class="summary-card-amount">$${formatCurrency(dAmounts.modify)}</div></div>
-        <div class="summary-card defer"><div class="summary-card-value">${dStats.defer}</div><div class="summary-card-label">⏸ Defer</div><div class="summary-card-amount">$${formatCurrency(dAmounts.defer)}</div></div>
-        <div class="summary-card reject"><div class="summary-card-value">${dStats.reject}</div><div class="summary-card-label">✗ Reject</div><div class="summary-card-amount">$${formatCurrency(dAmounts.reject)}</div></div>
-    </div>
-    <h3 style="font-size: 20px; color: #1e3a5f; margin-top: 40px; margin-bottom: 20px;">Key Findings</h3>
-    <div class="findings-grid">
-        <div class="finding-card"><div class="finding-title">Strategic Alignment</div><div class="finding-text">${dStats.approve + dStats.modify} requests (${Math.round((dStats.approve + dStats.modify) / filteredData.length * 100)}%) align with strategic priorities.</div></div>
-        <div class="finding-card"><div class="finding-title">Funding Mix</div><div class="finding-text">Ongoing: $${formatCurrency(totalOngoing)} | One-time: $${formatCurrency(totalOnetime)}</div></div>
-        <div class="finding-card"><div class="finding-title">Require Modifications</div><div class="finding-text">${dStats.modify} requests need scope changes or alternative funding.</div></div>
-        <div class="finding-card"><div class="finding-title">Deferred/Rejected</div><div class="finding-text">${dStats.defer + dStats.reject} requests ($${formatCurrency(dAmounts.defer + dAmounts.reject)}) need stronger evidence.</div></div>
-    </div>
-</div>
-
-<div class="content-page page-break">
-    <div class="page-header"><span class="page-title">Request Summary</span></div>
-    <h2 class="section-title">Budget Request Overview</h2>
-    <p class="section-subtitle">All requests ranked by PBB framework score</p>
-    <table class="data-table">
-        <thead><tr><th>ID</th><th>Description</th><th>Department</th><th>Quartile</th><th>Amount</th><th>Score</th><th>Recommendation</th></tr></thead>
-        <tbody>${tableRows}</tbody>
-    </table>
-</div>
-</body></html>`;
-        
-        const newWindow = window.open('', '_blank');
-        newWindow.document.write(whitePaperHtml);
-        newWindow.document.close();
-        newWindow.focus();
-        setTimeout(() => alert('White Paper opened!\\n\\nTo save as PDF:\\n1. Press Ctrl+P (Cmd+P on Mac)\\n2. Select "Save as PDF"\\n3. Click Save'), 500);
     }
     </script>
 </body>

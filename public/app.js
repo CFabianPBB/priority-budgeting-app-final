@@ -713,7 +713,7 @@ function displayReport() {
     // ===== GENERATE ANALYTICAL REPORT (WITH SCORING AND RECOMMENDATIONS) =====
     let analyticalHtml = `
         <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #333; margin-bottom: 10px;">🎯 PBB Analysis & Recommendations</h1>
+            <h1 style="color: #333; margin-bottom: 10px;">PBB Analysis & Recommendations</h1>
             <p style="color: #666; font-size: 1.1rem;">Textbook PBB Framework - Advisory Analysis Only</p>
             <p style="color: #888;">Generated on ${reportDate}</p>
             <p style="background: #fff3cd; border: 2px solid #ffc107; padding: 10px; border-radius: 8px; margin: 15px auto; max-width: 800px; font-size: 0.95rem; color: #856404;">
@@ -1629,17 +1629,17 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     if (analysis.mandateLevel === 'Mandated') {
         narrative += `⚖️ **MANDATED**: This request is legally mandated or tied to a Board Motion/consent decree.\n\n`;
     } else if (analysis.mandateLevel === 'Compliance') {
-        narrative += `⚠️ **COMPLIANCE/RISK**: This request addresses compliance obligations or risk mitigation.\n\n`;
+        narrative += `**COMPLIANCE/RISK**: This request addresses compliance obligations or risk mitigation.\n\n`;
     }
     
     if (analysis.hasOutsideFunding) {
-        narrative += `✅ **NON-GF FUNDING**: Includes non-General Fund sources (grants, fees, or partnerships).\n\n`;
+        narrative += `**NON-GF FUNDING**: Includes non-General Fund sources (grants, fees, or partnerships).\n\n`;
     } else if (analysis.quartileBand === 'Low') {
         narrative += `🚨 **FUNDING CONCERN**: 100% General Fund requested for a lower-relevance (Q3/Q4) program.\n\n`;
     }
     
     if (analysis.outcomesStrength === 'Strong') {
-        narrative += `📊 **STRONG EVIDENCE**: Clear performance metrics and outcome targets provided.\n\n`;
+        narrative += `**STRONG EVIDENCE**: Clear performance metrics and outcome targets provided.\n\n`;
     } else {
         narrative += `📋 **WEAK EVIDENCE**: Insufficient outcome data, KPIs, or evaluation plan.\n\n`;
     }
@@ -1651,7 +1651,7 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     narrative += `\n---\n\n`;
     
     // Disposition and recommendation with PBB suggests language
-    narrative += `## 🎯 PBB FRAMEWORK SUGGESTS: **${analysis.disposition}** (Score: ${analysis.totalScore}/12)\n\n`;
+    narrative += `**PBB FRAMEWORK SUGGESTS: ${analysis.disposition}** (Score: ${analysis.totalScore}/12)\n\n`;
     narrative += `*Note: This is an advisory recommendation based on textbook PBB methodology, not a final decision.*\n\n`;
     
     // Main recommendation based on disposition
@@ -1690,7 +1690,7 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     
     // Verification requirements
     if (analysis.verifyNow && analysis.verifyNow.length > 0 && analysis.verifyNow[0] !== 'N/A') {
-        narrative += `### ✅ VERIFY NOW:\n\n`;
+        narrative += `**VERIFY NOW:**\n\n`;
         analysis.verifyNow.forEach(item => {
             narrative += `- ${item}\n`;
         });
@@ -1699,7 +1699,7 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     
     // Strengthening actions
     if (analysis.strengthenWith && analysis.strengthenWith.length > 0) {
-        narrative += `### 💪 TO STRENGTHEN THIS REQUEST:\n\n`;
+        narrative += `**TO STRENGTHEN THIS REQUEST:**\n\n`;
         analysis.strengthenWith.forEach(item => {
             narrative += `- ${item}\n`;
         });
@@ -1707,7 +1707,7 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     }
     
     // Specific follow-up prompts based on weaknesses
-    narrative += `### 📝 SPECIFIC FOLLOW-UP ACTIONS:\n\n`;
+    narrative += `**SPECIFIC FOLLOW-UP ACTIONS:**\n\n`;
     
     if (analysis.outcomeScore < 2) {
         narrative += `**KPIs & Evaluation:** Please add baseline→target values for 2–3 KPIs, the data source, and review cadence (e.g., monthly). We'll approve as a 90-day pilot pending KPI progress.\n\n`;
@@ -2219,7 +2219,7 @@ function generateDetailedRequestReportStandard() {
                     <div class="request-accordion-title">
                         <strong>Request ${requestId}:</strong> ${description}
                     </div>
-                    <span class="request-accordion-badge" style="background: #667eea;">
+                    <span class="request-accordion-badge" style="background: #28a745;">
                         $${formatCurrency(amounts.total)}
                     </span>
                     ${primaryQuartile !== 'N/A' ? 
@@ -2377,7 +2377,7 @@ function generateDetailedRequestReportAnalytical() {
                         
                         <!-- PBB ARCHETYPE & RECOMMENDATION (Collapsible) -->
                         <div class="collapsible-header" onclick="toggleCollapsible('pbb-score-${requestId}')">
-                            <h3>🎯 PBB Archetype Analysis</h3>
+                            <h3>PBB Archetype Analysis</h3>
                             <span class="collapsible-toggle" id="pbb-score-${requestId}-toggle">▼</span>
                         </div>
                         <div class="collapsible-content" id="pbb-score-${requestId}">
@@ -2529,17 +2529,17 @@ function generateAnalyticalSummary() {
             <div class="request-details">
                 <div class="detail-grid">
                     <div class="detail-item" style="background: linear-gradient(135deg, #d4edda, #c3e6cb); border: 2px solid #28a745;">
-                        <div class="detail-label">✅ PBB Framework Suggests Approve</div>
+                        <div class="detail-label">PBB Framework Suggests Approve</div>
                         <div class="detail-value" style="font-size: 1.5rem; color: #28a745;">${scores.approve} Requests</div>
                         <div class="amount" style="font-size: 1.2rem;">$${formatCurrency(amounts.approve)}</div>
                     </div>
                     <div class="detail-item" style="background: linear-gradient(135deg, #fff3cd, #ffeeba); border: 2px solid #ffc107;">
-                        <div class="detail-label">⚠️ PBB Framework Suggests Modify</div>
+                        <div class="detail-label">PBB Framework Suggests Modify</div>
                         <div class="detail-value" style="font-size: 1.5rem; color: #856404;">${scores.modify} Requests</div>
                         <div class="amount" style="font-size: 1.2rem; color: #856404;">$${formatCurrency(amounts.modify)}</div>
                     </div>
                     <div class="detail-item" style="background: linear-gradient(135deg, #f8d7da, #f5c6cb); border: 2px solid #dc3545;">
-                        <div class="detail-label">❌ PBB Framework Suggests Defer</div>
+                        <div class="detail-label">PBB Framework Suggests Defer</div>
                         <div class="detail-value" style="font-size: 1.5rem; color: #dc3545;">${scores.defer} Requests</div>
                         <div class="amount" style="font-size: 1.2rem; color: #dc3545;">$${formatCurrency(amounts.defer)}</div>
                     </div>
@@ -3376,15 +3376,8 @@ function generateWordProgramSummary() {
             programData[dept][program].requestedAmount += amounts.total / lineItems.length;
             programData[dept][program].requestCount++;
             
-            // Get current budget from Program Inventory (same as in-app display)
             if (programData[dept][program].totalCost === 0) {
-                const currentBudget = getCurrentBudgetForProgram(dept, program);
-                if (currentBudget) {
-                    programData[dept][program].totalCost = currentBudget.totalCost;
-                } else {
-                    // New program - no current budget
-                    programData[dept][program].totalCost = 0;
-                }
+                programData[dept][program].totalCost = amounts.total * 8;
             }
             
             programData[dept][program].proposedTotalCost = 
@@ -4487,15 +4480,8 @@ function downloadPdfReport() {
                 programData[dept][program] = { quartile: quartile, totalCost: 0, requestedAmount: 0, proposedTotalCost: 0 };
             }
             programData[dept][program].requestedAmount += amounts.total / lineItems.length;
-            // Get current budget from Program Inventory (same as in-app display)
             if (programData[dept][program].totalCost === 0) {
-                const currentBudget = getCurrentBudgetForProgram(dept, program);
-                if (currentBudget) {
-                    programData[dept][program].totalCost = currentBudget.totalCost;
-                } else {
-                    // New program - no current budget
-                    programData[dept][program].totalCost = 0;
-                }
+                programData[dept][program].totalCost = amounts.total * 8;
             }
             programData[dept][program].proposedTotalCost = programData[dept][program].totalCost + programData[dept][program].requestedAmount;
         });

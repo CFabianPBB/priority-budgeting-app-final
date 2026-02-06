@@ -526,6 +526,23 @@ function getRequestAmount(request) {
     return { ongoing, onetime, total: ongoing + onetime };
 }
 
+// NEW: Get the actual cost from a single line item (Personnel or NonPersonnel)
+function getLineItemAmount(item) {
+    let ongoing = 0;
+    let onetime = 0;
+    
+    Object.keys(item).forEach(key => {
+        const lowerKey = key.toLowerCase();
+        const value = parseFloat(item[key]) || 0;
+        
+        // Look for Ongoing Cost / Onetime Cost fields in line item
+        if (lowerKey.includes('ongoing') && lowerKey.includes('cost')) ongoing += value;
+        if ((lowerKey.includes('onetime') || lowerKey.includes('one-time')) && lowerKey.includes('cost')) onetime += value;
+    });
+    
+    return { ongoing, onetime, total: ongoing + onetime };
+}
+
 function updateStats() {
     filteredData = getFilteredData();
     
@@ -555,7 +572,9 @@ function updateStats() {
         lineItems.forEach(item => {
             const quartile = getPrimaryValue([item], 'quartile');
             if (quartile && quartileStats.hasOwnProperty(quartile)) {
-                quartileStats[quartile] += amounts.total / lineItems.length;
+                // Use ACTUAL line item cost
+                const lineItemAmount = getLineItemAmount(item);
+                quartileStats[quartile] += lineItemAmount.total;
             }
         });
     });
@@ -810,7 +829,9 @@ function generateFilterSummary() {
         lineItems.forEach(item => {
             const quartile = getPrimaryValue([item], 'quartile');
             if (quartile && quartileStats.hasOwnProperty(quartile)) {
-                quartileStats[quartile] += amounts.total / lineItems.length;
+                // Use ACTUAL line item cost
+                const lineItemAmount = getLineItemAmount(item);
+                quartileStats[quartile] += lineItemAmount.total;
             }
         });
     });
@@ -1794,8 +1815,9 @@ function generateProgramSummary() {
                 };
             }
             
-            // Add to requested amount (distribute across line items for this request)
-            programData[dept][program].requestedAmount += amounts.total / lineItems.length;
+            // Add to requested amount using ACTUAL line item cost (not divided total)
+            const lineItemAmount = getLineItemAmount(item);
+            programData[dept][program].requestedAmount += lineItemAmount.total;
             programData[dept][program].requestCount++;
             
             // Get current budget from uploaded data or use $0 for new programs
@@ -2020,7 +2042,9 @@ function generateDepartmentSummary() {
                 // Add quartile tracking
                 const quartile = getPrimaryValue([item], 'quartile');
                 if (quartile && departments[dept].quartiles.hasOwnProperty(quartile)) {
-                    departments[dept].quartiles[quartile] += amounts.total / lineItems.length;
+                    // Use ACTUAL line item cost
+                    const lineItemAmount = getLineItemAmount(item);
+                    departments[dept].quartiles[quartile] += lineItemAmount.total;
                 }
             }
         });
@@ -2096,7 +2120,9 @@ function generateQuartileAnalysis() {
             const quartile = getPrimaryValue([item], 'quartile');
             if (quartile && quartiles[quartile]) {
                 quartiles[quartile].count++;
-                quartiles[quartile].amount += amounts.total / lineItems.length; // Distribute amount
+                // Use ACTUAL line item cost
+                const lineItemAmount = getLineItemAmount(item);
+                quartiles[quartile].amount += lineItemAmount.total;
             }
         });
     });
@@ -3252,7 +3278,9 @@ function renderCharts() {
         lineItems.forEach(item => {
             const dept = getPrimaryValue([item], 'department');
             if (dept) {
-                departments[dept] = (departments[dept] || 0) + (amounts.total / lineItems.length);
+                // Use ACTUAL line item cost
+                const lineItemAmount = getLineItemAmount(item);
+                departments[dept] = (departments[dept] || 0) + lineItemAmount.total;
             }
         });
     });
@@ -3306,7 +3334,9 @@ function renderCharts() {
         lineItems.forEach(item => {
             const quartile = getPrimaryValue([item], 'quartile');
             if (quartile && quartiles.hasOwnProperty(quartile)) {
-                quartiles[quartile] += amounts.total / lineItems.length;
+                // Use ACTUAL line item cost
+                const lineItemAmount = getLineItemAmount(item);
+                quartiles[quartile] += lineItemAmount.total;
             }
         });
     });
@@ -3373,7 +3403,9 @@ function generateWordProgramSummary() {
                 };
             }
             
-            programData[dept][program].requestedAmount += amounts.total / lineItems.length;
+            // Use ACTUAL line item cost (not divided total)
+            const lineItemAmount = getLineItemAmount(item);
+            programData[dept][program].requestedAmount += lineItemAmount.total;
             programData[dept][program].requestCount++;
             
             // Get current budget from uploaded Program Inventory data
@@ -3893,7 +3925,9 @@ function generateWordFilterSummary() {
         lineItems.forEach(item => {
             const quartile = getPrimaryValue([item], 'quartile');
             if (quartile && quartileStats.hasOwnProperty(quartile)) {
-                quartileStats[quartile] += amounts.total / lineItems.length;
+                // Use ACTUAL line item cost
+                const lineItemAmount = getLineItemAmount(item);
+                quartileStats[quartile] += lineItemAmount.total;
             }
         });
     });
@@ -3998,14 +4032,17 @@ function generateWordVisualAnalysis() {
         const amounts = getRequestAmount(request);
         
         lineItems.forEach(item => {
+            // Use ACTUAL line item cost
+            const lineItemAmount = getLineItemAmount(item);
+            
             const quartile = getPrimaryValue([item], 'quartile');
             if (quartile && quartiles.hasOwnProperty(quartile)) {
-                quartiles[quartile] += amounts.total / lineItems.length;
+                quartiles[quartile] += lineItemAmount.total;
             }
 
             const dept = getPrimaryValue([item], 'department');
             if (dept) {
-                departments[dept] = (departments[dept] || 0) + (amounts.total / lineItems.length);
+                departments[dept] = (departments[dept] || 0) + lineItemAmount.total;
             }
         });
     });
@@ -4215,7 +4252,9 @@ function generateWordDepartmentSummary() {
                 
                 const quartile = getPrimaryValue([item], 'quartile');
                 if (quartile && departments[dept].quartiles.hasOwnProperty(quartile)) {
-                    departments[dept].quartiles[quartile] += amounts.total / lineItems.length;
+                    // Use ACTUAL line item cost
+                    const lineItemAmount = getLineItemAmount(item);
+                    departments[dept].quartiles[quartile] += lineItemAmount.total;
                 }
             }
         });
@@ -4430,7 +4469,9 @@ function downloadPdfReport() {
         lineItems.forEach(item => {
             const quartile = getPrimaryValue([item], 'quartile');
             if (quartile && quartileStats.hasOwnProperty(quartile)) {
-                quartileStats[quartile] += amounts.total / lineItems.length;
+                // Use ACTUAL line item cost
+                const lineItemAmount = getLineItemAmount(item);
+                quartileStats[quartile] += lineItemAmount.total;
             }
         });
     });
@@ -4484,7 +4525,9 @@ function downloadPdfReport() {
             if (!programData[dept][program]) {
                 programData[dept][program] = { quartile: quartile, totalCost: 0, requestedAmount: 0, proposedTotalCost: 0 };
             }
-            programData[dept][program].requestedAmount += amounts.total / lineItems.length;
+            // Use ACTUAL line item cost (not divided total)
+            const lineItemAmount = getLineItemAmount(item);
+            programData[dept][program].requestedAmount += lineItemAmount.total;
             // Get current budget from uploaded Program Inventory data
             if (programData[dept][program].totalCost === 0) {
                 const currentBudget = getCurrentBudgetForProgram(dept, program);

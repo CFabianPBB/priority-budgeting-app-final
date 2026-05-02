@@ -511,35 +511,52 @@ function getRequestId(request) {
     return null;
 }
 
+// Pick exactly one ongoing field and one onetime field from a record, avoiding
+// double-counting when both "Requested" and "Approved" variants exist on the same row.
+// Prefers a "Requested" column; otherwise picks any non-"Approved" match; falls back
+// to the only remaining match. mustIncludeCost=true restricts to columns containing "cost".
+function pickAmountFields(record, mustIncludeCost) {
+    const keys = Object.keys(record);
+    const isOnetime = (k) => {
+        const lk = k.toLowerCase();
+        if (mustIncludeCost && !lk.includes('cost')) return false;
+        return lk.includes('onetime') || lk.includes('one-time');
+    };
+    const isOngoing = (k) => {
+        const lk = k.toLowerCase();
+        if (mustIncludeCost && !lk.includes('cost')) return false;
+        // Exclude onetime to avoid a column matching both buckets
+        if (lk.includes('onetime') || lk.includes('one-time')) return false;
+        return lk.includes('ongoing');
+    };
+    const score = (k) => {
+        const lk = k.toLowerCase();
+        if (lk.includes('request')) return 2; // prefer "Requested ..."
+        if (lk.includes('approve')) return 0; // deprioritize "Approved ..." to avoid using it as a duplicate
+        return 1;
+    };
+    const pickBest = (predicate) => {
+        const matches = keys.filter(predicate);
+        if (matches.length === 0) return null;
+        return matches.reduce((best, k) => (score(k) > score(best) ? k : best));
+    };
+
+    const ongoingKey = pickBest(isOngoing);
+    const onetimeKey = pickBest(isOnetime);
+    return {
+        ongoing: ongoingKey ? (parseFloat(record[ongoingKey]) || 0) : 0,
+        onetime: onetimeKey ? (parseFloat(record[onetimeKey]) || 0) : 0
+    };
+}
+
 function getRequestAmount(request) {
-    let ongoing = 0;
-    let onetime = 0;
-    
-    Object.keys(request).forEach(key => {
-        const lowerKey = key.toLowerCase();
-        const value = parseFloat(request[key]) || 0;
-        
-        if (lowerKey.includes('ongoing')) ongoing += value;
-        if (lowerKey.includes('onetime') || lowerKey.includes('one-time')) onetime += value;
-    });
-    
+    const { ongoing, onetime } = pickAmountFields(request, false);
     return { ongoing, onetime, total: ongoing + onetime };
 }
 
 // NEW: Get the actual cost from a single line item (Personnel or NonPersonnel)
 function getLineItemAmount(item) {
-    let ongoing = 0;
-    let onetime = 0;
-    
-    Object.keys(item).forEach(key => {
-        const lowerKey = key.toLowerCase();
-        const value = parseFloat(item[key]) || 0;
-        
-        // Look for Ongoing Cost / Onetime Cost fields in line item
-        if (lowerKey.includes('ongoing') && lowerKey.includes('cost')) ongoing += value;
-        if ((lowerKey.includes('onetime') || lowerKey.includes('one-time')) && lowerKey.includes('cost')) onetime += value;
-    });
-    
+    const { ongoing, onetime } = pickAmountFields(item, true);
     return { ongoing, onetime, total: ongoing + onetime };
 }
 
@@ -1032,6 +1049,45 @@ function getRequestDescription(request) {
     return 'N/A';
 }
 
+// Normalize any quartile representation (1/2/3/4, Q1-Q4, "Most Aligned", etc.)
+// to one of the four canonical bucket names, or null if unrecognized.
+function normalizeQuartile(q) {
+    if (q === null || q === undefined || q === '') return null;
+    const s = q.toString().trim();
+    const lower = s.toLowerCase();
+    if (s === '1' || s === 'Q1' || lower === 'most aligned') return 'Most Aligned';
+    if (s === '2' || s === 'Q2' || lower === 'more aligned') return 'More Aligned';
+    if (s === '3' || s === 'Q3' || lower === 'less aligned') return 'Less Aligned';
+    if (s === '4' || s === 'Q4' || lower === 'least aligned') return 'Least Aligned';
+    return null;
+}
+
+// Resolve the quartile for a single line item. Tries the line item's own Quartile
+// column first; if blank, falls back to looking up the program in the uploaded
+// Current Budget (Program Inventory) by Program (+ Department when both have one).
+function getQuartileForLineItem(item) {
+    const direct = normalizeQuartile(item.Quartile);
+    if (direct) return direct;
+
+    if (currentBudgetData.length === 0) return null;
+
+    const program = (item.Program || '').toString().trim().toUpperCase();
+    if (!program) return null;
+    const dept = (item.Department || item['Cost Center'] || item['User Group'] || '')
+        .toString().trim().toUpperCase();
+
+    const match = currentBudgetData.find(p => {
+        const pName = (p.Program || '').toString().trim().toUpperCase();
+        if (pName !== program) return false;
+        const pDept = (p['User Group'] || p.Department || '').toString().trim().toUpperCase();
+        // If both sides have a department, require a match; otherwise accept the program-only match.
+        if (dept && pDept && dept !== pDept) return false;
+        return true;
+    });
+    if (!match) return null;
+    return normalizeQuartile(match.Quartile);
+}
+
 // HELPER FUNCTION: Get primary value with improved logic
 function getPrimaryValue(lineItems, fieldType) {
     // Look for the specific field in line items
@@ -1043,7 +1099,8 @@ function getPrimaryValue(lineItems, fieldType) {
         } else if (fieldType === 'program') {
             if (item.Program) return item.Program;
         } else if (fieldType === 'quartile') {
-            if (item.Quartile) return item.Quartile;
+            const q = getQuartileForLineItem(item);
+            if (q) return q;
         } else if (fieldType === 'fund') {
             if (item.Fund) return item.Fund;
         } else if (fieldType === 'division') {

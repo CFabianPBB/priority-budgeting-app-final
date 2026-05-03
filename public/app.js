@@ -1361,12 +1361,20 @@ function scoreRequest(request) {
     const weightedPercentage = Math.round((totalWeightedScore / maxWeightedScore) * 100);
     
     // Determine quartile band (High = Q1/Q2/1/2/Most/More, Low = Q3/Q4/3/4/Less/Least)
+    // Unknown = no quartile data on line items or in Program Inventory — must NOT silently
+    // collapse to "Low" (which previously routed every unknown to REJECT via archetype 24).
     const quartileStr = bestQuartile ? bestQuartile.toString().trim() : '';
-    analysis.quartileBand = (
-        quartileStr === 'Q1' || quartileStr === 'Q2' || 
+    if (!quartileStr) {
+        analysis.quartileBand = 'Unknown';
+    } else if (
+        quartileStr === 'Q1' || quartileStr === 'Q2' ||
         quartileStr === '1' || quartileStr === '2' ||
         quartileStr === 'Most Aligned' || quartileStr === 'More Aligned'
-    ) ? 'High' : 'Low';                  
+    ) {
+        analysis.quartileBand = 'High';
+    } else {
+        analysis.quartileBand = 'Low';
+    }
     
     
     // Determine mandate level
@@ -1408,9 +1416,24 @@ function scoreRequest(request) {
 // ===== REVISED DECISION GRID BASED ON GF FUNDING PHILOSOPHY =====
 function applyDecisionGrid(analysis) {
     const { quartileBand, mandateLevel, fundingType, outcomesStrength } = analysis;
-    
+
     // Create lookup key
     const gridKey = `${quartileBand}-${mandateLevel}-${fundingType}-${outcomesStrength}`;
+
+    // Without quartile data, the entire strategic-priority axis collapses and the grid
+    // can't produce a defensible disposition. Surface a REVIEW state instead of forcing
+    // the request through a half-blind APPROVE/MODIFY/DEFER/REJECT decision.
+    if (quartileBand === 'Unknown') {
+        return {
+            archetypeNumber: 0,
+            disposition: 'REVIEW',
+            color: '#64748b',
+            keyConsideration: 'Insufficient quartile data — manual review required before applying the PBB framework',
+            verifyNow: ['Add a Quartile value to the line items, or upload a Program Inventory that includes a Quartile column'],
+            strengthenWith: ['Provide program-level alignment data so the framework can score this request'],
+            gridKey: gridKey
+        };
+    }
     
     // Decision grid mapping with archetype numbers matching the 24 Archetypes table
     const grid = {
@@ -1540,7 +1563,7 @@ function applyDecisionGrid(analysis) {
         'Low-Mandated-GFonly-Weak': {
             archetypeNumber: 16,
             disposition: 'APPROVE',
-            color: '#ffc107',
+            color: '#28a745',
             keyConsideration: 'Mandate-driven but add strong conditions and sunset',
             verifyNow: ['Absolute minimum compliance path', 'Can this be delayed?'],
             strengthenWith: ['Tight scope - minimum viable only', 'Aggressive cost offsets', 'Timeline to add non-GF within 6 months', 'Clear exit criteria']
@@ -2448,7 +2471,9 @@ function generateDetailedRequestReportAnalytical() {
                                 <div class="summary-item">
                                     <div class="summary-label">Quartile</div>
                                     <div class="summary-value">
-                                        <span class="quartile-badge quartile-${analysis.bestQuartile.toLowerCase().replace(' ', '-')}">${analysis.bestQuartile}</span>
+                                        ${analysis.bestQuartile
+                                            ? `<span class="quartile-badge quartile-${analysis.bestQuartile.toString().toLowerCase().replace(/ /g, '-')}">${analysis.bestQuartile}</span>`
+                                            : `<span class="quartile-badge">N/A</span>`}
                                     </div>
                                 </div>
                                 <div class="summary-item">
@@ -2587,45 +2612,48 @@ function generateDetailedRequestReportAnalytical() {
 
 // Summary for Analytical Report
 function generateAnalyticalSummary() {
-    const scores = { approve: 0, modify: 0, defer: 0 };
-    const amounts = { approve: 0, modify: 0, defer: 0 };
-    
+    const scores = { approve: 0, modify: 0, defer: 0, reject: 0, review: 0 };
+    const amounts = { approve: 0, modify: 0, defer: 0, reject: 0, review: 0 };
+
     filteredData.forEach(request => {
         const analysis = scoreRequest(request);
         const requestAmounts = getRequestAmount(request);
-        
-        if (analysis.disposition === 'APPROVE') {
-            scores.approve++;
-            amounts.approve += requestAmounts.total;
-        } else if (analysis.disposition === 'MODIFY') {
-            scores.modify++;
-            amounts.modify += requestAmounts.total;
-        } else {
-            scores.defer++;
-            amounts.defer += requestAmounts.total;
+        const key = (analysis.disposition || '').toLowerCase();
+        if (scores[key] !== undefined) {
+            scores[key]++;
+            amounts[key] += requestAmounts.total;
         }
     });
+
+    const tile = (label, count, amt, bg, border, textColor) => `
+        <div class="detail-item" style="background: ${bg}; border: 2px solid ${border};">
+            <div class="detail-label">${label}</div>
+            <div class="detail-value" style="font-size: 1.5rem; color: ${textColor};">${count} Requests</div>
+            <div class="amount" style="font-size: 1.2rem; color: ${textColor};">$${formatCurrency(amt)}</div>
+        </div>
+    `;
+
+    // Only show REVIEW tile when there are review-state requests, to avoid clutter when
+    // quartile data is fully populated.
+    const reviewTile = scores.review > 0
+        ? tile('PBB Framework Needs Review', scores.review, amounts.review,
+               'linear-gradient(135deg, #e2e8f0, #cbd5e1)', '#64748b', '#475569')
+        : '';
 
     return `
         <div class="section-header">Recommendation Summary</div>
         <div class="request-card">
             <div class="request-details">
                 <div class="detail-grid">
-                    <div class="detail-item" style="background: linear-gradient(135deg, #d4edda, #c3e6cb); border: 2px solid #28a745;">
-                        <div class="detail-label">PBB Framework Suggests Approve</div>
-                        <div class="detail-value" style="font-size: 1.5rem; color: #28a745;">${scores.approve} Requests</div>
-                        <div class="amount" style="font-size: 1.2rem;">$${formatCurrency(amounts.approve)}</div>
-                    </div>
-                    <div class="detail-item" style="background: linear-gradient(135deg, #fff3cd, #ffeeba); border: 2px solid #ffc107;">
-                        <div class="detail-label">PBB Framework Suggests Modify</div>
-                        <div class="detail-value" style="font-size: 1.5rem; color: #856404;">${scores.modify} Requests</div>
-                        <div class="amount" style="font-size: 1.2rem; color: #856404;">$${formatCurrency(amounts.modify)}</div>
-                    </div>
-                    <div class="detail-item" style="background: linear-gradient(135deg, #f8d7da, #f5c6cb); border: 2px solid #dc3545;">
-                        <div class="detail-label">PBB Framework Suggests Defer</div>
-                        <div class="detail-value" style="font-size: 1.5rem; color: #dc3545;">${scores.defer} Requests</div>
-                        <div class="amount" style="font-size: 1.2rem; color: #dc3545;">$${formatCurrency(amounts.defer)}</div>
-                    </div>
+                    ${tile('PBB Framework Suggests Approve', scores.approve, amounts.approve,
+                           'linear-gradient(135deg, #d4edda, #c3e6cb)', '#28a745', '#28a745')}
+                    ${tile('PBB Framework Suggests Modify', scores.modify, amounts.modify,
+                           'linear-gradient(135deg, #fff3cd, #ffeeba)', '#ffc107', '#856404')}
+                    ${tile('PBB Framework Suggests Defer', scores.defer, amounts.defer,
+                           'linear-gradient(135deg, #ffe5d0, #ffd1a8)', '#fd7e14', '#9a4a09')}
+                    ${tile('PBB Framework Suggests Reject', scores.reject, amounts.reject,
+                           'linear-gradient(135deg, #f8d7da, #f5c6cb)', '#dc3545', '#dc3545')}
+                    ${reviewTile}
                 </div>
             </div>
         </div>
@@ -2647,8 +2675,11 @@ function generateAnalyticalTableOfContents() {
         const requestId = getRequestId(request);
         const description = getRequestDescription(request);
         const analysis = scoreRequest(request);
-        const badgeColor = analysis.disposition === 'APPROVE' ? '#28a745' : 
-                          analysis.disposition === 'MODIFY' ? '#ffc107' : '#dc3545';
+        const badgeColor = analysis.disposition === 'APPROVE' ? '#28a745' :
+                          analysis.disposition === 'MODIFY' ? '#ffc107' :
+                          analysis.disposition === 'DEFER'  ? '#fd7e14' :
+                          analysis.disposition === 'REJECT' ? '#dc3545' :
+                          '#64748b';
         
         html += `<li>
             <a href="#analytical-request-${requestId}" style="color: #667eea; text-decoration: none;">
@@ -2680,8 +2711,8 @@ function downloadAnalyticalWordReport() {
     
     const reportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     let totalAmount = 0, totalOngoing = 0, totalOnetime = 0;
-    const dStats = { approve: 0, modify: 0, defer: 0, reject: 0 };
-    const dAmounts = { approve: 0, modify: 0, defer: 0, reject: 0 };
+    const dStats = { approve: 0, modify: 0, defer: 0, reject: 0, review: 0 };
+    const dAmounts = { approve: 0, modify: 0, defer: 0, reject: 0, review: 0 };
     
     filteredData.forEach(request => {
         const amounts = getRequestAmount(request);
@@ -2910,8 +2941,8 @@ function downloadAnalyticalPdfReport() {
     
     const reportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     let totalAmount = 0, totalOngoing = 0, totalOnetime = 0;
-    const dStats = { approve: 0, modify: 0, defer: 0, reject: 0 };
-    const dAmounts = { approve: 0, modify: 0, defer: 0, reject: 0 };
+    const dStats = { approve: 0, modify: 0, defer: 0, reject: 0, review: 0 };
+    const dAmounts = { approve: 0, modify: 0, defer: 0, reject: 0, review: 0 };
     const deptStats = {};
     
     filteredData.forEach(request => {

@@ -1952,12 +1952,17 @@ tr:hover {
 }
 
 .badge-defer {
-    background: var(--slate-500);
+    background: #fd7e14;
     color: white;
 }
 
 .badge-reject {
     background: var(--red-500);
+    color: white;
+}
+
+.badge-review {
+    background: var(--slate-500);
     color: white;
 }
 

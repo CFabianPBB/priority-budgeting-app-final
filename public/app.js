@@ -1787,6 +1787,9 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     } else if (analysis.disposition === 'REJECT') {
         narrative += `**PBB Framework Advisory:** PBB suggests REJECT OR SIGNIFICANT REDESIGN. `;
         narrative += `This low-relevance, GF-only request with weak outcomes does not meet PBB funding criteria. PBB recommends fundamental changes before reconsideration.\n\n`;
+    } else if (analysis.disposition === 'REVIEW') {
+        narrative += `**PBB Framework Advisory:** PBB suggests MANUAL REVIEW. `;
+        narrative += `This request is missing the quartile alignment data required to apply the PBB framework. Add a Quartile value to the line items, or upload a Program Inventory that includes a Quartile column, then re-run the analysis. Until then, no APPROVE/MODIFY/DEFER/REJECT recommendation should be inferred.\n\n`;
     }
     
     // Verification requirements
@@ -2736,9 +2739,11 @@ function downloadAnalyticalWordReport() {
         const analysis = scoreRequest(request);
         const shortDesc = description && description.length > 30 ? description.substring(0, 30) + '...' : (description || 'N/A');
         
-        const dispColor = analysis.disposition === 'APPROVE' ? '#10b981' : 
-                         analysis.disposition === 'MODIFY' ? '#f59e0b' : 
-                         analysis.disposition === 'DEFER' ? '#64748b' : '#ef4444';
+        const dispColor = analysis.disposition === 'APPROVE' ? '#10b981' :
+                         analysis.disposition === 'MODIFY'  ? '#f59e0b' :
+                         analysis.disposition === 'DEFER'   ? '#fd7e14' :
+                         analysis.disposition === 'REJECT'  ? '#ef4444' :
+                         '#64748b';
         
         summaryRows += `
             <tr>
@@ -2765,9 +2770,11 @@ function downloadAnalyticalWordReport() {
         const amounts = getRequestAmount(request);
         const analysis = scoreRequest(request);
         
-        const dispColor = analysis.disposition === 'APPROVE' ? '#10b981' : 
-                         analysis.disposition === 'MODIFY' ? '#f59e0b' : 
-                         analysis.disposition === 'DEFER' ? '#64748b' : '#ef4444';
+        const dispColor = analysis.disposition === 'APPROVE' ? '#10b981' :
+                         analysis.disposition === 'MODIFY'  ? '#f59e0b' :
+                         analysis.disposition === 'DEFER'   ? '#fd7e14' :
+                         analysis.disposition === 'REJECT'  ? '#ef4444' :
+                         '#64748b';
         
         // Q&A section
         let qaHtml = '';
@@ -2975,9 +2982,11 @@ function downloadAnalyticalPdfReport() {
         const shortDesc = description && description.length > 35 ? description.substring(0, 35) + '...' : (description || 'N/A');
         
         const qBadge = primaryQuartile.includes('Most') || primaryQuartile.includes('More') ? 'badge-high' : 'badge-low';
-        const dispBadge = analysis.disposition === 'APPROVE' ? 'badge-approve' : 
-                         analysis.disposition === 'MODIFY' ? 'badge-modify' : 
-                         analysis.disposition === 'DEFER' ? 'badge-defer' : 'badge-reject';
+        const dispBadge = analysis.disposition === 'APPROVE' ? 'badge-approve' :
+                         analysis.disposition === 'MODIFY'  ? 'badge-modify' :
+                         analysis.disposition === 'DEFER'   ? 'badge-defer' :
+                         analysis.disposition === 'REJECT'  ? 'badge-reject' :
+                         'badge-review';
         
         tableRows += `<tr>
             <td>${requestId}</td>
@@ -3002,9 +3011,11 @@ function downloadAnalyticalPdfReport() {
         const amounts = getRequestAmount(request);
         const analysis = scoreRequest(request);
         
-        const dispColor = analysis.disposition === 'APPROVE' ? '#10b981' : 
-                         analysis.disposition === 'MODIFY' ? '#f59e0b' : 
-                         analysis.disposition === 'DEFER' ? '#64748b' : '#ef4444';
+        const dispColor = analysis.disposition === 'APPROVE' ? '#10b981' :
+                         analysis.disposition === 'MODIFY'  ? '#f59e0b' :
+                         analysis.disposition === 'DEFER'   ? '#fd7e14' :
+                         analysis.disposition === 'REJECT'  ? '#ef4444' :
+                         '#64748b';
         
         // Q&A Section
         let qaHtml = '';
@@ -3149,8 +3160,9 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
 .badge { display: inline-block; padding: 2px 6px; border-radius: 10px; font-size: 8px; font-weight: 600; }
 .badge-approve { background: #10b981; color: white; }
 .badge-modify { background: #f59e0b; color: white; }
-.badge-defer { background: #64748b; color: white; }
+.badge-defer { background: #fd7e14; color: white; }
 .badge-reject { background: #ef4444; color: white; }
+.badge-review { background: #64748b; color: white; }
 .badge-high { background: #10b981; color: white; }
 .badge-low { background: #64748b; color: white; }
 .amount { color: #059669; font-weight: 600; }

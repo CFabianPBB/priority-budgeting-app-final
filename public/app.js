@@ -8,6 +8,11 @@ let budgetData = {
 };
 let filteredData = [];
 let currentBudgetData = []; // ← ADD THIS LINE
+// Program-level structured PBB attributes (Mandate, Cost Recovery, Final Score) sourced
+// from the Programs Inventory's "Details" sheet. Falls back into the scoring engine when
+// the Q&A narrative is empty or import boilerplate. Keyed by `${DEPT}::${PROGRAM}` and
+// `*::${PROGRAM}` (uppercased) for tolerant lookup.
+let programAttributesMap = {};
 
 
 // DOM elements
@@ -81,9 +86,21 @@ function processCurrentBudgetFile(file) {
             // Parse the Programs sheet (or first sheet if "Programs" doesn't exist)
             const programsSheet = workbook.Sheets['Programs'] || workbook.Sheets[workbook.SheetNames[0]];
             currentBudgetData = XLSX.utils.sheet_to_json(programsSheet, { defval: '' });
-            
+
             console.log(`Loaded ${currentBudgetData.length} programs from current budget`);
             console.log('Sample program:', currentBudgetData[0]);
+
+            // If the workbook also has a "Details" sheet (e.g. ResourceX Program Summary
+            // export), build a program-attributes map from it. This gives the PBB scoring
+            // engine access to Mandate / Cost Recovery / Final Score even when the request
+            // Q&A is missing or boilerplate.
+            programAttributesMap = {};
+            const detailsSheet = workbook.Sheets['Details'] || workbook.Sheets['details'];
+            if (detailsSheet) {
+                const detailsRows = XLSX.utils.sheet_to_json(detailsSheet, { defval: '' });
+                buildProgramAttributesMap(detailsRows);
+                console.log(`Built program attributes for ${Object.keys(programAttributesMap).length} program keys from Details sheet`);
+            }
             
             if (currentBudgetData.length > 0) {
                 showCurrentBudgetMessage(`✅ Successfully loaded ${currentBudgetData.length} programs with current budget data!`, 'success');
@@ -1065,6 +1082,95 @@ function normalizeQuartile(q) {
 // Resolve the quartile for a single line item. Tries the line item's own Quartile
 // column first; if blank, falls back to looking up the program in the uploaded
 // Current Budget (Program Inventory) by Program (+ Department when both have one).
+// Build the program-attributes map from a Details-sheet row dump. Each program has
+// many account-level rows but the program-level attributes are constant per program,
+// so we record the first non-empty value seen per (User Group, Program) key.
+function buildProgramAttributesMap(detailsRows) {
+    if (!Array.isArray(detailsRows) || detailsRows.length === 0) return;
+    const norm = v => (v == null ? '' : v.toString().trim().toUpperCase());
+    for (const row of detailsRows) {
+        const program = norm(row['Program']);
+        if (!program) continue;
+        const dept = norm(row['User Group(prgs)'] || row['User Group(accts)'] || row['Department'] || row['User Group']);
+        const attrs = {
+            mandate: classifyMandate(row['Mandate']),
+            costRecovery: classifyCostRecovery(row['Cost Recovery']),
+            finalScore: typeof row['Final Score'] === 'number' ? row['Final Score'] : parseFloat(row['Final Score']) || null,
+            rawMandate: row['Mandate'] || null,
+            rawCostRecovery: row['Cost Recovery'] || null
+        };
+        const keys = [`${dept}::${program}`, `*::${program}`];
+        for (const k of keys) {
+            const existing = programAttributesMap[k];
+            if (!existing) {
+                programAttributesMap[k] = attrs;
+            } else {
+                // Upgrade in place if the new row has stronger / non-empty values
+                if (!existing.mandate && attrs.mandate) existing.mandate = attrs.mandate;
+                if (existing.costRecovery == null && attrs.costRecovery != null) existing.costRecovery = attrs.costRecovery;
+                if (!existing.finalScore && attrs.finalScore) existing.finalScore = attrs.finalScore;
+            }
+        }
+    }
+}
+
+function classifyMandate(val) {
+    if (!val) return null;
+    const s = val.toString().toLowerCase();
+    if (s.includes('state') || s.includes('federal')) return 'state_federal';
+    if (s.includes('self') || s.includes('ordinance') || s.includes('charter') || s.includes('commission')) return 'self';
+    if (s.includes('no mandate') || /^no\b/.test(s) || s.includes('(0)')) return 'none';
+    return null;
+}
+
+function classifyCostRecovery(val) {
+    if (val === '' || val == null) return null;
+    const s = val.toString().toLowerCase();
+    if (s.startsWith('yes') || /\(4\)|\(3\)|\(2\)/.test(s)) return true;
+    if (s.startsWith('no') || s.includes('(0)')) return false;
+    return null;
+}
+
+// Aggregate the strongest program-level signals across all line items for a request.
+function getProgramAttributesForLineItems(lineItems) {
+    if (!lineItems || lineItems.length === 0) return null;
+    if (!programAttributesMap || Object.keys(programAttributesMap).length === 0) return null;
+
+    const mandateRank = { state_federal: 3, self: 2, none: 1 };
+    const inverseMandate = { 3: 'state_federal', 2: 'self', 1: 'none' };
+    let bestMandate = 0;
+    let anyCostRecovery = false;
+    let sawCostRecovery = false;
+    let bestFinalScore = null;
+    let matched = false;
+
+    for (const item of lineItems) {
+        const program = (item.Program || '').toString().trim().toUpperCase();
+        if (!program) continue;
+        const dept = (item.Department || item['Cost Center'] || item['User Group'] || '').toString().trim().toUpperCase();
+        const attrs = programAttributesMap[`${dept}::${program}`] || programAttributesMap[`*::${program}`];
+        if (!attrs) continue;
+        matched = true;
+        if (attrs.mandate && mandateRank[attrs.mandate] > bestMandate) {
+            bestMandate = mandateRank[attrs.mandate];
+        }
+        if (attrs.costRecovery != null) {
+            sawCostRecovery = true;
+            if (attrs.costRecovery) anyCostRecovery = true;
+        }
+        if (attrs.finalScore != null && (bestFinalScore == null || attrs.finalScore > bestFinalScore)) {
+            bestFinalScore = attrs.finalScore;
+        }
+    }
+
+    if (!matched) return null;
+    return {
+        mandate: bestMandate ? inverseMandate[bestMandate] : null,
+        costRecovery: sawCostRecovery ? anyCostRecovery : null,
+        finalScore: bestFinalScore
+    };
+}
+
 function getQuartileForLineItem(item) {
     const direct = normalizeQuartile(item.Quartile);
     if (direct) return direct;
@@ -1226,11 +1332,11 @@ function getOutcomeScore(qa, qaText) {
     return { score: 0, reason: "No measurable outcomes, KPIs, targets, or performance data provided in request documentation" };
 }
 
-function getFundingScore(qa, qaText) {
+function getFundingScore(qa, qaText, progAttrs) {
     const hasGrant = /grant|outside funding.*yes/i.test(qaText);
     const hasFee = /fee|cost recovery|charge|revenue/i.test(qaText);
     const hasPartner = /partner|partnership|contribution|match/i.test(qaText);
-    
+
     if ((hasGrant || hasFee || hasPartner) && qaText.match(/grant|fee|partner/gi)?.length >= 2) {
         return { score: 2, reason: "Request identifies MULTIPLE non-General Fund sources (grants, fees, cost recovery, or partnership funding)" };
     }
@@ -1243,13 +1349,17 @@ function getFundingScore(qa, qaText) {
     if (/potential|exploring|seeking/i.test(qaText) && /grant|partner|fee/i.test(qaText)) {
         return { score: 1, reason: "Request mentions exploring or seeking non-General Fund sources, though not yet secured" };
     }
+    // Fallback to program-level structured data when narrative is silent
+    if (progAttrs && progAttrs.costRecovery === true) {
+        return { score: 1, reason: "Program inventory marks this program as having cost recovery — non-General Fund offset is established at the program level" };
+    }
     return { score: 0, reason: "No non-General Fund sources identified - request is 100% dependent on General Fund appropriation" };
 }
 
-function getMandateScore(qa, qaText) {
+function getMandateScore(qa, qaText, progAttrs) {
     const hasMandate = /board motion|consent decree|doj|mandate|statute|ordinance|charter/i.test(qaText);
     const hasCompliance = /audit|liability|compliance|risk|safety|violation|penalty/i.test(qaText);
-    
+
     if (hasMandate && hasCompliance) {
         return { score: 2, reason: "Request cites specific legal/regulatory mandate (board motion, statute, consent decree) AND identifies compliance risks or penalties" };
     }
@@ -1258,6 +1368,13 @@ function getMandateScore(qa, qaText) {
     }
     if (hasCompliance) {
         return { score: 1, reason: "Request addresses compliance obligations, audit findings, liability mitigation, or safety risks" };
+    }
+    // Fallback to program-level structured data when narrative is silent
+    if (progAttrs && progAttrs.mandate === 'state_federal') {
+        return { score: 2, reason: "Program inventory classifies this program as a State or Federal Mandate — legal/regulatory obligation established at the program level" };
+    }
+    if (progAttrs && progAttrs.mandate === 'self') {
+        return { score: 1, reason: "Program inventory classifies this program as a Self Mandate (commission, ordinance, or charter) — local compliance obligation at the program level" };
     }
     return { score: 0, reason: "No legal mandates, compliance obligations, or significant regulatory risks identified in request" };
 }
@@ -1305,40 +1422,55 @@ function scoreRequest(request) {
     const quartiles = lineItems.map(li => getPrimaryValue([li], 'quartile')).filter(q => q);
     const bestQuartile = getBestQuartile(quartiles);
     const qaText = qa.map(q => Object.values(q).join(' ')).join(' ').toLowerCase();
-    
+
+    // Pull program-level structured PBB attributes (Mandate / Cost Recovery / Final Score)
+    // from the uploaded Programs Inventory. These act as a fallback when the request Q&A
+    // is missing or boilerplate (common with imported workbooks that have no narrative).
+    const progAttrs = getProgramAttributesForLineItems(lineItems);
+
     // Score each criterion with explicit reasoning
     const quartileAnalysis = getQuartileScore(bestQuartile);
     const outcomeAnalysis = getOutcomeScore(qa, qaText);
-    const fundingAnalysis = getFundingScore(qa, qaText);
-    const mandateAnalysis = getMandateScore(qa, qaText);
+    const fundingAnalysis = getFundingScore(qa, qaText, progAttrs);
+    const mandateAnalysis = getMandateScore(qa, qaText, progAttrs);
     const efficiencyAnalysis = getEfficiencyScore(qa, qaText);
     const accessAnalysis = getAccessScore(qa, qaText);
-    
+
     const analysis = {
         // Scores with explicit reasons
         quartileScore: quartileAnalysis.score,
         quartileReason: quartileAnalysis.reason,
-        
+
         outcomeScore: outcomeAnalysis.score,
         outcomeReason: outcomeAnalysis.reason,
-        
+
         fundingScore: fundingAnalysis.score,
         fundingReason: fundingAnalysis.reason,
-        
+
         mandateScore: mandateAnalysis.score,
         mandateReason: mandateAnalysis.reason,
-        
+
         efficiencyScore: efficiencyAnalysis.score,
         efficiencyReason: efficiencyAnalysis.reason,
-        
+
         accessScore: accessAnalysis.score,
         accessReason: accessAnalysis.reason,
-        
-        // Legacy fields for backwards compatibility
+
+        // Surface the structured fallback so downstream UI / debug can show what fed the grid
+        programAttributes: progAttrs,
+
+        // Legacy fields used to derive grid axes — OR in structured signals so the grid
+        // routes correctly when the narrative is silent.
         bestQuartile: bestQuartile,
-        hasOutsideFunding: /outside funding.*yes|grant|fee|partner|cost recovery/i.test(qaText),
-        isMandated: /board motion|consent decree|doj|mandate|statute/i.test(qaText),
-        isCompliance: /audit|liability|compliance|risk|safety/i.test(qaText)
+        hasOutsideFunding:
+            /outside funding.*yes|grant|fee|partner|cost recovery/i.test(qaText) ||
+            (progAttrs && progAttrs.costRecovery === true),
+        isMandated:
+            /board motion|consent decree|doj|mandate|statute/i.test(qaText) ||
+            (progAttrs && progAttrs.mandate === 'state_federal'),
+        isCompliance:
+            /audit|liability|compliance|risk|safety/i.test(qaText) ||
+            (progAttrs && progAttrs.mandate === 'self')
     };
     
     // Calculate total score

@@ -23,6 +23,9 @@
     --red-600: #dc2626;
     --green-500: #22c55e;
     --green-600: #16a34a;
+    --indigo-500: #6366f1;
+    --indigo-600: #4f46e5;
+    --indigo-700: #4338ca;
     
     /* Neutral Colors */
     --slate-50: #f8fafc;
@@ -1583,12 +1586,18 @@ tr:hover {
 
 .decision-cards-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 20px;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
     margin-bottom: 24px;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1400px) {
+    .decision-cards-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 900px) {
     .decision-cards-grid {
         grid-template-columns: repeat(2, 1fr);
     }
@@ -1615,6 +1624,7 @@ tr:hover {
 }
 
 .decision-card.approve { border-color: var(--green-500); }
+.decision-card.verify { border-color: var(--indigo-500); }
 .decision-card.modify { border-color: var(--amber-500); }
 .decision-card.defer { border-color: var(--slate-400); }
 .decision-card.reject { border-color: var(--red-500); }
@@ -1637,6 +1647,7 @@ tr:hover {
 }
 
 .decision-card.approve .decision-card-icon { background: #dcfce7; color: var(--green-600); }
+.decision-card.verify .decision-card-icon { background: #e0e7ff; color: var(--indigo-600); }
 .decision-card.modify .decision-card-icon { background: #fef3c7; color: var(--amber-600); }
 .decision-card.defer .decision-card-icon { background: #f1f5f9; color: var(--slate-600); }
 .decision-card.reject .decision-card-icon { background: #fee2e2; color: var(--red-600); }
@@ -1651,6 +1662,7 @@ tr:hover {
 }
 
 .decision-card.approve .decision-card-badge { background: #dcfce7; color: var(--green-700); }
+.decision-card.verify .decision-card-badge { background: #e0e7ff; color: var(--indigo-700); }
 .decision-card.modify .decision-card-badge { background: #fef3c7; color: var(--amber-700); }
 .decision-card.defer .decision-card-badge { background: #f1f5f9; color: var(--slate-600); }
 .decision-card.reject .decision-card-badge { background: #fee2e2; color: var(--red-700); }
@@ -1663,6 +1675,7 @@ tr:hover {
 }
 
 .decision-card.approve .decision-card-value { color: var(--green-600); }
+.decision-card.verify .decision-card-value { color: var(--indigo-600); }
 .decision-card.modify .decision-card-value { color: var(--amber-600); }
 .decision-card.defer .decision-card-value { color: var(--slate-600); }
 .decision-card.reject .decision-card-value { color: var(--red-600); }
@@ -1696,6 +1709,7 @@ tr:hover {
 }
 
 .decision-card.approve .decision-card-bar-fill { background: var(--green-500); }
+.decision-card.verify .decision-card-bar-fill { background: var(--indigo-500); }
 .decision-card.modify .decision-card-bar-fill { background: var(--amber-500); }
 .decision-card.defer .decision-card-bar-fill { background: var(--slate-400); }
 .decision-card.reject .decision-card-bar-fill { background: var(--red-500); }
@@ -1943,6 +1957,11 @@ tr:hover {
 
 .badge-approve {
     background: var(--green-500);
+    color: white;
+}
+
+.badge-verify {
+    background: var(--indigo-500);
     color: white;
 }
 

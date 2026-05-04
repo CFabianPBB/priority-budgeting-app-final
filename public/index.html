@@ -309,6 +309,18 @@
                         <div class="decision-card-desc">Strong alignment with strategic priorities</div>
                     </div>
 
+                    <div class="decision-card verify">
+                        <div class="decision-card-header">
+                            <div class="decision-card-icon">🔍</div>
+                            <span class="decision-card-badge">Verify Mandate</span>
+                        </div>
+                        <div class="decision-card-value" id="dashVerifyCount">0</div>
+                        <div class="decision-card-label">Verify</div>
+                        <div class="decision-card-amount"><span id="dashVerifyAmount">$0</span></div>
+                        <div class="decision-card-bar"><div class="decision-card-bar-fill" id="dashVerifyBar"></div></div>
+                        <div class="decision-card-desc">Low-priority GF spend — validate mandate first</div>
+                    </div>
+
                     <div class="decision-card modify">
                         <div class="decision-card-header">
                             <div class="decision-card-icon">⚠</div>
@@ -470,9 +482,9 @@
                                 <tr class="archetype-row"><td class="archetype-num">11</td><td><span class="badge badge-high">High (Q1/Q2)</span></td><td>None</td><td><span class="badge badge-nongf">NonGF</span></td><td>Weak</td><td><span class="badge badge-modify">MODIFY</span></td><td>Strengthen business case or pilot</td></tr>
                                 <tr class="archetype-row"><td class="archetype-num">12</td><td><span class="badge badge-high">High (Q1/Q2)</span></td><td>None</td><td><span class="badge badge-gf">GF only</span></td><td>Weak</td><td><span class="badge badge-defer">DEFER</span></td><td>Build evidence before using GF</td></tr>
                                 <tr class="archetype-row low-quartile-section"><td class="archetype-num">13</td><td><span class="badge badge-low">Low (Q3/Q4)</span></td><td>Mandated</td><td><span class="badge badge-nongf">NonGF</span></td><td>Strong</td><td><span class="badge badge-approve">APPROVE</span></td><td>Legal mandate with no GF impact</td></tr>
-                                <tr class="archetype-row"><td class="archetype-num">14</td><td><span class="badge badge-low">Low (Q3/Q4)</span></td><td>Mandated</td><td><span class="badge badge-gf">GF only</span></td><td>Strong</td><td><span class="badge badge-approve">APPROVE</span></td><td>Must comply - minimize scope</td></tr>
+                                <tr class="archetype-row"><td class="archetype-num">14</td><td><span class="badge badge-low">Low (Q3/Q4)</span></td><td>Mandated</td><td><span class="badge badge-gf">GF only</span></td><td>Strong</td><td><span class="badge badge-verify">VERIFY</span></td><td>Validate mandate before funding low-priority GF spend</td></tr>
                                 <tr class="archetype-row"><td class="archetype-num">15</td><td><span class="badge badge-low">Low (Q3/Q4)</span></td><td>Mandated</td><td><span class="badge badge-nongf">NonGF</span></td><td>Weak</td><td><span class="badge badge-approve">APPROVE</span></td><td>Mandate drives approval - add KPIs</td></tr>
-                                <tr class="archetype-row"><td class="archetype-num">16</td><td><span class="badge badge-low">Low (Q3/Q4)</span></td><td>Mandated</td><td><span class="badge badge-gf">GF only</span></td><td>Weak</td><td><span class="badge badge-approve">APPROVE</span></td><td>Comply minimally - pursue fee recovery</td></tr>
+                                <tr class="archetype-row"><td class="archetype-num">16</td><td><span class="badge badge-low">Low (Q3/Q4)</span></td><td>Mandated</td><td><span class="badge badge-gf">GF only</span></td><td>Weak</td><td><span class="badge badge-verify">VERIFY</span></td><td>Mandate is sole basis to fund — verify, then comply minimally</td></tr>
                                 <tr class="archetype-row"><td class="archetype-num">17</td><td><span class="badge badge-low">Low (Q3/Q4)</span></td><td>Compliance</td><td><span class="badge badge-nongf">NonGF</span></td><td>Strong</td><td><span class="badge badge-modify">MODIFY</span></td><td>Ensure full cost recovery</td></tr>
                                 <tr class="archetype-row"><td class="archetype-num">18</td><td><span class="badge badge-low">Low (Q3/Q4)</span></td><td>Compliance</td><td><span class="badge badge-gf">GF only</span></td><td>Strong</td><td><span class="badge badge-modify">MODIFY</span></td><td>Reduce scope or find offsets</td></tr>
                                 <tr class="archetype-row"><td class="archetype-num">19</td><td><span class="badge badge-low">Low (Q3/Q4)</span></td><td>Compliance</td><td><span class="badge badge-nongf">NonGF</span></td><td>Weak</td><td><span class="badge badge-defer">DEFER</span></td><td>Prove value first</td></tr>
@@ -614,9 +626,9 @@
     function updateDecisionDashboard() {
         if (typeof filteredData === 'undefined' || !filteredData.length) return;
         
-        const stats = { approve: {count:0,amount:0}, modify: {count:0,amount:0}, defer: {count:0,amount:0}, reject: {count:0,amount:0} };
+        const stats = { approve: {count:0,amount:0}, verify: {count:0,amount:0}, modify: {count:0,amount:0}, defer: {count:0,amount:0}, reject: {count:0,amount:0} };
         let totalAmount = 0;
-        
+
         filteredData.forEach(request => {
             const amounts = getRequestAmount(request);
             totalAmount += amounts.total;
@@ -624,12 +636,12 @@
             const disp = (analysis.disposition || '').toLowerCase();
             if (stats[disp]) { stats[disp].count++; stats[disp].amount += amounts.total; }
         });
-        
+
         const total = filteredData.length;
         document.getElementById('dashTotalRequests').textContent = total;
         document.getElementById('dashTotalAmount').textContent = '$' + totalAmount.toLocaleString();
-        
-        ['approve','modify','defer','reject'].forEach(d => {
+
+        ['approve','verify','modify','defer','reject'].forEach(d => {
             document.getElementById(`dash${d.charAt(0).toUpperCase()+d.slice(1)}Count`).textContent = stats[d].count;
             document.getElementById(`dash${d.charAt(0).toUpperCase()+d.slice(1)}Amount`).textContent = '$' + stats[d].amount.toLocaleString();
             document.getElementById(`dash${d.charAt(0).toUpperCase()+d.slice(1)}Bar`).style.width = (total > 0 ? (stats[d].count/total*100) : 0) + '%';

@@ -1678,11 +1678,17 @@ function applyDecisionGrid(analysis) {
         },
         'Low-Mandated-GFonly-Strong': {
             archetypeNumber: 14,
-            disposition: 'APPROVE',
-            color: '#28a745',
-            keyConsideration: 'Mandate overrides low quartile - fund minimum compliance',
-            verifyNow: ['Is Q3/Q4 mapping correct?', 'Minimum compliance requirement'],
-            strengthenWith: ['Identify fees/grants aggressively', 'Swap lower-impact spend', 'Phase implementation', 'Sunset provision']
+            disposition: 'VERIFY',
+            color: '#6366f1',
+            keyConsideration: 'Low-priority program with 100% GF reliance — mandate is the only thing keeping this out of REJECT. Validate before funding.',
+            verifyNow: [
+                'What does the mandate actually require — operate the program at all, or this specific incremental spend?',
+                'Who is mandating it? (statute, regulation, court order, board motion) — get a citation',
+                'Is there pass-through funding from the mandating authority to comply?',
+                'Is the Q3/Q4 quartile mapping correct, or is this program being undervalued?',
+                'What is the absolute minimum compliance level, and can timing be deferred?'
+            ],
+            strengthenWith: ['Document mandate citation in writing', 'Pursue mandating-authority funding aggressively', 'Swap lower-impact spend', 'Phase to minimum viable scope', 'Sunset provision tied to mandate review']
         },
         'Low-Mandated-NonGF-Weak': {
             archetypeNumber: 15,
@@ -1694,11 +1700,17 @@ function applyDecisionGrid(analysis) {
         },
         'Low-Mandated-GFonly-Weak': {
             archetypeNumber: 16,
-            disposition: 'APPROVE',
-            color: '#28a745',
-            keyConsideration: 'Mandate-driven but add strong conditions and sunset',
-            verifyNow: ['Absolute minimum compliance path', 'Can this be delayed?'],
-            strengthenWith: ['Tight scope - minimum viable only', 'Aggressive cost offsets', 'Timeline to add non-GF within 6 months', 'Clear exit criteria']
+            disposition: 'VERIFY',
+            color: '#6366f1',
+            keyConsideration: 'Low-priority + 100% GF + weak outcomes evidence — mandate is the sole basis to fund. The bar for verification is highest here.',
+            verifyNow: [
+                'What does the mandate actually require — operate the program at all, or this specific incremental spend?',
+                'Who is mandating it? (statute, regulation, court order, board motion) — get a citation',
+                'Is there pass-through funding from the mandating authority to comply?',
+                'Without strong outcomes evidence, can we afford the lowest-impact compliance path?',
+                'Can the spend be delayed to a future cycle without violating the mandate?'
+            ],
+            strengthenWith: ['Document mandate citation in writing', 'Pursue mandating-authority funding aggressively', 'Tight scope — minimum viable compliance only', 'Hard sunset / mandate-review trigger', 'Required path to add non-GF funding within 6–12 months']
         },
         'Low-Compliance-NonGF-Strong': {
             archetypeNumber: 17,
@@ -1908,6 +1920,13 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
         } else {
             narrative += `**PBB Framework Advisory:** PBB suggests APPROVE but strengthen funding strategy. While outcomes are strong, PBB recommends adding cost recovery or partnership elements to reduce General Fund reliance.\n\n`;
         }
+    } else if (analysis.disposition === 'VERIFY') {
+        narrative += `**PBB Framework Advisory:** PBB suggests APPROVE — but only AFTER mandate verification. This is a low-priority (Q3/Q4) program with 100% General Fund reliance; the mandate is the only thing keeping it from REJECT. Before approving, document:\n\n`;
+        narrative += `1. **What** does the mandate actually require — operate the program at all, or this specific incremental spend?\n`;
+        narrative += `2. **Who** is mandating it (statute, regulation, court order, board motion) — get the citation in writing.\n`;
+        narrative += `3. **Is there pass-through funding** from the mandating authority to help comply, or is the local government bearing the full cost?\n`;
+        narrative += `4. **Minimum compliance path** — can scope, timing, or service level be reduced and still satisfy the mandate?\n\n`;
+        narrative += `If the mandate is verified and binding, fund the minimum-viable compliance path with a sunset / mandate-review trigger. If the mandate is loose, stale, or doesn't actually require this incremental spend, this request should drop to DEFER or REJECT.\n\n`;
     } else if (analysis.disposition === 'MODIFY') {
         narrative += `**PBB Framework Advisory:** PBB suggests MODIFY before approval. This request shows merit but PBB recommends adjustments before proceeding:\n\n`;
     } else if (analysis.disposition === 'DEFER') {
@@ -1921,7 +1940,7 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
         narrative += `This low-relevance, GF-only request with weak outcomes does not meet PBB funding criteria. PBB recommends fundamental changes before reconsideration.\n\n`;
     } else if (analysis.disposition === 'REVIEW') {
         narrative += `**PBB Framework Advisory:** PBB suggests MANUAL REVIEW. `;
-        narrative += `This request is missing the quartile alignment data required to apply the PBB framework. Add a Quartile value to the line items, or upload a Program Inventory that includes a Quartile column, then re-run the analysis. Until then, no APPROVE/MODIFY/DEFER/REJECT recommendation should be inferred.\n\n`;
+        narrative += `This request is missing the quartile alignment data required to apply the PBB framework. Add a Quartile value to the line items, or upload a Program Inventory that includes a Quartile column, then re-run the analysis. Until then, no APPROVE/VERIFY/MODIFY/DEFER/REJECT recommendation should be inferred.\n\n`;
     }
     
     // Verification requirements
@@ -2747,8 +2766,8 @@ function generateDetailedRequestReportAnalytical() {
 
 // Summary for Analytical Report
 function generateAnalyticalSummary() {
-    const scores = { approve: 0, modify: 0, defer: 0, reject: 0, review: 0 };
-    const amounts = { approve: 0, modify: 0, defer: 0, reject: 0, review: 0 };
+    const scores = { approve: 0, verify: 0, modify: 0, defer: 0, reject: 0, review: 0 };
+    const amounts = { approve: 0, verify: 0, modify: 0, defer: 0, reject: 0, review: 0 };
 
     filteredData.forEach(request => {
         const analysis = scoreRequest(request);
@@ -2782,6 +2801,8 @@ function generateAnalyticalSummary() {
                 <div class="detail-grid">
                     ${tile('PBB Framework Suggests Approve', scores.approve, amounts.approve,
                            'linear-gradient(135deg, #d4edda, #c3e6cb)', '#28a745', '#28a745')}
+                    ${tile('PBB Suggests Verify Mandate', scores.verify, amounts.verify,
+                           'linear-gradient(135deg, #e0e7ff, #c7d2fe)', '#6366f1', '#4338ca')}
                     ${tile('PBB Framework Suggests Modify', scores.modify, amounts.modify,
                            'linear-gradient(135deg, #fff3cd, #ffeeba)', '#ffc107', '#856404')}
                     ${tile('PBB Framework Suggests Defer', scores.defer, amounts.defer,
@@ -2811,6 +2832,7 @@ function generateAnalyticalTableOfContents() {
         const description = getRequestDescription(request);
         const analysis = scoreRequest(request);
         const badgeColor = analysis.disposition === 'APPROVE' ? '#28a745' :
+                          analysis.disposition === 'VERIFY' ? '#6366f1' :
                           analysis.disposition === 'MODIFY' ? '#ffc107' :
                           analysis.disposition === 'DEFER'  ? '#fd7e14' :
                           analysis.disposition === 'REJECT' ? '#dc3545' :
@@ -2846,9 +2868,9 @@ function downloadAnalyticalWordReport() {
     
     const reportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     let totalAmount = 0, totalOngoing = 0, totalOnetime = 0;
-    const dStats = { approve: 0, modify: 0, defer: 0, reject: 0, review: 0 };
-    const dAmounts = { approve: 0, modify: 0, defer: 0, reject: 0, review: 0 };
-    
+    const dStats = { approve: 0, verify: 0, modify: 0, defer: 0, reject: 0, review: 0 };
+    const dAmounts = { approve: 0, verify: 0, modify: 0, defer: 0, reject: 0, review: 0 };
+
     filteredData.forEach(request => {
         const amounts = getRequestAmount(request);
         totalAmount += amounts.total;
@@ -2872,11 +2894,12 @@ function downloadAnalyticalWordReport() {
         const shortDesc = description && description.length > 30 ? description.substring(0, 30) + '...' : (description || 'N/A');
         
         const dispColor = analysis.disposition === 'APPROVE' ? '#10b981' :
+                         analysis.disposition === 'VERIFY'  ? '#6366f1' :
                          analysis.disposition === 'MODIFY'  ? '#f59e0b' :
                          analysis.disposition === 'DEFER'   ? '#fd7e14' :
                          analysis.disposition === 'REJECT'  ? '#ef4444' :
                          '#64748b';
-        
+
         summaryRows += `
             <tr>
                 <td style="padding: 8px; border: 1px solid #e2e8f0;">${requestId}</td>
@@ -2903,11 +2926,12 @@ function downloadAnalyticalWordReport() {
         const analysis = scoreRequest(request);
         
         const dispColor = analysis.disposition === 'APPROVE' ? '#10b981' :
+                         analysis.disposition === 'VERIFY'  ? '#6366f1' :
                          analysis.disposition === 'MODIFY'  ? '#f59e0b' :
                          analysis.disposition === 'DEFER'   ? '#fd7e14' :
                          analysis.disposition === 'REJECT'  ? '#ef4444' :
                          '#64748b';
-        
+
         // Q&A section
         let qaHtml = '';
         if (qa.length > 0) {
@@ -3010,25 +3034,30 @@ function downloadAnalyticalWordReport() {
             <h2 style="color: #1e3a5f; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">Executive Summary</h2>
             <p>This report analyzes <strong>${filteredData.length} budget requests</strong> totaling <strong style="color: #10b981;">$${formatCurrency(totalAmount)}</strong>.</p>
             
-            <table style="width: 100%; border-collapse: separate; border-spacing: 10px; margin: 20px 0;">
+            <table style="width: 100%; border-collapse: separate; border-spacing: 8px; margin: 20px 0;">
                 <tr>
-                    <td style="width: 25%; padding: 20px; text-align: center; background: linear-gradient(135deg, #d1fae5, #a7f3d0); border-radius: 8px;">
-                        <div style="font-size: 32px; font-weight: bold; color: #059669;">${dStats.approve}</div>
+                    <td style="width: 20%; padding: 18px; text-align: center; background: linear-gradient(135deg, #d1fae5, #a7f3d0); border-radius: 8px;">
+                        <div style="font-size: 30px; font-weight: bold; color: #059669;">${dStats.approve}</div>
                         <div style="color: #065f46; font-weight: 600;">✓ APPROVE</div>
                         <div style="font-size: 12px; color: #065f46;">$${formatCurrency(dAmounts.approve)}</div>
                     </td>
-                    <td style="width: 25%; padding: 20px; text-align: center; background: linear-gradient(135deg, #fef3c7, #fde68a); border-radius: 8px;">
-                        <div style="font-size: 32px; font-weight: bold; color: #d97706;">${dStats.modify}</div>
+                    <td style="width: 20%; padding: 18px; text-align: center; background: linear-gradient(135deg, #e0e7ff, #c7d2fe); border-radius: 8px;">
+                        <div style="font-size: 30px; font-weight: bold; color: #4f46e5;">${dStats.verify}</div>
+                        <div style="color: #3730a3; font-weight: 600;">🔍 VERIFY</div>
+                        <div style="font-size: 12px; color: #3730a3;">$${formatCurrency(dAmounts.verify)}</div>
+                    </td>
+                    <td style="width: 20%; padding: 18px; text-align: center; background: linear-gradient(135deg, #fef3c7, #fde68a); border-radius: 8px;">
+                        <div style="font-size: 30px; font-weight: bold; color: #d97706;">${dStats.modify}</div>
                         <div style="color: #92400e; font-weight: 600;">⚠ MODIFY</div>
                         <div style="font-size: 12px; color: #92400e;">$${formatCurrency(dAmounts.modify)}</div>
                     </td>
-                    <td style="width: 25%; padding: 20px; text-align: center; background: linear-gradient(135deg, #e2e8f0, #cbd5e1); border-radius: 8px;">
-                        <div style="font-size: 32px; font-weight: bold; color: #475569;">${dStats.defer}</div>
+                    <td style="width: 20%; padding: 18px; text-align: center; background: linear-gradient(135deg, #e2e8f0, #cbd5e1); border-radius: 8px;">
+                        <div style="font-size: 30px; font-weight: bold; color: #475569;">${dStats.defer}</div>
                         <div style="color: #334155; font-weight: 600;">⏸ DEFER</div>
                         <div style="font-size: 12px; color: #334155;">$${formatCurrency(dAmounts.defer)}</div>
                     </td>
-                    <td style="width: 25%; padding: 20px; text-align: center; background: linear-gradient(135deg, #fee2e2, #fecaca); border-radius: 8px;">
-                        <div style="font-size: 32px; font-weight: bold; color: #dc2626;">${dStats.reject}</div>
+                    <td style="width: 20%; padding: 18px; text-align: center; background: linear-gradient(135deg, #fee2e2, #fecaca); border-radius: 8px;">
+                        <div style="font-size: 30px; font-weight: bold; color: #dc2626;">${dStats.reject}</div>
                         <div style="color: #991b1b; font-weight: 600;">✗ REJECT</div>
                         <div style="font-size: 12px; color: #991b1b;">$${formatCurrency(dAmounts.reject)}</div>
                     </td>
@@ -3080,8 +3109,8 @@ function downloadAnalyticalPdfReport() {
     
     const reportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     let totalAmount = 0, totalOngoing = 0, totalOnetime = 0;
-    const dStats = { approve: 0, modify: 0, defer: 0, reject: 0, review: 0 };
-    const dAmounts = { approve: 0, modify: 0, defer: 0, reject: 0, review: 0 };
+    const dStats = { approve: 0, verify: 0, modify: 0, defer: 0, reject: 0, review: 0 };
+    const dAmounts = { approve: 0, verify: 0, modify: 0, defer: 0, reject: 0, review: 0 };
     const deptStats = {};
     
     filteredData.forEach(request => {
@@ -3115,6 +3144,7 @@ function downloadAnalyticalPdfReport() {
         
         const qBadge = primaryQuartile.includes('Most') || primaryQuartile.includes('More') ? 'badge-high' : 'badge-low';
         const dispBadge = analysis.disposition === 'APPROVE' ? 'badge-approve' :
+                         analysis.disposition === 'VERIFY'  ? 'badge-verify' :
                          analysis.disposition === 'MODIFY'  ? 'badge-modify' :
                          analysis.disposition === 'DEFER'   ? 'badge-defer' :
                          analysis.disposition === 'REJECT'  ? 'badge-reject' :
@@ -3144,11 +3174,12 @@ function downloadAnalyticalPdfReport() {
         const analysis = scoreRequest(request);
         
         const dispColor = analysis.disposition === 'APPROVE' ? '#10b981' :
+                         analysis.disposition === 'VERIFY'  ? '#6366f1' :
                          analysis.disposition === 'MODIFY'  ? '#f59e0b' :
                          analysis.disposition === 'DEFER'   ? '#fd7e14' :
                          analysis.disposition === 'REJECT'  ? '#ef4444' :
                          '#64748b';
-        
+
         // Q&A Section
         let qaHtml = '';
         if (qa.length > 0) {
@@ -3267,14 +3298,16 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
 .page-break { page-break-before: always; }
 
 /* Summary Cards */
-.summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 25px; }
-.summary-card { padding: 16px; border-radius: 10px; text-align: center; }
+.summary-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 25px; }
+.summary-card { padding: 14px 12px; border-radius: 10px; text-align: center; }
 .summary-card.approve { background: linear-gradient(135deg, #d1fae5, #a7f3d0); border: 2px solid #10b981; }
+.summary-card.verify { background: linear-gradient(135deg, #e0e7ff, #c7d2fe); border: 2px solid #6366f1; }
 .summary-card.modify { background: linear-gradient(135deg, #fef3c7, #fde68a); border: 2px solid #f59e0b; }
 .summary-card.defer { background: linear-gradient(135deg, #e2e8f0, #cbd5e1); border: 2px solid #64748b; }
 .summary-card.reject { background: linear-gradient(135deg, #fee2e2, #fecaca); border: 2px solid #ef4444; }
-.summary-card-value { font-size: 28px; font-weight: 700; }
+.summary-card-value { font-size: 26px; font-weight: 700; }
 .summary-card.approve .summary-card-value { color: #059669; }
+.summary-card.verify .summary-card-value { color: #4f46e5; }
 .summary-card.modify .summary-card-value { color: #d97706; }
 .summary-card.defer .summary-card-value { color: #475569; }
 .summary-card.reject .summary-card-value { color: #dc2626; }
@@ -3291,6 +3324,7 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
 /* Badges */
 .badge { display: inline-block; padding: 2px 6px; border-radius: 10px; font-size: 8px; font-weight: 600; }
 .badge-approve { background: #10b981; color: white; }
+.badge-verify { background: #6366f1; color: white; }
 .badge-modify { background: #f59e0b; color: white; }
 .badge-defer { background: #fd7e14; color: white; }
 .badge-reject { background: #ef4444; color: white; }
@@ -3364,6 +3398,7 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
     
     <div class="summary-cards">
         <div class="summary-card approve"><div class="summary-card-value">${dStats.approve}</div><div class="summary-card-label">✓ Approve</div><div class="summary-card-amount">$${formatCurrency(dAmounts.approve)}</div></div>
+        <div class="summary-card verify"><div class="summary-card-value">${dStats.verify}</div><div class="summary-card-label">🔍 Verify Mandate</div><div class="summary-card-amount">$${formatCurrency(dAmounts.verify)}</div></div>
         <div class="summary-card modify"><div class="summary-card-value">${dStats.modify}</div><div class="summary-card-label">⚠ Modify</div><div class="summary-card-amount">$${formatCurrency(dAmounts.modify)}</div></div>
         <div class="summary-card defer"><div class="summary-card-value">${dStats.defer}</div><div class="summary-card-label">⏸ Defer</div><div class="summary-card-amount">$${formatCurrency(dAmounts.defer)}</div></div>
         <div class="summary-card reject"><div class="summary-card-value">${dStats.reject}</div><div class="summary-card-label">✗ Reject</div><div class="summary-card-amount">$${formatCurrency(dAmounts.reject)}</div></div>

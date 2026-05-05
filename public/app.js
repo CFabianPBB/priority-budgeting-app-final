@@ -14,6 +14,24 @@ let currentBudgetData = []; // ← ADD THIS LINE
 // `*::${PROGRAM}` (uppercased) for tolerant lookup.
 let programAttributesMap = {};
 
+// Per-client toggle for the Access/Equity criterion. Some clients explicitly do not want
+// equity to factor into PBB scoring or appear in the report. Default ON; persisted in
+// localStorage so the choice survives reloads. Toggling off:
+//   - excludes Access from totalScore / weightedScore
+//   - hides the Access/Equity panels in the UI and exports
+//   - suppresses the equity ask in the narrative
+let includeAccessEquity = (typeof localStorage !== 'undefined')
+    ? localStorage.getItem('pbb_include_access_equity') !== 'false'
+    : true;
+
+function setIncludeAccessEquity(on) {
+    includeAccessEquity = !!on;
+    if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('pbb_include_access_equity', includeAccessEquity ? 'true' : 'false');
+    }
+    if (typeof updateDecisionDashboard === 'function') updateDecisionDashboard();
+}
+
 
 // DOM elements
 const uploadArea = document.getElementById('uploadArea');
@@ -45,6 +63,13 @@ if (currentBudgetUploadArea) {
 
 if (currentBudgetFileInput) {
     currentBudgetFileInput.addEventListener('change', handleCurrentBudgetFileSelect);
+}
+
+// Access/Equity toggle — initialize from persisted state and wire change handler
+const accessEquityToggle = document.getElementById('includeAccessEquityToggle');
+if (accessEquityToggle) {
+    accessEquityToggle.checked = includeAccessEquity;
+    accessEquityToggle.addEventListener('change', (e) => setIncludeAccessEquity(e.target.checked));
 }
 
 function handleCurrentBudgetDragOver(e) {
@@ -1473,22 +1498,23 @@ function scoreRequest(request) {
             (progAttrs && progAttrs.mandate === 'self')
     };
     
-    // Calculate total score
-    const totalScore = quartileAnalysis.score + outcomeAnalysis.score + fundingAnalysis.score + 
-                      mandateAnalysis.score + efficiencyAnalysis.score + accessAnalysis.score;
-    
-    // ADD THIS NEW SECTION:
-    // Apply weighted scoring - Quartile is MOST important
+    // Calculate total score (Access/Equity excluded when client toggle is off)
+    const totalScore = quartileAnalysis.score + outcomeAnalysis.score + fundingAnalysis.score +
+                      mandateAnalysis.score + efficiencyAnalysis.score +
+                      (includeAccessEquity ? accessAnalysis.score : 0);
+
+    // Weighted scoring — Quartile is MOST important. Access weight is dropped when off so
+    // the percentage isn't depressed by a criterion the client opted out of.
     const weightedScore = {
         quartile: quartileAnalysis.score * 2.0,      // Double weight (4 points max)
         outcomes: outcomeAnalysis.score * 1.5,       // 50% bonus (3 points max)
         funding: fundingAnalysis.score * 1.5,        // 50% bonus (3 points max)
         mandate: mandateAnalysis.score * 1.0,        // Standard weight (2 points max)
         efficiency: efficiencyAnalysis.score * 0.75, // Reduced weight (1.5 points max)
-        access: accessAnalysis.score * 0.75          // Reduced weight (1.5 points max)
+        access: includeAccessEquity ? accessAnalysis.score * 0.75 : 0
     };
-    
-    const maxWeightedScore = 16.5; // 4 + 3 + 3 + 2 + 1.5 + 1.5
+
+    const maxWeightedScore = includeAccessEquity ? 16.5 : 15.0;
     const totalWeightedScore = Object.values(weightedScore).reduce((a, b) => a + b, 0);
     const weightedPercentage = Math.round((totalWeightedScore / maxWeightedScore) * 100);
     
@@ -1901,6 +1927,7 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     
     // Main recommendation based on disposition
     if (analysis.disposition === 'APPROVE') {
+        narrative += `*PBB suggests APPROVE means this request meets the framework's funding criteria — it does NOT mean "fund regardless of cost." Even strong cases compete for finite General Fund resources, so all approvals are subject to overall budget capacity.*\n\n`;
         if (analysis.mandateLevel === 'Mandated') {
             narrative += `**PBB Framework Advisory:** PBB suggests APPROVE. This is a mandated program with ${analysis.outcomesStrength.toLowerCase()} outcomes evidence. `;
             if (analysis.fundingType === 'GFonly' && analysis.quartileBand === 'Low') {
@@ -1984,7 +2011,7 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
         narrative += `**ROI/Efficiency:** Provide a cost-avoidance or productivity calculation (unit cost, throughput, payback). If uncertain, start with a 6-month pilot and measure.\n\n`;
     }
     
-    if (analysis.equityScore < 2 && analysis.quartileBand === 'High') {
+    if (includeAccessEquity && analysis.equityScore < 2 && analysis.quartileBand === 'High') {
         narrative += `**Equity:** Name the priority population and specify a measurable access/outcome improvement (e.g., 'decrease wait time for X group from 12 to 6 weeks').\n\n`;
     }
     
@@ -2699,7 +2726,7 @@ function generateDetailedRequestReportAnalytical() {
                                 <h4 style="color: #64748b; margin: 25px 0 15px; font-size: 1rem;">
                                     📝 Additional Considerations (informational - do not affect archetype)
                                 </h4>
-                                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 25px; opacity: 0.85;">
+                                <div style="display: grid; grid-template-columns: repeat(${includeAccessEquity ? 2 : 1}, 1fr); gap: 12px; margin-bottom: 25px; opacity: 0.85;">
                                     <div style="background: #f8fafc; padding: 12px 15px; border-radius: 8px; border-left: 3px solid #6f42c1;">
                                         <div style="display: flex; justify-content: space-between; align-items: center;">
                                             <span style="color: #6f42c1; font-weight: 600;">Efficiency/ROI</span>
@@ -2707,13 +2734,13 @@ function generateDetailedRequestReportAnalytical() {
                                         </div>
                                         <p style="margin: 5px 0 0; font-size: 0.85rem; color: #666;">${analysis.efficiencyReason}</p>
                                     </div>
-                                    <div style="background: #f8fafc; padding: 12px 15px; border-radius: 8px; border-left: 3px solid #e83e8c;">
+                                    ${includeAccessEquity ? `<div style="background: #f8fafc; padding: 12px 15px; border-radius: 8px; border-left: 3px solid #e83e8c;">
                                         <div style="display: flex; justify-content: space-between; align-items: center;">
                                             <span style="color: #e83e8c; font-weight: 600;">Access/Equity</span>
                                             <span style="background: #e83e8c; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.85rem;">${analysis.accessScore}/2</span>
                                         </div>
                                         <p style="margin: 5px 0 0; font-size: 0.85rem; color: #666;">${analysis.accessReason}</p>
-                                    </div>
+                                    </div>` : ''}
                                 </div>
                                 
                                 <!-- Strategic Recommendation -->
@@ -2999,11 +3026,11 @@ function downloadAnalyticalWordReport() {
                             <td style="padding: 8px; width: 15%; text-align: center;">${analysis.efficiencyScore}/2</td>
                             <td style="padding: 8px;">${analysis.efficiencyReason}</td>
                         </tr>
-                        <tr>
+                        ${includeAccessEquity ? `<tr>
                             <td style="padding: 8px;"><strong>Access/Equity</strong></td>
                             <td style="padding: 8px; text-align: center;">${analysis.accessScore}/2</td>
                             <td style="padding: 8px;">${analysis.accessReason}</td>
-                        </tr>
+                        </tr>` : ''}
                     </table>
                     
                     <div style="margin-top: 15px; padding: 12px; background: #f0f9ff; border-radius: 6px; border-left: 4px solid #0ea5e9;">
@@ -3251,9 +3278,9 @@ function downloadAnalyticalPdfReport() {
                         </div>
                         
                         <h4 class="section-header" style="color: #64748b;">Additional Considerations</h4>
-                        <div class="scoring-grid" style="grid-template-columns: repeat(2, 1fr); opacity: 0.85;">
+                        <div class="scoring-grid" style="grid-template-columns: repeat(${includeAccessEquity ? 2 : 1}, 1fr); opacity: 0.85;">
                             <div class="score-card"><div class="score-name">Efficiency/ROI</div><div class="score-value">${analysis.efficiencyScore}/2</div><div class="score-reason">${analysis.efficiencyReason}</div></div>
-                            <div class="score-card"><div class="score-name">Access/Equity</div><div class="score-value">${analysis.accessScore}/2</div><div class="score-reason">${analysis.accessReason}</div></div>
+                            ${includeAccessEquity ? `<div class="score-card"><div class="score-name">Access/Equity</div><div class="score-value">${analysis.accessScore}/2</div><div class="score-reason">${analysis.accessReason}</div></div>` : ''}
                         </div>
                         
                         <div class="rationale-box"><strong>Overall Rationale:</strong> ${analysis.narrative}</div>
@@ -5631,8 +5658,7 @@ function exportPBBAnalysisToExcel() {
         '4. Mandate/Risk Notes',
         '5. Efficiency/ROI Score (0-2)',
         '5. Efficiency/ROI Notes',
-        '6. Access Score (0-2)',
-        '6. Access Notes',
+        ...(includeAccessEquity ? ['6. Access Score (0-2)', '6. Access Notes'] : []),
         'Overall Rationale'
     ]];
     
@@ -5678,8 +5704,7 @@ function exportPBBAnalysisToExcel() {
             analysis.mandateReason,
             analysis.efficiencyScore,
             analysis.efficiencyReason,
-            analysis.accessScore,
-            analysis.accessReason,
+            ...(includeAccessEquity ? [analysis.accessScore, analysis.accessReason] : []),
             analysis.narrative
         ]);
     });
@@ -5709,8 +5734,7 @@ function exportPBBAnalysisToExcel() {
         { wch: 60 },  // Mandate/Risk Notes
         { wch: 10 },  // Efficiency/ROI Score
         { wch: 60 },  // Efficiency/ROI Notes
-        { wch: 10 },  // Access Score
-        { wch: 60 },  // Access Notes
+        ...(includeAccessEquity ? [{ wch: 10 }, { wch: 60 }] : []),
         { wch: 80 }   // Overall Rationale
     ];
     

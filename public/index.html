@@ -545,8 +545,15 @@
         </div>
     </footer>
 
-    <script src="app.js"></script>
-    
+    <!--
+      Cache-bust app.js so a redeploy is always picked up. Without this, browsers
+      keep serving the previously cached app.js after a deploy (which is why a fresh
+      report can still run old logic). document.write injects the script synchronously
+      at this exact position, preserving the original load order: app.js executes
+      before the inline navigation script below it.
+    -->
+    <script>document.write('<scr' + 'ipt src="app.js?v=' + Date.now() + '"><\/scr' + 'ipt>');</script>
+
     <script>
     // ========== NAVIGATION SYSTEM ==========
     let currentSection = 'upload';

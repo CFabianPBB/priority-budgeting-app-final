@@ -1357,7 +1357,12 @@ function getOutcomeScore(qa, qaText) {
     return { score: 0, reason: "No measurable outcomes, KPIs, targets, or performance data provided in request documentation" };
 }
 
-function getFundingScore(qa, qaText, progAttrs) {
+function getFundingScore(qa, qaText, progAttrs, fundProfile) {
+    // Authoritative: the structured Fund column already names a non-General-Fund source.
+    if (fundProfile && fundProfile.hasFundData && fundProfile.fundingClass === 'NonGF') {
+        const names = fundProfile.funds.join(', ');
+        return { score: fundProfile.gf > 0 ? 1 : 2, reason: `Funded by non-General Fund source(s) per the Fund column: ${names}` };
+    }
     const hasGrant = /grant|outside funding.*yes/i.test(qaText);
     const hasFee = /fee|cost recovery|charge|revenue/i.test(qaText);
     const hasPartner = /partner|partnership|contribution|match/i.test(qaText);
@@ -1438,11 +1443,75 @@ function getAccessScore(qa, qaText) {
     return { score: 0, reason: "No specific attention to access, equity considerations, or underserved population impacts identified" };
 }
 
+// Classify a single Fund column value as drawing on the General Fund ('GF'),
+// a dedicated/enterprise/restricted source ('NonGF'), or unrecognized ('Unknown').
+// This is the AUTHORITATIVE funding signal — it reads the actual fund on the line
+// item rather than guessing from narrative keywords.
+function classifyFundName(fund) {
+    if (fund === null || fund === undefined) return null;
+    const s = fund.toString().trim().toLowerCase();
+    // Blank or placeholder values carry no fund signal.
+    if (!s || /^(n\/?a|n\.a\.?|none|tbd|unknown|null|0|-+)$/.test(s)) return null;
+    // Recognizable General Fund: draws on countywide ad valorem / the General Fund.
+    if (/general fund|ad valorem|countywide general|\bgf\b|^0*1$|^0*1\b|^00?1\s*-/.test(s)) {
+        return 'GF';
+    }
+    // Any other NAMED fund is a distinct fiscal entity with its own dedicated revenue —
+    // enterprise/utility (paid from user rates), special revenue, MSTU, grant, tourism,
+    // road & bridge, solid waste, etc. None of these draw on the General Fund.
+    return 'NonGF';
+}
+
+// Aggregate the structured Fund column across a request's line items, weighted by
+// dollar amount. Returns the dominant funding class plus the distinct fund names so
+// the UI can show the real source (e.g. "Enterprise/Utility Fund") instead of "GF Only".
+function getFundProfile(lineItems) {
+    let gf = 0, nonGf = 0, unknown = 0;
+    const funds = new Set();
+    let sawAnyFund = false;
+    for (const item of lineItems) {
+        const cls = classifyFundName(item.Fund);
+        if (cls === null) continue; // blank / placeholder fund — no signal
+        sawAnyFund = true;
+        funds.add(item.Fund.toString().trim());
+        const amt = getLineItemAmount(item).total || 0;
+        const w = amt > 0 ? amt : 1; // fall back to a per-line vote when amounts are absent
+        if (cls === 'GF') gf += w;
+        else if (cls === 'NonGF') nonGf += w;
+        else unknown += w;
+    }
+    if (!sawAnyFund) {
+        return { hasFundData: false, funds: [], fundingClass: null, gf: 0, nonGf: 0, unknown: 0 };
+    }
+    // Any non-GF dollars => the request has a non-GF offset. Only fall to GFonly when
+    // the recognizable funding is entirely General Fund. Funds we can't recognize at
+    // all stay Unknown rather than silently defaulting to "GF Only".
+    let fundingClass;
+    if (nonGf > 0) fundingClass = 'NonGF';
+    else if (gf > 0) fundingClass = 'GFonly';
+    else fundingClass = 'Unknown';
+    return { hasFundData: true, funds: [...funds], fundingClass, gf, nonGf, unknown };
+}
+
+// Display attributes for the Funding decision factor, including the real fund name(s).
+function getFundingDisplay(analysis) {
+    const fp = analysis.fundProfile;
+    const sub = fp && fp.funds && fp.funds.length ? fp.funds.join(', ') : '';
+    if (analysis.fundingType === 'NonGF') {
+        return { label: '💚 Non-GF', sub, text: '#059669', grad: 'linear-gradient(135deg, #d1fae5, #a7f3d0)', plain: '#d1fae5', border: '#10b981' };
+    }
+    if (analysis.fundingType === 'Unknown') {
+        return { label: '⚪ Unknown', sub, text: '#475569', grad: 'linear-gradient(135deg, #f1f5f9, #e2e8f0)', plain: '#f1f5f9', border: '#94a3b8' };
+    }
+    return { label: '🔴 GF Only', sub, text: '#dc2626', grad: 'linear-gradient(135deg, #fee2e2, #fecaca)', plain: '#fee2e2', border: '#ef4444' };
+}
+
 function scoreRequest(request) {
     const requestId = getRequestId(request);
     const lineItems = getLineItemsForRequest(requestId);
     const qa = getRequestQA(requestId);
     const amounts = getRequestAmount(request);
+    const fundProfile = getFundProfile(lineItems);
     
     const quartiles = lineItems.map(li => getPrimaryValue([li], 'quartile')).filter(q => q);
     const bestQuartile = getBestQuartile(quartiles);
@@ -1456,7 +1525,7 @@ function scoreRequest(request) {
     // Score each criterion with explicit reasoning
     const quartileAnalysis = getQuartileScore(bestQuartile);
     const outcomeAnalysis = getOutcomeScore(qa, qaText);
-    const fundingAnalysis = getFundingScore(qa, qaText, progAttrs);
+    const fundingAnalysis = getFundingScore(qa, qaText, progAttrs, fundProfile);
     const mandateAnalysis = getMandateScore(qa, qaText, progAttrs);
     const efficiencyAnalysis = getEfficiencyScore(qa, qaText);
     const accessAnalysis = getAccessScore(qa, qaText);
@@ -1483,6 +1552,7 @@ function scoreRequest(request) {
 
         // Surface the structured fallback so downstream UI / debug can show what fed the grid
         programAttributes: progAttrs,
+        fundProfile: fundProfile,
 
         // Legacy fields used to derive grid axes — OR in structured signals so the grid
         // routes correctly when the narrative is silent.
@@ -1544,8 +1614,21 @@ function scoreRequest(request) {
         analysis.mandateLevel = 'None';
     }
     
-    // Determine funding type
-    analysis.fundingType = analysis.hasOutsideFunding ? 'NonGF' : 'GFonly';
+    // Determine funding type. Prefer the authoritative structured Fund column on the
+    // line items; only fall back to narrative keywords / program-level cost recovery
+    // when no fund is supplied. When nothing identifies the source, surface 'Unknown'
+    // rather than silently asserting "GF Only" (the bug this replaces: utility requests
+    // paid from user rates were being labeled General Fund).
+    if (fundProfile.hasFundData && fundProfile.fundingClass !== 'Unknown') {
+        analysis.fundingType = fundProfile.fundingClass;
+    } else if (analysis.hasOutsideFunding) {
+        analysis.fundingType = 'NonGF';
+    } else {
+        analysis.fundingType = 'Unknown';
+    }
+    // Keep the narrative's non-GF flag consistent with the structured signal.
+    analysis.hasOutsideFunding = analysis.hasOutsideFunding ||
+        (fundProfile.hasFundData && fundProfile.fundingClass === 'NonGF');
     
     // Determine outcomes strength
     analysis.outcomesStrength = outcomeAnalysis.score >= 2 ? 'Strong' : 'Weak';
@@ -1593,6 +1676,21 @@ function applyDecisionGrid(analysis) {
         };
     }
     
+    // Without a determinable funding source, the GFonly/NonGF axis collapses. Don't
+    // force the request onto either rail (which previously meant a false "GF Only").
+    // Surface a REVIEW state asking for the fund to be identified.
+    if (fundingType === 'Unknown') {
+        return {
+            archetypeNumber: 0,
+            disposition: 'REVIEW',
+            color: '#64748b',
+            keyConsideration: 'Funding source could not be determined — confirm whether this draws on the General Fund or a dedicated/enterprise (rate-, grant-, or fee-funded) source before applying a disposition.',
+            verifyNow: ['Add a Fund value to the line items (e.g. General Fund, Enterprise/Utility Fund), or state the funding source in the request Q&A'],
+            strengthenWith: ['Tag each line item with its fund so the framework can separate General Fund impact from rate- or grant-funded requests'],
+            gridKey: gridKey
+        };
+    }
+
     // Decision grid mapping with archetype numbers matching the 24 Archetypes table
     const grid = {
         // HIGH RELEVANCE (Q1-Q2) - Strategic Priority Programs (Archetypes 1-12)
@@ -2707,12 +2805,14 @@ function generateDetailedRequestReportAnalytical() {
                                         </div>
                                     </div>
                                     <!-- Factor 3: Funding -->
-                                    <div style="background: ${analysis.fundingType === 'NonGF' ? 'linear-gradient(135deg, #d1fae5, #a7f3d0)' : 'linear-gradient(135deg, #fee2e2, #fecaca)'}; padding: 15px; border-radius: 10px; text-align: center; border: 2px solid ${analysis.fundingType === 'NonGF' ? '#10b981' : '#ef4444'};">
+                                    ${(() => { const fd = getFundingDisplay(analysis); return `
+                                    <div style="background: ${fd.grad}; padding: 15px; border-radius: 10px; text-align: center; border: 2px solid ${fd.border};">
                                         <div style="font-size: 0.75rem; color: #666; text-transform: uppercase; margin-bottom: 5px;">Funding</div>
-                                        <div style="font-size: 1.3rem; font-weight: 700; color: ${analysis.fundingType === 'NonGF' ? '#059669' : '#dc2626'};">
-                                            ${analysis.fundingType === 'NonGF' ? '💚 Non-GF' : '🔴 GF Only'}
+                                        <div style="font-size: 1.3rem; font-weight: 700; color: ${fd.text};">
+                                            ${fd.label}
                                         </div>
-                                    </div>
+                                        ${fd.sub ? `<div style="font-size: 0.7rem; color: #555; margin-top: 4px;">${fd.sub}</div>` : ''}
+                                    </div>`; })()}
                                     <!-- Factor 4: Evidence -->
                                     <div style="background: ${analysis.outcomesStrength === 'Strong' ? 'linear-gradient(135deg, #d1fae5, #a7f3d0)' : 'linear-gradient(135deg, #fee2e2, #fecaca)'}; padding: 15px; border-radius: 10px; text-align: center; border: 2px solid ${analysis.outcomesStrength === 'Strong' ? '#10b981' : '#ef4444'};">
                                         <div style="font-size: 0.75rem; color: #666; text-transform: uppercase; margin-bottom: 5px;">Evidence</div>
@@ -3009,7 +3109,7 @@ function downloadAnalyticalWordReport() {
                         </tr>
                         <tr style="background: #f8fafc;">
                             <td style="padding: 8px;"><strong>Funding</strong></td>
-                            <td style="padding: 8px; text-align: center; font-weight: 700; color: ${analysis.fundingType === 'NonGF' ? '#059669' : '#dc2626'};">${analysis.fundingType === 'NonGF' ? '💚 Non-GF' : '🔴 GF Only'}</td>
+                            <td style="padding: 8px; text-align: center; font-weight: 700; color: ${getFundingDisplay(analysis).text};">${getFundingDisplay(analysis).label}</td>
                             <td style="padding: 8px;">${analysis.fundingReason}</td>
                         </tr>
                         <tr>
@@ -3273,7 +3373,7 @@ function downloadAnalyticalPdfReport() {
                         <div class="scoring-grid" style="grid-template-columns: repeat(4, 1fr);">
                             <div class="score-card" style="background: ${analysis.quartileBand === 'High' ? '#d1fae5' : '#fee2e2'};"><div class="score-name">Quartile</div><div class="score-value" style="color: ${analysis.quartileBand === 'High' ? '#059669' : '#dc2626'};">${analysis.quartileBand === 'High' ? '🟢 High' : '🔴 Low'}</div><div class="score-reason">${analysis.bestQuartile}</div></div>
                             <div class="score-card"><div class="score-name">Mandate</div><div class="score-value">${analysis.mandateLevel === 'Mandated' ? '⚖️' : analysis.mandateLevel === 'Compliance' ? '⚠️' : '➖'}</div><div class="score-reason">${analysis.mandateLevel}</div></div>
-                            <div class="score-card" style="background: ${analysis.fundingType === 'NonGF' ? '#d1fae5' : '#fee2e2'};"><div class="score-name">Funding</div><div class="score-value" style="color: ${analysis.fundingType === 'NonGF' ? '#059669' : '#dc2626'};">${analysis.fundingType === 'NonGF' ? '💚 Non-GF' : '🔴 GF Only'}</div></div>
+                            ${(() => { const fd = getFundingDisplay(analysis); return `<div class="score-card" style="background: ${fd.plain};"><div class="score-name">Funding</div><div class="score-value" style="color: ${fd.text};">${fd.label}</div>${fd.sub ? `<div class="score-reason">${fd.sub}</div>` : ''}</div>`; })()}
                             <div class="score-card" style="background: ${analysis.outcomesStrength === 'Strong' ? '#d1fae5' : '#fee2e2'};"><div class="score-name">Evidence</div><div class="score-value" style="color: ${analysis.outcomesStrength === 'Strong' ? '#059669' : '#dc2626'};">${analysis.outcomesStrength === 'Strong' ? '📊 Strong' : '📋 Weak'}</div></div>
                         </div>
                         

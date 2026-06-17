@@ -596,8 +596,20 @@ function getRequestAmount(request) {
     return { ongoing, onetime, total: ongoing + onetime };
 }
 
+// NonPersonnel line items carry an AcctType column that can be 'Expense' or 'Revenue'.
+// Revenue rows are the request's funding OFFSET (e.g. Tourist Development Tax, Water
+// Revenue, Ambulance Fees), not a cost. Summing them into cost totals double-counts the
+// request — expense PLUS the revenue that offsets it — which is why department/program
+// rollups were showing roughly 2x the true ask.
+function isRevenueLineItem(item) {
+    const t = item && (item.AcctType ?? item['Acct Type'] ?? item.AccountType);
+    return t != null && t.toString().trim().toLowerCase() === 'revenue';
+}
+
 // NEW: Get the actual cost from a single line item (Personnel or NonPersonnel)
 function getLineItemAmount(item) {
+    // Revenue/offset rows are not costs — exclude them from every total.
+    if (isRevenueLineItem(item)) return { ongoing: 0, onetime: 0, total: 0 };
     const { ongoing, onetime } = pickAmountFields(item, true);
     return { ongoing, onetime, total: ongoing + onetime };
 }

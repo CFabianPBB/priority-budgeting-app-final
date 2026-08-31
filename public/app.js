@@ -14,6 +14,10 @@ let currentBudgetData = []; // ← ADD THIS LINE
 // `*::${PROGRAM}` (uppercased) for tolerant lookup.
 let programAttributesMap = {};
 
+// Requests scored and ranked once per report run, shared by the priority-order and
+// portfolio sections so scoreRequest() is not re-run per section.
+let lastRankedAnalyses = [];
+
 // Per-client toggle for the Access/Equity criterion. Some clients explicitly do not want
 // equity to factor into PBB scoring or appear in the report. Default ON; persisted in
 // localStorage so the choice survives reloads. Toggling off:
@@ -126,6 +130,26 @@ function processCurrentBudgetFile(file) {
                 buildProgramAttributesMap(detailsRows);
                 console.log(`Built program attributes for ${Object.keys(programAttributesMap).length} program keys from Details sheet`);
             }
+
+            // The Programs sheet can carry the same Mandate / Cost Recovery / Final Score
+            // columns. Read it too: for workbooks with no Details tab this is the ONLY
+            // source of program-level attributes, and without it the mandate and funding
+            // axes fall back entirely to regex over the request narrative — which returns
+            // nothing when the Q&A is empty or boilerplate, quietly pushing legitimately
+            // mandated programs toward DEFER/REJECT.
+            //
+            // Deliberately runs AFTER Details so Details wins on conflict (it is the
+            // account-level canonical export); the merge below only fills empty fields,
+            // so existing Details-bearing workbooks score exactly as they did before.
+            const beforeProgramsSheet = Object.keys(programAttributesMap).length;
+            buildProgramAttributesMap(currentBudgetData);
+            const addedFromPrograms = Object.keys(programAttributesMap).length - beforeProgramsSheet;
+            if (addedFromPrograms > 0) {
+                console.log(`Added ${addedFromPrograms} program keys from the Programs sheet`);
+            }
+            if (Object.keys(programAttributesMap).length === 0) {
+                console.warn('No Mandate / Cost Recovery / Final Score columns found on either the Details or Programs sheet — mandate and cost-recovery scoring will rely on request narrative text alone.');
+            }
             
             if (currentBudgetData.length > 0) {
                 showCurrentBudgetMessage(`✅ Successfully loaded ${currentBudgetData.length} programs with current budget data!`, 'success');
@@ -133,6 +157,7 @@ function processCurrentBudgetFile(file) {
                 // If budget requests are already loaded, update the stats
                 if (budgetData.requestSummary.length > 0) {
                     updateStats();
+                    renderDataCoveragePanel();
                 }
             } else {
                 showCurrentBudgetMessage('No data found in the current budget file', 'error');
@@ -208,6 +233,7 @@ function processFile(file) {
                 showMessage(`Successfully loaded ${budgetData.requestSummary.length} budget requests`, 'success');
                 setupFilters();
                 updateStats();
+                renderDataCoveragePanel();
                 filtersSection.style.display = 'block';
                 generateBtn.disabled = false;
                 
@@ -816,8 +842,13 @@ function displayReport() {
         <p>This analytical report provides Priority Based Budgeting (PBB) framework scoring and advisory recommendations for ${filteredData.length} budget requests totaling <strong class="amount">$${formatCurrency(totalAmount)}</strong>. Each request is evaluated across six criteria following standard PBB methodology. <strong>These are suggested considerations, not binding decisions.</strong></p>
     `;
 
+    // Score and rank every filtered request ONCE; the sections below read the result.
+    lastRankedAnalyses = buildRankedAnalyses();
+
     analyticalHtml += generateAnalyticalSummary();
     analyticalHtml += generateAnalyticalTableOfContents();
+    analyticalHtml += generatePortfolioAnalysis();
+    analyticalHtml += generateFundingPriorityOrder();
     analyticalHtml += generateDetailedRequestReportAnalytical(); // Analytical version with full scoring
 
     document.getElementById('analyticalReportContent').innerHTML = analyticalHtml;
@@ -1119,13 +1150,15 @@ function normalizeQuartile(q) {
 // Resolve the quartile for a single line item. Tries the line item's own Quartile
 // column first; if blank, falls back to looking up the program in the uploaded
 // Current Budget (Program Inventory) by Program (+ Department when both have one).
-// Build the program-attributes map from a Details-sheet row dump. Each program has
-// many account-level rows but the program-level attributes are constant per program,
-// so we record the first non-empty value seen per (User Group, Program) key.
-function buildProgramAttributesMap(detailsRows) {
-    if (!Array.isArray(detailsRows) || detailsRows.length === 0) return;
+// Build the program-attributes map from a sheet's row dump — called for the Details
+// sheet and again for the Programs sheet. On Details each program has many account-level
+// rows but the program-level attributes are constant per program, so we record the first
+// non-empty value seen per (User Group, Program) key and only fill gaps thereafter.
+// That same fill-gaps-only merge is what makes the second (Programs) pass additive.
+function buildProgramAttributesMap(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) return;
     const norm = v => (v == null ? '' : v.toString().trim().toUpperCase());
-    for (const row of detailsRows) {
+    for (const row of rows) {
         const program = norm(row['Program']);
         if (!program) continue;
         const dept = norm(row['User Group(prgs)'] || row['User Group(accts)'] || row['Department'] || row['User Group']);
@@ -1136,6 +1169,10 @@ function buildProgramAttributesMap(detailsRows) {
             rawMandate: row['Mandate'] || null,
             rawCostRecovery: row['Cost Recovery'] || null
         };
+        // A row that carries none of the three attributes is not a signal — recording it
+        // would make the loaded-keys count meaningless and would make
+        // getProgramAttributesForLineItems() report a match with nothing behind it.
+        if (attrs.mandate == null && attrs.costRecovery == null && attrs.finalScore == null) continue;
         const keys = [`${dept}::${program}`, `*::${program}`];
         for (const k of keys) {
             const existing = programAttributesMap[k];
@@ -1518,6 +1555,245 @@ function getFundingDisplay(analysis) {
     return { label: '🔴 GF Only', sub, text: '#dc2626', grad: 'linear-gradient(135deg, #fee2e2, #fecaca)', plain: '#fee2e2', border: '#ef4444' };
 }
 
+// ===== PROGRAM DATA UTILIZATION =====
+// The base budget is already allocated and mapped to programs, so every line item on a
+// new request inherits its program's full profile. The 24-archetype grid deliberately
+// compresses that profile into four categorical axes — which is what makes it
+// explainable — but the compression throws away the dollars, ratios and continuous
+// scores underneath. These helpers keep that resolution so the report can RANK and SIZE
+// requests, not merely classify them. Nothing here feeds applyDecisionGrid(); the grid
+// stays a pure function of the four axes.
+
+const QUARTILE_RANK = { 'Most Aligned': 1, 'More Aligned': 2, 'Less Aligned': 3, 'Least Aligned': 4 };
+
+// Tunable review thresholds. These raise a verification prompt — they never change a
+// disposition, so moving them cannot silently re-route a request.
+const PROGRAM_EXPANSION_FLAG = 0.20;   // request >= 20% of the program's current cost
+const COST_RECOVERY_DROP_FLAG = 0.05;  // cost recovery falls by >= 5 percentage points
+
+// 1..4 for a recognized quartile, 5 for unknown so it sorts last.
+function quartileRank(q) {
+    const n = normalizeQuartile(q);
+    return n ? QUARTILE_RANK[n] : 5;
+}
+
+// Dollar-accurate General Fund exposure for a request.
+// getFundProfile() falls back to one-vote-per-line when amounts are missing — correct
+// for CLASSIFYING the funding axis, wrong for REPORTING dollars. This only sums money.
+function getGfExposure(lineItems) {
+    let gf = 0, nonGf = 0, unclassified = 0;
+    for (const item of lineItems) {
+        if (isRevenueLineItem(item)) continue;
+        const amt = getLineItemAmount(item).total || 0;
+        if (!amt) continue;
+        const cls = classifyFundName(item.Fund);
+        if (cls === 'GF') gf += amt;
+        else if (cls === 'NonGF') nonGf += amt;
+        else unclassified += amt;
+    }
+    const total = gf + nonGf + unclassified;
+    return { gf, nonGf, unclassified, total, gfShare: total > 0 ? gf / total : null };
+}
+
+// Revenue line items are the request's own funding offset. getLineItemAmount() zeroes
+// them so they never inflate a cost total; this reads them back as what they are.
+function getRequestRevenue(lineItems) {
+    let ongoing = 0, onetime = 0;
+    for (const item of lineItems) {
+        if (!isRevenueLineItem(item)) continue;
+        const picked = pickAmountFields(item, true);
+        ongoing += picked.ongoing;
+        onetime += picked.onetime;
+    }
+    return { ongoing, onetime, total: ongoing + onetime };
+}
+
+// Allocate a request's cost and revenue to the program(s) its line items touch, and pull
+// each program's current cost / revenue / FTE from the already-allocated base budget.
+// This is the join doing real work: it turns "a $180,000 request" into "a request that
+// grows a Least Aligned program by 32% and drops its cost recovery from 68% to 61%".
+function getProgramImpacts(lineItems) {
+    const byKey = {};
+    for (const item of lineItems) {
+        const dept = getPrimaryValue([item], 'department') || 'Unknown Department';
+        const program = getPrimaryValue([item], 'program') || 'Unknown Program';
+        const key = `${dept}::${program}`;
+        if (!byKey[key]) {
+            const cur = getCurrentBudgetForProgram(dept, program);
+            const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+            byKey[key] = {
+                dept: dept,
+                program: program,
+                quartile: null,
+                requestCost: 0,
+                requestRevenue: 0,
+                requestFte: 0,
+                currentCost:    cur ? num(cur.totalCost) : null,
+                currentRevenue: cur ? num(cur.revenue)   : null,
+                currentFte:     cur ? num(cur.fte)       : null,
+                matched: !!cur
+            };
+        }
+        const e = byKey[key];
+        if (!e.quartile) e.quartile = getQuartileForLineItem(item) || null;
+        if (isRevenueLineItem(item)) {
+            const picked = pickAmountFields(item, true);
+            e.requestRevenue += picked.ongoing + picked.onetime;
+        } else {
+            e.requestCost += getLineItemAmount(item).total || 0;
+            const fte = parseFloat(item.FTE != null ? item.FTE : item['FTE Count']);
+            if (!isNaN(fte)) e.requestFte += fte;
+        }
+    }
+    return Object.values(byKey).map(e => {
+        const hasCost = e.currentCost != null && e.currentCost > 0;
+        const proposedCost    = e.currentCost    != null ? e.currentCost    + e.requestCost    : null;
+        const proposedRevenue = e.currentRevenue != null ? e.currentRevenue + e.requestRevenue : null;
+        return Object.assign({}, e, {
+            // How much this request grows the program, as a share of what it costs today.
+            expansionShare: hasCost ? e.requestCost / e.currentCost : null,
+            currentRecovery: hasCost && e.currentRevenue != null ? e.currentRevenue / e.currentCost : null,
+            proposedCost: proposedCost,
+            proposedRevenue: proposedRevenue,
+            proposedRecovery: (proposedCost && proposedCost > 0 && proposedRevenue != null)
+                ? proposedRevenue / proposedCost : null
+        });
+    });
+}
+
+// Collapse per-program impacts into the few facts a reviewer needs in one line.
+function summarizeProgramImpacts(impacts) {
+    if (!impacts || impacts.length === 0) {
+        return { programCount: 0, matchedCount: 0, largestExpansion: null, recoveryBefore: null, recoveryAfter: null };
+    }
+    let largest = null;
+    let curCost = 0, curRev = 0, propCost = 0, propRev = 0, anyRecovery = false;
+    let matchedCount = 0;
+    for (const i of impacts) {
+        if (i.matched) matchedCount++;
+        if (i.expansionShare != null && (largest == null || i.expansionShare > largest.expansionShare)) largest = i;
+        if (i.currentCost != null) {
+            curCost  += i.currentCost;
+            propCost += (i.proposedCost != null ? i.proposedCost : i.currentCost);
+            if (i.currentRevenue != null) {
+                anyRecovery = true;
+                curRev  += i.currentRevenue;
+                propRev += (i.proposedRevenue != null ? i.proposedRevenue : i.currentRevenue);
+            }
+        }
+    }
+    return {
+        programCount: impacts.length,
+        matchedCount: matchedCount,
+        largestExpansion: largest,
+        recoveryBefore: anyRecovery && curCost  > 0 ? curRev  / curCost  : null,
+        recoveryAfter:  anyRecovery && propCost > 0 ? propRev / propCost : null
+    };
+}
+
+// ===== RANKING =====
+// The grid answers "is this fundable?" It cannot answer "in what order?" — and a budget
+// office holding nine APPROVEs needs an order. Rank inside each disposition band using
+// the continuous program data the grid abstracted away. Disposition always dominates:
+// this orders within the framework's judgement, it never overrides it.
+const DISPOSITION_ORDER = { APPROVE: 1, VERIFY: 2, MODIFY: 3, DEFER: 4, REJECT: 5, REVIEW: 6 };
+
+function comparePriority(a, b) {
+    const A = a.analysis, B = b.analysis;
+    const dA = DISPOSITION_ORDER[A.disposition] || 9;
+    const dB = DISPOSITION_ORDER[B.disposition] || 9;
+    if (dA !== dB) return dA - dB;                                   // framework judgement first
+
+    const qA = quartileRank(A.bestQuartile), qB = quartileRank(B.bestQuartile);
+    if (qA !== qB) return qA - qB;                                   // Q1 ahead of Q2
+
+    const fA = A.programFinalScore, fB = B.programFinalScore;        // actual program score
+    if (fA != null && fB != null && fA !== fB) return fB - fA;
+    if (fA != null && fB == null) return -1;
+    if (fB != null && fA == null) return 1;
+
+    const gA = A.gfExposure ? A.gfExposure.gf : 0;                   // less GF exposure first
+    const gB = B.gfExposure ? B.gfExposure.gf : 0;
+    if (gA !== gB) return gA - gB;
+
+    if (A.weightedPercentage !== B.weightedPercentage) return B.weightedPercentage - A.weightedPercentage;
+    return (A.requestTotal || 0) - (B.requestTotal || 0);            // cheaper first
+}
+
+// Score every filtered request once, rank it, and carry running totals so a cut line can
+// be drawn anywhere down the list.
+function buildRankedAnalyses() {
+    const scored = filteredData.map(request => ({
+        request: request,
+        requestId: getRequestId(request),
+        analysis: scoreRequest(request)
+    }));
+    scored.sort(comparePriority);
+    let cumTotal = 0, cumGf = 0;
+    scored.forEach((row, i) => {
+        const amt = row.analysis.requestTotal || 0;
+        const gf  = row.analysis.gfExposure ? row.analysis.gfExposure.gf : 0;
+        cumTotal += amt;
+        cumGf    += gf;
+        row.rank = i + 1;
+        row.cumulativeTotal = cumTotal;
+        row.cumulativeGf = cumGf;
+    });
+    return scored;
+}
+
+// ===== DATA COVERAGE =====
+// Every enhancement above degrades silently when a line item fails to resolve to a
+// program, and today those failures only reach the browser console. Surface them.
+function computeDataCoverage() {
+    const cov = {
+        requests: budgetData.requestSummary.length,
+        requestsWithLineItems: 0,
+        lineItems: 0,
+        withProgramName: 0,
+        matchedToInventory: 0,
+        withQuartile: 0,
+        withFund: 0,
+        revenueLineItems: 0,
+        programsWithMandate: 0,
+        unmatchedPrograms: [],
+        inventoryLoaded: currentBudgetData.length > 0,
+        attributesLoaded: Object.keys(programAttributesMap).length > 0
+    };
+    const unmatched = new Set();
+    const seenPrograms = new Set();
+    for (const request of budgetData.requestSummary) {
+        const id = getRequestId(request);
+        if (!id) continue;
+        const lineItems = getLineItemsForRequest(id);
+        if (lineItems.length > 0) cov.requestsWithLineItems++;
+        for (const item of lineItems) {
+            cov.lineItems++;
+            if (isRevenueLineItem(item)) cov.revenueLineItems++;
+            const program = (item.Program || '').toString().trim();
+            const dept = (item.Department || item['Cost Center'] || item['User Group'] || '').toString().trim();
+            if (program) {
+                cov.withProgramName++;
+                const key = `${dept}::${program}`;
+                if (!seenPrograms.has(key)) {
+                    seenPrograms.add(key);
+                    const attrs = programAttributesMap[`${dept.toUpperCase()}::${program.toUpperCase()}`]
+                               || programAttributesMap[`*::${program.toUpperCase()}`];
+                    if (attrs && attrs.mandate) cov.programsWithMandate++;
+                }
+                if (cov.inventoryLoaded) {
+                    if (getCurrentBudgetForProgram(dept, program)) cov.matchedToInventory++;
+                    else unmatched.add(`${dept} — ${program}`);
+                }
+            }
+            if (getQuartileForLineItem(item)) cov.withQuartile++;
+            if (classifyFundName(item.Fund)) cov.withFund++;
+        }
+    }
+    cov.unmatchedPrograms = [...unmatched].sort();
+    return cov;
+}
+
 function scoreRequest(request) {
     const requestId = getRequestId(request);
     const lineItems = getLineItemsForRequest(requestId);
@@ -1649,6 +1925,20 @@ function scoreRequest(request) {
     analysis.weightedScore = totalWeightedScore;
     analysis.weightedPercentage = weightedPercentage;
 
+    // Keep the resolution the four axes discard. None of this feeds applyDecisionGrid() —
+    // the grid stays a pure function of quartileBand / mandateLevel / fundingType /
+    // outcomesStrength. These carry the dollars, ratios and the program's actual PBB
+    // score so the report can rank and size requests within the framework's judgement.
+    analysis.requestTotal = amounts.total;
+    analysis.requestOngoing = amounts.ongoing;
+    analysis.requestOnetime = amounts.onetime;
+    analysis.gfExposure = getGfExposure(lineItems);
+    analysis.requestRevenue = getRequestRevenue(lineItems);
+    analysis.programImpacts = getProgramImpacts(lineItems);
+    analysis.impactSummary = summarizeProgramImpacts(analysis.programImpacts);
+    analysis.programFinalScore = progAttrs ? progAttrs.finalScore : null;
+    analysis.quartileRank = quartileRank(bestQuartile);
+
     // Apply the decision grid
     const gridDecision = applyDecisionGrid(analysis);
     
@@ -1659,7 +1949,35 @@ function scoreRequest(request) {
     analysis.gridKey = gridDecision.gridKey;
     analysis.archetypeNumber = gridDecision.archetypeNumber;
     analysis.keyConsideration = gridDecision.keyConsideration;
-    
+
+    // Size relative to the program is invisible to the grid: a $50k ask against a $2M
+    // program and against a $120k program produce the same archetype. Where the program
+    // is low-alignment and the ask materially expands it, say so — as a verification
+    // prompt, not a score, so the framework's own judgement is left intact.
+    analysis.verifyNow = (analysis.verifyNow || []).slice();
+    const bigExpansion = (analysis.programImpacts || []).filter(
+        i => i.expansionShare != null && i.expansionShare >= PROGRAM_EXPANSION_FLAG
+    );
+    if (bigExpansion.length > 0 && analysis.quartileBand === 'Low') {
+        for (const i of bigExpansion) {
+            analysis.verifyNow.push(
+                `This request grows ${i.program} by ${Math.round(i.expansionShare * 100)}% ` +
+                `($${formatCurrency(Math.round(i.currentCost))} → $${formatCurrency(Math.round(i.proposedCost))}) — ` +
+                `a lower-alignment program. Confirm that scale of expansion is intended.`
+            );
+        }
+    }
+    // Cost recovery moving the wrong way is a concrete, checkable objection — and it is
+    // exactly what archetypes 6, 10 and 18 ("push for cost recovery") should point at.
+    const rec = analysis.impactSummary;
+    if (rec && rec.recoveryBefore != null && rec.recoveryAfter != null &&
+        rec.recoveryBefore - rec.recoveryAfter >= COST_RECOVERY_DROP_FLAG) {
+        analysis.verifyNow.push(
+            `Cost recovery on the affected program(s) falls from ${Math.round(rec.recoveryBefore * 100)}% ` +
+            `to ${Math.round(rec.recoveryAfter * 100)}%. Identify revenue to hold the current rate.`
+        );
+    }
+
     // Generate enhanced narrative
     analysis.narrative = generateEnhancedNarrative(request, lineItems, qa, analysis);
     
@@ -2005,7 +2323,49 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     narrative += `**Decision Profile:** ${analysis.gridKey}\n\n`;
     
     narrative += `---\n\n`;
-    
+
+    // ===== WHAT THIS DECISION DOES TO THE PROGRAM =====
+    // The line items are already mapped to programs and the base budget is already
+    // allocated to them, so the implication of funding this can be stated in the
+    // program's own terms rather than as a standalone dollar figure.
+    const gfx = analysis.gfExposure;
+    if (gfx && gfx.total > 0) {
+        if (gfx.gf > 0) {
+            const pct = Math.round((gfx.gf / gfx.total) * 100);
+            narrative += `**GENERAL FUND EXPOSURE:** $${formatCurrency(Math.round(gfx.gf))} of the $${formatCurrency(Math.round(gfx.total))} ask (${pct}%)`;
+            if (gfx.nonGf > 0) narrative += `, with $${formatCurrency(Math.round(gfx.nonGf))} carried by other funds`;
+            narrative += `.\n\n`;
+        } else if (gfx.nonGf > 0) {
+            narrative += `**GENERAL FUND EXPOSURE:** none — the full $${formatCurrency(Math.round(gfx.nonGf))} is carried by non-General Fund sources.\n\n`;
+        }
+    }
+
+    const impacts = (analysis.programImpacts || []).filter(i => i.currentCost != null);
+    if (impacts.length > 0) {
+        narrative += `**PROGRAM IMPACT:**\n\n`;
+        for (const i of impacts) {
+            let line = `- **${i.program}**`;
+            if (i.quartile) line += ` (${i.quartile})`;
+            line += ` — current $${formatCurrency(Math.round(i.currentCost))}`;
+            line += `, requested $${formatCurrency(Math.round(i.requestCost))}`;
+            line += `, proposed $${formatCurrency(Math.round(i.proposedCost))}`;
+            if (i.expansionShare != null) line += ` (**+${Math.round(i.expansionShare * 100)}%**)`;
+            if (i.currentRecovery != null && i.proposedRecovery != null) {
+                line += `. Cost recovery ${Math.round(i.currentRecovery * 100)}% → ${Math.round(i.proposedRecovery * 100)}%`;
+            }
+            narrative += line + `\n`;
+        }
+        narrative += `\n`;
+    } else if (analysis.programImpacts && analysis.programImpacts.length > 0) {
+        narrative += `**PROGRAM IMPACT:** the affected program(s) could not be matched to the uploaded budget, so the change relative to current spending is unknown. Upload a Program Inventory covering ${analysis.programImpacts.map(i => i.program).join(', ')} to show it.\n\n`;
+    }
+
+    if (analysis.programFinalScore != null) {
+        narrative += `**PROGRAM PBB SCORE:** ${analysis.programFinalScore} — used to rank this request against others carrying the same recommendation.\n\n`;
+    }
+
+    narrative += `---\n\n`;
+
     // Context flags
     if (analysis.mandateLevel === 'Mandated') {
         narrative += `⚖️ **MANDATED**: This request is legally mandated or tied to a Board Motion/consent decree.\n\n`;
@@ -2032,7 +2392,7 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     narrative += `\n---\n\n`;
     
     // Disposition and recommendation with PBB suggests language
-    narrative += `**PBB FRAMEWORK SUGGESTS: ${analysis.disposition}** (Score: ${analysis.totalScore}/12)\n\n`;
+    narrative += `**PBB FRAMEWORK SUGGESTS: ${analysis.disposition}** (Score: ${analysis.totalScore}/${includeAccessEquity ? 12 : 10})\n\n`;
     narrative += `*Note: This is an advisory recommendation based on textbook PBB methodology, not a final decision.*\n\n`;
     
     // Main recommendation based on disposition
@@ -2121,7 +2481,7 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
         narrative += `**ROI/Efficiency:** Provide a cost-avoidance or productivity calculation (unit cost, throughput, payback). If uncertain, start with a 6-month pilot and measure.\n\n`;
     }
     
-    if (includeAccessEquity && analysis.equityScore < 2 && analysis.quartileBand === 'High') {
+    if (includeAccessEquity && analysis.accessScore < 2 && analysis.quartileBand === 'High') {
         narrative += `**Equity:** Name the priority population and specify a measurable access/outcome improvement (e.g., 'decrease wait time for X group from 12 to 6 weeks').\n\n`;
     }
     
@@ -2138,6 +2498,323 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     }
     
     return narrative;
+}
+
+// ===== FUNDING PRIORITY ORDER =====
+// The grid classifies; it does not order. This section turns the classification into a
+// ranked, cumulative list so a cut line can be drawn wherever available revenue runs out.
+function generateFundingPriorityOrder() {
+    const ranked = lastRankedAnalyses;
+    if (!ranked || ranked.length === 0) return '';
+
+    const totalAsk = ranked.reduce((t, r) => t + (r.analysis.requestTotal || 0), 0);
+    const totalGf  = ranked.reduce((t, r) => t + (r.analysis.gfExposure ? r.analysis.gfExposure.gf : 0), 0);
+
+    let html = `
+        <div class="section-header" id="funding-priority">Funding Priority Order</div>
+        <p>Requests are ordered by the framework's recommendation first, then — within each recommendation —
+        by program alignment quartile, the program's own PBB score, and General Fund exposure. The ordering
+        <strong>never overrides the disposition</strong>; it sequences requests that share one.
+        Total requested: <strong class="amount">$${formatCurrency(Math.round(totalAsk))}</strong>,
+        of which <strong class="amount">$${formatCurrency(Math.round(totalGf))}</strong> would come from the General Fund.</p>
+
+        <div style="margin: 15px 0; padding: 12px 15px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <label style="font-weight: 600; color: #334155; margin-right: 10px;">Available General Fund for new requests:</label>
+            <input type="number" id="affordabilityInput" placeholder="e.g. 2500000" step="10000" min="0"
+                   style="padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; width: 180px;"
+                   oninput="applyAffordabilityLine()">
+            <span id="affordabilityNote" style="margin-left: 12px; color: #64748b; font-size: 0.9rem;">
+                Enter an amount to draw the funding line.
+            </span>
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 0.85rem;">
+            <thead>
+                <tr style="background: #667eea; color: white;">
+                    <th style="padding: 10px 6px; text-align: center; width: 40px;">#</th>
+                    <th style="padding: 10px 6px; text-align: left;">Request / Program</th>
+                    <th style="padding: 10px 6px; text-align: center; width: 90px;">Quartile</th>
+                    <th style="padding: 10px 6px; text-align: center; width: 70px;">PBB Score</th>
+                    <th style="padding: 10px 6px; text-align: center; width: 85px;">Guidance</th>
+                    <th style="padding: 10px 6px; text-align: right; width: 100px;">Amount</th>
+                    <th style="padding: 10px 6px; text-align: right; width: 100px;">GF Exposure</th>
+                    <th style="padding: 10px 6px; text-align: right; width: 110px;">Cumulative GF</th>
+                </tr>
+            </thead>
+            <tbody id="priorityOrderBody">
+    `;
+
+    ranked.forEach(row => {
+        const a = row.analysis;
+        const lineItems = getLineItemsForRequest(row.requestId);
+        const program = getPrimaryValue(lineItems, 'program') || 'Unknown Program';
+        const dept = getPrimaryValue(lineItems, 'department') || '';
+        const gf = a.gfExposure ? a.gfExposure.gf : 0;
+        const q = a.bestQuartile || 'N/A';
+        const qBadge = q !== 'N/A'
+            ? `<span class="quartile-badge quartile-${q.toLowerCase().replace(' ', '-')}" style="font-size: 0.7rem; padding: 3px 7px;">${q.replace(' Aligned', '')}</span>`
+            : '<span style="color: #999;">—</span>';
+
+        html += `
+            <tr class="priority-row" data-cumgf="${Math.round(row.cumulativeGf)}" style="border-bottom: 1px solid #e5e7eb;">
+                <td style="padding: 8px 6px; text-align: center; font-weight: 600; color: #64748b;">${row.rank}</td>
+                <td style="padding: 8px 6px;">
+                    <div style="font-weight: 600; color: #1f2937;">${program}</div>
+                    <div style="font-size: 0.78rem; color: #6b7280;">${dept}${dept ? ' · ' : ''}${row.requestId}</div>
+                </td>
+                <td style="padding: 8px 6px; text-align: center;">${qBadge}</td>
+                <td style="padding: 8px 6px; text-align: center; color: #475569;">${a.programFinalScore != null ? a.programFinalScore : '—'}</td>
+                <td style="padding: 8px 6px; text-align: center;">
+                    <span style="background: ${a.dispositionColor}; color: white; padding: 3px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600;">${a.disposition}</span>
+                </td>
+                <td style="padding: 8px 6px; text-align: right;">$${formatCurrency(Math.round(a.requestTotal || 0))}</td>
+                <td style="padding: 8px 6px; text-align: right; color: ${gf > 0 ? '#dc2626' : '#059669'}; font-weight: 600;">${gf > 0 ? '$' + formatCurrency(Math.round(gf)) : '—'}</td>
+                <td style="padding: 8px 6px; text-align: right; color: #475569;">$${formatCurrency(Math.round(row.cumulativeGf))}</td>
+            </tr>
+        `;
+    });
+
+    html += `</tbody></table>`;
+    return html;
+}
+
+// Draw the affordability line: everything at or under the entered General Fund amount is
+// fundable within it, everything past it is the deferral conversation.
+function applyAffordabilityLine() {
+    const input = document.getElementById('affordabilityInput');
+    const note = document.getElementById('affordabilityNote');
+    if (!input || !note) return;
+    const limit = parseFloat(input.value);
+    const rows = document.querySelectorAll('.priority-row');
+    if (isNaN(limit) || limit <= 0) {
+        rows.forEach(r => { r.style.opacity = ''; r.style.background = ''; r.classList.remove('below-line'); });
+        note.textContent = 'Enter an amount to draw the funding line.';
+        note.style.color = '#64748b';
+        return;
+    }
+    let fundable = 0;
+    rows.forEach(r => {
+        const cum = parseFloat(r.getAttribute('data-cumgf')) || 0;
+        if (cum <= limit) {
+            fundable++;
+            r.style.opacity = '';
+            r.style.background = '';
+            r.classList.remove('below-line');
+        } else {
+            r.style.opacity = '0.55';
+            r.style.background = '#fef2f2';
+            r.classList.add('below-line');
+        }
+    });
+    const total = rows.length;
+    note.innerHTML = `<strong>${fundable}</strong> of ${total} requests fit within $${formatCurrency(Math.round(limit))} of General Fund. <strong>${total - fundable}</strong> fall below the line.`;
+    note.style.color = '#334155';
+}
+
+// ===== PORTFOLIO ANALYSIS =====
+// The signature PBB question: is new money going where the priorities are? Every input
+// needed is already allocated to programs — this just reads it back by quartile.
+function generatePortfolioAnalysis() {
+    const ranked = lastRankedAnalyses;
+    if (!ranked || ranked.length === 0) return '';
+
+    const buckets = {};
+    const ORDER = ['Most Aligned', 'More Aligned', 'Less Aligned', 'Least Aligned', 'Unclassified'];
+    ORDER.forEach(q => { buckets[q] = { requested: 0, gf: 0, nonGf: 0, requests: 0, currentCost: 0, fte: 0 }; });
+
+    ranked.forEach(row => {
+        const a = row.analysis;
+        const q = a.bestQuartile && buckets[a.bestQuartile] ? a.bestQuartile : 'Unclassified';
+        const b = buckets[q];
+        b.requests++;
+        b.requested += a.requestTotal || 0;
+        if (a.gfExposure) { b.gf += a.gfExposure.gf; b.nonGf += a.gfExposure.nonGf + a.gfExposure.unclassified; }
+        (a.programImpacts || []).forEach(i => { b.fte += i.requestFte || 0; });
+    });
+
+    // Current spend by quartile, straight from the allocated base budget.
+    let inventoryTotal = 0;
+    currentBudgetData.forEach(prog => {
+        const q = normalizeQuartile(prog.Quartile) || 'Unclassified';
+        const cost = parseFloat(prog['Total Program Cost']) || 0;
+        if (buckets[q]) buckets[q].currentCost += cost;
+        inventoryTotal += cost;
+    });
+
+    const totalRequested = ORDER.reduce((t, q) => t + buckets[q].requested, 0);
+    const totalGf = ORDER.reduce((t, q) => t + buckets[q].gf, 0);
+
+    const COLORS = {
+        'Most Aligned': '#059669', 'More Aligned': '#10b981',
+        'Less Aligned': '#f59e0b', 'Least Aligned': '#dc2626', 'Unclassified': '#94a3b8'
+    };
+
+    let html = `
+        <div class="section-header" id="portfolio-analysis">Portfolio Analysis — Where the New Money Goes</div>
+        <p>New requests distributed across the alignment quartiles of the programs they fund. The question this
+        answers is the central one in Priority Based Budgeting: <strong>is incremental spending flowing toward the
+        results we said matter most?</strong></p>
+    `;
+
+    // Share-of-new-money bars
+    html += `<div style="margin: 20px 0;">`;
+    ORDER.forEach(q => {
+        const b = buckets[q];
+        if (b.requested <= 0) return;
+        const pct = totalRequested > 0 ? (b.requested / totalRequested) * 100 : 0;
+        const gfPct = b.requested > 0 ? (b.gf / b.requested) * 100 : 0;
+        html += `
+            <div style="margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.88rem; margin-bottom: 4px;">
+                    <span style="font-weight: 600; color: #1f2937;">${q}</span>
+                    <span style="color: #475569;">$${formatCurrency(Math.round(b.requested))} · ${pct.toFixed(1)}% of new money · ${Math.round(gfPct)}% General Fund</span>
+                </div>
+                <div style="background: #f1f5f9; border-radius: 5px; height: 22px; overflow: hidden; display: flex;">
+                    <div style="width: ${pct}%; background: ${COLORS[q]}; height: 100%;"></div>
+                </div>
+            </div>
+        `;
+    });
+    html += `</div>`;
+
+    html += `
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 0.88rem;">
+            <thead>
+                <tr style="background: #667eea; color: white;">
+                    <th style="padding: 10px 8px; text-align: left;">Alignment Quartile</th>
+                    <th style="padding: 10px 8px; text-align: center; width: 80px;">Requests</th>
+                    <th style="padding: 10px 8px; text-align: right; width: 130px;">Current Spend</th>
+                    <th style="padding: 10px 8px; text-align: right; width: 120px;">Requested</th>
+                    <th style="padding: 10px 8px; text-align: right; width: 120px;">GF Portion</th>
+                    <th style="padding: 10px 8px; text-align: right; width: 120px;">Non-GF Portion</th>
+                    <th style="padding: 10px 8px; text-align: right; width: 120px;">Proposed Total</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+    ORDER.forEach(q => {
+        const b = buckets[q];
+        if (b.requested <= 0 && b.currentCost <= 0) return;
+        html += `
+            <tr style="border-bottom: 1px solid #e5e7eb;">
+                <td style="padding: 9px 8px;"><span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: ${COLORS[q]}; margin-right: 8px;"></span><strong>${q}</strong></td>
+                <td style="padding: 9px 8px; text-align: center;">${b.requests || '—'}</td>
+                <td style="padding: 9px 8px; text-align: right; color: #475569;">${b.currentCost > 0 ? '$' + formatCurrency(Math.round(b.currentCost)) : '—'}</td>
+                <td style="padding: 9px 8px; text-align: right; font-weight: 600; color: #b45309;">${b.requested > 0 ? '$' + formatCurrency(Math.round(b.requested)) : '—'}</td>
+                <td style="padding: 9px 8px; text-align: right; color: ${b.gf > 0 ? '#dc2626' : '#9ca3af'};">${b.gf > 0 ? '$' + formatCurrency(Math.round(b.gf)) : '—'}</td>
+                <td style="padding: 9px 8px; text-align: right; color: ${b.nonGf > 0 ? '#059669' : '#9ca3af'};">${b.nonGf > 0 ? '$' + formatCurrency(Math.round(b.nonGf)) : '—'}</td>
+                <td style="padding: 9px 8px; text-align: right; font-weight: 600; color: #047857;">${(b.currentCost + b.requested) > 0 ? '$' + formatCurrency(Math.round(b.currentCost + b.requested)) : '—'}</td>
+            </tr>
+        `;
+    });
+    html += `
+            <tr style="background: #f8fafc; border-top: 2px solid #667eea; font-weight: 700;">
+                <td style="padding: 11px 8px;">Total</td>
+                <td style="padding: 11px 8px; text-align: center;">${ranked.length}</td>
+                <td style="padding: 11px 8px; text-align: right;">${inventoryTotal > 0 ? '$' + formatCurrency(Math.round(inventoryTotal)) : '—'}</td>
+                <td style="padding: 11px 8px; text-align: right; color: #b45309;">$${formatCurrency(Math.round(totalRequested))}</td>
+                <td style="padding: 11px 8px; text-align: right; color: #dc2626;">$${formatCurrency(Math.round(totalGf))}</td>
+                <td style="padding: 11px 8px; text-align: right; color: #059669;">$${formatCurrency(Math.round(totalRequested - totalGf))}</td>
+                <td style="padding: 11px 8px; text-align: right; color: #047857;">${inventoryTotal > 0 ? '$' + formatCurrency(Math.round(inventoryTotal + totalRequested)) : '—'}</td>
+            </tr>
+            </tbody>
+        </table>
+    `;
+
+    // The headline the framework exists to produce.
+    const lowAlign = buckets['Less Aligned'].gf + buckets['Least Aligned'].gf;
+    if (totalGf > 0) {
+        const lowPct = Math.round((lowAlign / totalGf) * 100);
+        html += `
+            <div style="padding: 14px 18px; background: ${lowPct >= 25 ? '#fef2f2' : '#f0fdf4'}; border-left: 5px solid ${lowPct >= 25 ? '#dc2626' : '#059669'}; border-radius: 6px; margin: 15px 0;">
+                <strong style="color: ${lowPct >= 25 ? '#991b1b' : '#065f46'};">General Fund going to lower-alignment programs:</strong>
+                $${formatCurrency(Math.round(lowAlign))} of $${formatCurrency(Math.round(totalGf))} (<strong>${lowPct}%</strong>)
+                is requested for Less or Least Aligned programs.
+                ${lowPct >= 25
+                    ? 'A quarter or more of new General Fund spending is going to the programs furthest from the priorities. This is the conversation the framework exists to start.'
+                    : 'The majority of new General Fund spending is directed at higher-alignment programs.'}
+            </div>
+        `;
+    }
+
+    if (inventoryTotal === 0) {
+        html += `<p style="color: #92400e; background: #fffbeb; padding: 10px 14px; border-radius: 6px;">
+            <strong>Note:</strong> no Program Inventory is loaded, so current spend and proposed totals are unavailable.
+            Upload the approved budget to see how these requests change the shape of the portfolio.</p>`;
+    }
+
+    return html;
+}
+
+// ===== DATA COVERAGE PANEL =====
+// Every enhancement above degrades silently when a line item does not resolve to a
+// program. Make the joins visible at upload time instead of in the console.
+function renderDataCoveragePanel() {
+    const el = document.getElementById('dataCoveragePanel');
+    if (!el) return;
+    if (budgetData.requestSummary.length === 0) { el.innerHTML = ''; return; }
+
+    const c = computeDataCoverage();
+    const pct = (n, d) => d > 0 ? Math.round((n / d) * 100) : 0;
+    const stat = (label, n, d, warnBelow) => {
+        const p = pct(n, d);
+        const color = p >= (warnBelow || 90) ? '#059669' : p >= 70 ? '#d97706' : '#dc2626';
+        return `
+            <div style="flex: 1; min-width: 150px; padding: 10px 14px; background: white; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <div style="font-size: 1.35rem; font-weight: 700; color: ${color};">${p}%</div>
+                <div style="font-size: 0.8rem; color: #475569; font-weight: 600;">${label}</div>
+                <div style="font-size: 0.72rem; color: #94a3b8;">${formatCurrency(n)} of ${formatCurrency(d)}</div>
+            </div>`;
+    };
+
+    let html = `
+        <div style="margin: 18px 0; padding: 16px 18px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px;">
+            <div style="font-weight: 700; color: #1e293b; margin-bottom: 4px;">Data Coverage</div>
+            <div style="font-size: 0.85rem; color: #64748b; margin-bottom: 12px;">
+                How much of the uploaded data the PBB framework can actually use. Gaps here weaken the analysis silently.
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                ${stat('Line items with a program', c.withProgramName, c.lineItems)}
+                ${c.inventoryLoaded ? stat('Matched to the budget', c.matchedToInventory, c.withProgramName) : ''}
+                ${stat('Have an alignment quartile', c.withQuartile, c.lineItems)}
+                ${stat('Have an identified fund', c.withFund, c.lineItems)}
+            </div>
+            <div style="margin-top: 12px; font-size: 0.83rem; color: #475569;">
+                ${formatCurrency(c.requestsWithLineItems)} of ${formatCurrency(c.requests)} requests have line items
+                · ${formatCurrency(c.revenueLineItems)} revenue line items identified as offsets
+                · mandate data found for ${formatCurrency(c.programsWithMandate)} program${c.programsWithMandate === 1 ? '' : 's'}
+            </div>
+    `;
+
+    if (!c.inventoryLoaded) {
+        html += `<div style="margin-top: 10px; padding: 9px 13px; background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 5px; font-size: 0.85rem; color: #92400e;">
+            No Program Inventory loaded. Quartiles fall back to the line items' own column, and program cost, revenue and mandate data are unavailable.
+        </div>`;
+    } else if (!c.attributesLoaded) {
+        html += `<div style="margin-top: 10px; padding: 9px 13px; background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 5px; font-size: 0.85rem; color: #92400e;">
+            No Mandate / Cost Recovery columns found on the Details or Programs sheet — mandate and cost-recovery scoring will rely on request narrative text alone.
+        </div>`;
+    }
+
+    if (c.unmatchedPrograms.length > 0) {
+        const shown = c.unmatchedPrograms.slice(0, 12);
+        html += `
+            <details style="margin-top: 10px;">
+                <summary style="cursor: pointer; font-size: 0.85rem; color: #b91c1c; font-weight: 600;">
+                    ${c.unmatchedPrograms.length} program${c.unmatchedPrograms.length === 1 ? '' : 's'} on requests did not match the budget — click to review
+                </summary>
+                <div style="margin-top: 8px; font-size: 0.8rem; color: #475569; line-height: 1.6;">
+                    ${shown.map(u => `<div>· ${u}</div>`).join('')}
+                    ${c.unmatchedPrograms.length > shown.length ? `<div style="color: #94a3b8;">…and ${c.unmatchedPrograms.length - shown.length} more</div>` : ''}
+                </div>
+                <div style="margin-top: 6px; font-size: 0.78rem; color: #94a3b8;">
+                    These are usually new programs, or a spelling/department mismatch between the two workbooks.
+                </div>
+            </details>`;
+    }
+
+    html += `</div>`;
+    el.innerHTML = html;
 }
 
 // ===== END OF SCORING ENGINE =====
@@ -2962,6 +3639,8 @@ function generateAnalyticalTableOfContents() {
         <div class="request-card">
             <div class="request-details">
                 <ol style="line-height: 2; font-size: 1.1rem;">
+                    <li><a href="#portfolio-analysis" style="color: #667eea; text-decoration: none;">Portfolio Analysis — Where the New Money Goes</a></li>
+                    <li><a href="#funding-priority" style="color: #667eea; text-decoration: none;">Funding Priority Order</a></li>
                     <li><a href="#analytical-requests" style="color: #667eea; text-decoration: none;">Detailed Request Analysis</a>
                         <ol style="margin-top: 10px; font-size: 1rem;">
     `;
@@ -2982,7 +3661,7 @@ function generateAnalyticalTableOfContents() {
                 Request ${requestId}: ${description || 'N/A'}
             </a>
             <span style="background: ${badgeColor}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; margin-left: 10px;">
-                ${analysis.disposition} (${analysis.totalScore}/12)
+                ${analysis.disposition} (${analysis.totalScore}/${includeAccessEquity ? 12 : 10})
             </span>
         </li>`;
     });
@@ -5745,6 +6424,13 @@ function exportPBBAnalysisToExcel() {
         return;
     }
 
+    // Reuse the report's ranking so the export and the report agree on priority order.
+    const ranked = (lastRankedAnalyses && lastRankedAnalyses.length > 0)
+        ? lastRankedAnalyses
+        : buildRankedAnalyses();
+    const rankById = {};
+    ranked.forEach(r => { rankById[r.requestId] = r.rank; });
+
     // Create a new workbook
     const wb = XLSX.utils.book_new();
     
@@ -5758,8 +6444,18 @@ function exportPBBAnalysisToExcel() {
         'Total Amount',
         'Archetype #',
         'Decision Profile',
-        'PBB Total Score (0-12)',
+        `PBB Total Score (0-${includeAccessEquity ? 12 : 10})`,
         'PBB Recommendation',
+        'Priority Rank',
+        'Program PBB Score',
+        'GF Exposure ($)',
+        'Non-GF Portion ($)',
+        'GF Share (%)',
+        'Request Revenue ($)',
+        'Programs Affected',
+        'Largest Program Expansion (%)',
+        'Cost Recovery Before (%)',
+        'Cost Recovery After (%)',
         '1. Program Alignment Score (0-2)',
         '1. Program Alignment Notes',
         '2. Outcome Evidence Score (0-2)',
@@ -5806,6 +6502,17 @@ function exportPBBAnalysisToExcel() {
             analysis.gridKey,
             analysis.totalScore,
             analysis.disposition,
+            rankById[requestId] != null ? rankById[requestId] : '',
+            analysis.programFinalScore != null ? analysis.programFinalScore : '',
+            analysis.gfExposure ? Math.round(analysis.gfExposure.gf) : '',
+            analysis.gfExposure ? Math.round(analysis.gfExposure.nonGf + analysis.gfExposure.unclassified) : '',
+            analysis.gfExposure && analysis.gfExposure.gfShare != null ? Math.round(analysis.gfExposure.gfShare * 100) : '',
+            analysis.requestRevenue ? Math.round(analysis.requestRevenue.total) : '',
+            analysis.impactSummary ? analysis.impactSummary.programCount : '',
+            analysis.impactSummary && analysis.impactSummary.largestExpansion && analysis.impactSummary.largestExpansion.expansionShare != null
+                ? Math.round(analysis.impactSummary.largestExpansion.expansionShare * 100) : '',
+            analysis.impactSummary && analysis.impactSummary.recoveryBefore != null ? Math.round(analysis.impactSummary.recoveryBefore * 100) : '',
+            analysis.impactSummary && analysis.impactSummary.recoveryAfter  != null ? Math.round(analysis.impactSummary.recoveryAfter  * 100) : '',
             analysis.quartileScore,
             analysis.quartileReason,
             analysis.outcomeScore,
@@ -5836,6 +6543,16 @@ function exportPBBAnalysisToExcel() {
         { wch: 28 },  // Decision Profile
         { wch: 12 },  // PBB Score
         { wch: 15 },  // Recommendation
+        { wch: 12 },  // Priority Rank
+        { wch: 15 },  // Program PBB Score
+        { wch: 15 },  // GF Exposure
+        { wch: 16 },  // Non-GF Portion
+        { wch: 12 },  // GF Share
+        { wch: 16 },  // Request Revenue
+        { wch: 16 },  // Programs Affected
+        { wch: 24 },  // Largest Program Expansion
+        { wch: 20 },  // Cost Recovery Before
+        { wch: 20 },  // Cost Recovery After
         { wch: 10 },  // Program Alignment Score
         { wch: 60 },  // Program Alignment Notes
         { wch: 10 },  // Outcome Evidence Score

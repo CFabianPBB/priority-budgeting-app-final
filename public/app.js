@@ -770,31 +770,31 @@ function updateStats() {
             <p>Total Requests</p>
         </div>
         <div class="stat-card">
-            <h3>$${formatCurrency(totalOngoing)}</h3>
+            <h3>${money(totalOngoing)}</h3>
             <p>Ongoing Requests</p>
         </div>
         <div class="stat-card">
-            <h3>$${formatCurrency(totalOnetime)}</h3>
+            <h3>${money(totalOnetime)}</h3>
             <p>One-time Requests</p>
         </div>
         <div class="stat-card">
-            <h3>$${formatCurrency(totalAmount)}</h3>
+            <h3>${money(totalAmount)}</h3>
             <p>Total Amount</p>
         </div>
         <div class="stat-card quartile-most">
-            <h3>$${formatCurrency(quartileStats['Most Aligned'])}</h3>
+            <h3>${money(quartileStats['Most Aligned'])}</h3>
             <p>Most Aligned</p>
         </div>
         <div class="stat-card quartile-more">
-            <h3>$${formatCurrency(quartileStats['More Aligned'])}</h3>
+            <h3>${money(quartileStats['More Aligned'])}</h3>
             <p>More Aligned</p>
         </div>
         <div class="stat-card quartile-less">
-            <h3>$${formatCurrency(quartileStats['Less Aligned'])}</h3>
+            <h3>${money(quartileStats['Less Aligned'])}</h3>
             <p>Less Aligned</p>
         </div>
         <div class="stat-card quartile-least">
-            <h3>$${formatCurrency(quartileStats['Least Aligned'])}</h3>
+            <h3>${money(quartileStats['Least Aligned'])}</h3>
             <p>Least Aligned</p>
         </div>
     `;
@@ -816,7 +816,58 @@ function updateStats() {
 }
 
 function formatCurrency(amount) {
-    return new Intl.NumberFormat('en-US').format(amount);
+    return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(amount);
+}
+
+// Whole-dollar currency with a real minus sign: -11800 -> "−$11,800".
+function money(v) {
+    const n = Math.round(Number(v) || 0);
+    // U+2060 (word joiner) keeps the minus sign from wrapping away from the amount.
+    return (n < 0 ? '−\u2060' : '') + '$' + formatCurrency(Math.abs(n));
+}
+
+function signedMoney(v) {
+    const n = Math.round(Number(v) || 0);
+    return (n > 0 ? '+' : '') + money(n);
+}
+
+function signedPct(part, whole) {
+    if (!whole) return null;
+    const pct = (part / whole) * 100;
+    return `${pct > 0 ? '+' : pct < 0 ? '−' : ''}${Math.abs(pct).toFixed(1)}%`;
+}
+
+// Increases and reductions kept apart, so a summary never nets a cut against an ask.
+function splitRequestTotals(requests) {
+    const t = { count: requests.length, increases: 0, reductions: 0, net: 0,
+                increaseCount: 0, reductionCount: 0, incOngoing: 0, incOnetime: 0 };
+    for (const r of requests) {
+        const a = getRequestAmount(r);
+        if (a.total > 0) { t.increases += a.total; t.increaseCount++; t.incOngoing += a.ongoing; t.incOnetime += a.onetime; }
+        else if (a.total < 0) { t.reductions += a.total; t.reductionCount++; }
+        t.net += a.total;
+    }
+    return t;
+}
+
+function totalsSentence(t) {
+    return `${t.count} budget requests: ${money(t.increases)} in increases and ${money(Math.abs(t.reductions))} in reductions (net ${signedMoney(t.net)})`;
+}
+
+// Dollar line for a disposition tile holding both asks and cuts.
+function dispositionAmountText(inc, red) {
+    if (inc && red) return `+${money(inc)} · ${money(red)}`;
+    if (red) return `${money(red)} in reductions`;
+    return money(inc);
+}
+
+function archetypeLabel(analysis) {
+    if (analysis.isReduction) return 'Reduction';
+    return analysis.archetypeNumber ? `#${analysis.archetypeNumber}` : '—';
+}
+
+function amountClass(v) {
+    return v < 0 ? 'amount neg' : 'amount';
 }
 
 function showMessage(message, type) {
@@ -896,7 +947,7 @@ function displayReport() {
         </div>
 
         <div class="section-header">Executive Summary</div>
-        <p>This report analyzes ${filteredData.length} budget requests totaling ${formatCurrency(totalAmount)} in requested funding. The requests span multiple departments and programs, with varying levels of alignment to organizational priorities.</p>
+        <p>This report analyzes ${totalsSentence(splitRequestTotals(filteredData))}. The requests span multiple departments and programs, with varying levels of alignment to organizational priorities.</p>
     `;
 
     standardHtml += generateFilterSummary();
@@ -924,7 +975,7 @@ function displayReport() {
         </div>
 
         <div class="section-header">Analysis Overview</div>
-        <p>This analytical report provides Priority Based Budgeting (PBB) framework scoring and advisory recommendations for ${filteredData.length} budget requests totaling <strong class="amount">$${formatCurrency(totalAmount)}</strong>. Each request is evaluated across six criteria following standard PBB methodology. <strong>These are suggested considerations, not binding decisions.</strong></p>
+        <p>This analytical report provides Priority Based Budgeting (PBB) framework scoring and advisory recommendations for ${totalsSentence(splitRequestTotals(filteredData))}. Each request is evaluated across six criteria following standard PBB methodology. <strong>These are suggested considerations, not binding decisions.</strong></p>
     `;
 
     // Score and rank every filtered request ONCE; the sections below read the result.
@@ -1076,15 +1127,15 @@ function generateFilterSummary() {
                     </div>
                     <div class="detail-item">
                         <div class="detail-label">Ongoing Requests</div>
-                        <div class="detail-value amount">$${formatCurrency(totalOngoing)}</div>
+                        <div class="detail-value amount">${money(totalOngoing)}</div>
                     </div>
                     <div class="detail-item">
                         <div class="detail-label">One-time Requests</div>
-                        <div class="detail-value amount">$${formatCurrency(totalOnetime)}</div>
+                        <div class="detail-value amount">${money(totalOnetime)}</div>
                     </div>
                     <div class="detail-item">
                         <div class="detail-label">Total Amount</div>
-                        <div class="detail-value amount">$${formatCurrency(totalOngoing + totalOnetime)}</div>
+                        <div class="detail-value amount">${money(totalOngoing + totalOnetime)}</div>
                     </div>
                 </div>
                 
@@ -1093,19 +1144,19 @@ function generateFilterSummary() {
                     <div class="detail-grid">
                         <div class="detail-item">
                             <div class="detail-label">Most Aligned</div>
-                            <div class="detail-value amount">$${formatCurrency(quartileStats['Most Aligned'])}</div>
+                            <div class="detail-value amount">${money(quartileStats['Most Aligned'])}</div>
                         </div>
                         <div class="detail-item">
                             <div class="detail-label">More Aligned</div>
-                            <div class="detail-value amount">$${formatCurrency(quartileStats['More Aligned'])}</div>
+                            <div class="detail-value amount">${money(quartileStats['More Aligned'])}</div>
                         </div>
                         <div class="detail-item">
                             <div class="detail-label">Less Aligned</div>
-                            <div class="detail-value amount">$${formatCurrency(quartileStats['Less Aligned'])}</div>
+                            <div class="detail-value amount">${money(quartileStats['Less Aligned'])}</div>
                         </div>
                         <div class="detail-item">
                             <div class="detail-label">Least Aligned</div>
-                            <div class="detail-value amount">$${formatCurrency(quartileStats['Least Aligned'])}</div>
+                            <div class="detail-value amount">${money(quartileStats['Least Aligned'])}</div>
                         </div>
                     </div>
                 </div>
@@ -1197,7 +1248,7 @@ function generateRequestSummaryTable() {
                 <td style="padding: 10px;">${primaryDept}</td>
                 <td style="padding: 10px;">${primaryProgram}</td>
                 <td style="padding: 10px;">${quartileBadge}${quartileNoteHtml(programInfo.quartileNote)}</td>
-                <td style="padding: 10px; text-align: right; font-weight: 600; color: #28a745;">$${formatCurrency(amounts.total)}</td>
+                <td style="padding: 10px; text-align: right; font-weight: 600; color: #28a745;">${money(amounts.total)}</td>
             </tr>
         `;
     });
@@ -1457,7 +1508,8 @@ function getCurrentBudgetForProgram(department, programName, programId) {
             nonPersonnel: match['NonPersonnel'] || 0,
             revenue: match['Revenue'] || 0,
             fte: match['FTE'] || 0,
-            description: match['Description'] || ''
+            description: match['Description'] || '',
+            department: (match['User Group'] || '').toString().trim()
         };
     }
     
@@ -1479,6 +1531,34 @@ function markdownToHtml(text) {
     text = text.replace(/\n/g, '<br>');
     
     return text;
+}
+
+// Render the request narrative (light markdown: **bold**, *italic*, "- " bullets,
+// "---" dividers, blank-line paragraphs) as HTML for screen, Word and PDF.
+function narrativeToHtml(text) {
+    if (!text) return '';
+    const esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const inline = t => esc(t)
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[\s(])\*([^*\s][^*]*?)\*(?=[\s).,;:!?]|$)/g, '$1<em>$2</em>');
+    const out = [];
+    let list = null;
+    const closeList = () => { if (list) { out.push(`<ul style="margin: 0 0 8px 18px; padding: 0;">${list.join('')}</ul>`); list = null; } };
+    for (const raw of text.split('\n')) {
+        const line = raw.trim();
+        if (!line) { closeList(); continue; }
+        if (/^-{3,}$/.test(line)) { closeList(); out.push('<hr style="border: none; border-top: 1px solid #e2e8f0; margin: 10px 0;">'); continue; }
+        const bullet = line.match(/^[-•]\s+(.*)$/);
+        if (bullet) { (list = list || []).push(`<li style="margin: 2px 0;">${inline(bullet[1])}</li>`); continue; }
+        closeList();
+        out.push(`<p style="margin: 0 0 8px;">${inline(line)}</p>`);
+    }
+    closeList();
+    return out.join('');
+}
+
+function narrativeToText(text) {
+    return (text || '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/(^|[\s(])\*([^*\s][^*]*?)\*/g, '$1$2');
 }
 
 // ===== ENHANCED PBB SCORING ENGINE WITH EXPLICIT REASONING =====
@@ -1549,7 +1629,7 @@ function getOutcomeScore(qa, qaText) {
 
 function getFundingScore(qa, qaText, progAttrs, fundProfile, selfFunding) {
     if (selfFunding && selfFunding.covers) {
-        return { score: 2, reason: `Request pays for itself: its own revenue ($${formatCurrency(Math.round(selfFunding.revenue))}) covers its cost ($${formatCurrency(Math.round(selfFunding.cost))})` };
+        return { score: 2, reason: `Request pays for itself: its own revenue (${money(Math.round(selfFunding.revenue))}) covers its cost (${money(Math.round(selfFunding.cost))})` };
     }
     if (fundProfile && fundProfile.hasFundData && fundProfile.fundingClass === 'Review') {
         return { score: 0, reason: `Charged to a custodial / fiduciary fund (${fundProfile.reviewFunds.join(', ')}) — funding source needs review` };
@@ -1744,6 +1824,17 @@ function getRequestQuartile(lineItems) {
     return getWeakestLinkProfile(lineItems, []).quartile;
 }
 
+// The department that owns a line item's program in the Summary Report, so program
+// summaries list each program once (Public Works staff on Parks' Park Maintenance
+// roll up under Parks). Falls back to the line item's own department.
+function getProgramOwnerDept(item) {
+    const dept = getPrimaryValue([item], 'department') || 'Unknown Department';
+    const program = getPrimaryValue([item], 'program');
+    if (!program) return dept;
+    const cur = getCurrentBudgetForProgram(dept, program, getProgramIdForItem(item));
+    return (cur && cur.department) || dept;
+}
+
 // Program labels for request-level displays. A request spanning several programs
 // shows its largest program plus "+N more", and names the program that sets its
 // quartile so the two columns don't appear to contradict each other.
@@ -1771,7 +1862,7 @@ function getMandateScore(profile) {
         return { score: 0, reason: "No mandate score on the line items or in the Summary Report, and no answer to the mandate question" };
     }
     const src = profile.mandateSource === 'scores'
-        ? (profile.isReduction ? 'the most-mandated program this request cuts' : 'the least-mandated program this request adds funding to')
+        ? (profile.isReduction ? 'the most-mandated program this request reduces' : 'the least-mandated program this request adds funding to')
         : profile.mandateSource;
     if (level === 'Mandated') {
         return { score: 2, reason: `Mandate score ${profile.mandateScore} (highly mandated), from ${src}` };
@@ -2250,7 +2341,6 @@ function scoreRequest(request) {
     // reduction, the most-aligned program being cut). Kept under the legacy name
     // bestQuartile because the report UI reads that field.
     const bestQuartile = profile.quartile;
-    const qaText = qa.map(q => Object.values(q).join(' ')).join(' ').toLowerCase();
     // Answers only — the question text ("...Mandate Impact...", "...ROI...") would
     // otherwise match every request.
     const answerText = qa.map(q => (q.Answer == null ? '' : q.Answer.toString())).join(' ').toLowerCase();
@@ -2263,10 +2353,10 @@ function scoreRequest(request) {
     // Score each criterion with explicit reasoning
     const quartileAnalysis = getQuartileScore(bestQuartile);
     const outcomeAnalysis = getOutcomeScore(qa, answerText);
-    const fundingAnalysis = getFundingScore(qa, qaText, progAttrs, fundProfile, selfFunding);
+    const fundingAnalysis = getFundingScore(qa, answerText, progAttrs, fundProfile, selfFunding);
     const mandateAnalysis = getMandateScore(profile);
-    const efficiencyAnalysis = getEfficiencyScore(qa, qaText);
-    const accessAnalysis = getAccessScore(qa, qaText);
+    const efficiencyAnalysis = getEfficiencyScore(qa, answerText);
+    const accessAnalysis = getAccessScore(qa, answerText);
 
     const analysis = {
         // Scores with explicit reasons
@@ -2296,7 +2386,7 @@ function scoreRequest(request) {
         // routes correctly when the narrative is silent.
         bestQuartile: bestQuartile,
         hasOutsideFunding:
-            /outside funding.*yes|grant|fee|partner|cost recovery/i.test(qaText) ||
+            /outside funding.*yes|grant|fee|partner|cost recovery/i.test(answerText) ||
             (progAttrs && progAttrs.costRecovery === true),
         isMandated: mandateLevelForScore(profile.mandateScore) === 'Mandated',
         isCompliance: mandateLevelForScore(profile.mandateScore) === 'Compliance',
@@ -2417,7 +2507,7 @@ function scoreRequest(request) {
         for (const i of bigExpansion) {
             analysis.verifyNow.push(
                 `This request grows ${i.program} by ${Math.round(i.expansionShare * 100)}% ` +
-                `($${formatCurrency(Math.round(i.currentCost))} → $${formatCurrency(Math.round(i.proposedCost))}) — ` +
+                `(${money(Math.round(i.currentCost))} → ${money(Math.round(i.proposedCost))}) — ` +
                 `a lower-alignment program. Confirm that scale of expansion is intended.`
             );
         }
@@ -2439,19 +2529,19 @@ function scoreRequest(request) {
         const added = (analysis.weakestLink && analysis.weakestLink.added) || [];
         if (sf.cliff) {
             analysis.verifyNow.push(
-                `One-time revenue ($${formatCurrency(Math.round(sf.revenueOnetime))}) pays for ongoing cost ` +
-                `($${formatCurrency(Math.round(sf.costOngoing))}/yr). When it ends, the ongoing cost falls to the General Fund.`
+                `One-time revenue (${money(Math.round(sf.revenueOnetime))}) pays for ongoing cost ` +
+                `(${money(Math.round(sf.costOngoing))}/yr). When it ends, the ongoing cost falls to the General Fund.`
             );
         }
         if (sf.revenue > 0 && added.length > 0 && added.every(sl => sl.recoveryScore === 0)) {
             analysis.verifyNow.push(
-                `The request counts $${formatCurrency(Math.round(sf.revenue))} of new revenue in program(s) rated "No cost recovery". Confirm the revenue estimate.`
+                `The request counts ${money(Math.round(sf.revenue))} of new revenue in program(s) rated "No cost recovery". Confirm the revenue estimate.`
             );
         }
         if (sf.revenue === 0 && analysis.fundingType === 'GFonly') {
             for (const sl of added.filter(sl => sl.recoveryScore !== null && sl.recoveryScore >= 3)) {
                 analysis.verifyNow.push(
-                    `${sl.program} normally recovers most of its cost through fees, but this request adds $${formatCurrency(Math.round(sl.amount))} with no revenue. Consider a fee to hold its recovery rate.`
+                    `${sl.program} normally recovers most of its cost through fees, but this request adds ${money(Math.round(sl.amount))} with no revenue. Consider a fee to hold its recovery rate.`
                 );
             }
         }
@@ -2480,14 +2570,14 @@ function applyDecisionGrid(analysis) {
                 archetypeNumber: 0,
                 disposition: 'VERIFY',
                 color: '#f59e0b',
-                keyConsideration: 'Reduction cuts from a highly mandated or top-quartile program — confirm mandate minimums and priority service levels still hold',
+                keyConsideration: 'Reduction touches a highly mandated or top-quartile program — confirm mandate minimums and priority service levels still hold',
                 verifyNow: flags.map(sl => {
                     const why = [];
                     if (sl.mandateScore !== null && sl.mandateScore >= 3) why.push(`mandate score ${sl.mandateScore}`);
                     if (quartileRank(sl.quartile) <= 2) why.push(normalizeQuartile(sl.quartile));
-                    return `Cut of $${formatCurrency(Math.abs(Math.round(sl.amount)))} from ${sl.program} (${why.join(', ')}): confirm the program still meets its mandate and service commitments`;
+                    return `Reduction of ${money(Math.abs(Math.round(sl.amount)))} from ${sl.program} (${why.join(', ')}): confirm the program still meets its mandate and service commitments`;
                 }),
-                strengthenWith: ['Take the reduction from lower-quartile or unmandated programs instead', 'Document the service-level impact of the cut'],
+                strengthenWith: ['Take the reduction from lower-quartile or unmandated programs instead', 'Document the service-level impact of the reduction'],
                 gridKey: 'Reduction-Flagged'
             };
         }
@@ -2844,7 +2934,7 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     
     let narrative = `**Program:** ${program} (${dept})\n`;
     narrative += `**Quartile:** ${analysis.bestQuartile} (${analysis.quartileBand} Relevance)${programInfo.quartileNote ? ` — ${programInfo.quartileNote}` : ''}\n`;
-    narrative += `**Total Amount:** $${formatCurrency(amounts.total)}\n`;
+    narrative += `**Total Amount:** ${money(amounts.total)}\n`;
     narrative += `**Decision Profile:** ${analysis.gridKey}\n\n`;
     
     narrative += `---\n\n`;
@@ -2857,27 +2947,27 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     if (gfx && gfx.total > 0) {
         if (gfx.gf > 0) {
             const pct = Math.round((gfx.gf / gfx.total) * 100);
-            narrative += `**GENERAL FUND EXPOSURE:** $${formatCurrency(Math.round(gfx.gf))} of the $${formatCurrency(Math.round(gfx.total))} ask (${pct}%)`;
-            if (gfx.nonGf > 0) narrative += `, with $${formatCurrency(Math.round(gfx.nonGf))} carried by other funds`;
+            narrative += `**GENERAL FUND EXPOSURE:** ${money(Math.round(gfx.gf))} of the ${money(Math.round(gfx.total))} ask (${pct}%)`;
+            if (gfx.nonGf > 0) narrative += `, with ${money(Math.round(gfx.nonGf))} carried by other funds`;
             narrative += `.\n\n`;
         } else if (gfx.nonGf > 0) {
-            narrative += `**GENERAL FUND EXPOSURE:** none — the full $${formatCurrency(Math.round(gfx.nonGf))} is carried by non-General Fund sources.\n\n`;
+            narrative += `**GENERAL FUND EXPOSURE:** none — the full ${money(Math.round(gfx.nonGf))} is carried by non-General Fund sources.\n\n`;
         }
     }
 
     const sfx = analysis.selfFunding;
     if (sfx && sfx.revenue > 0 && !analysis.isReduction) {
         if (sfx.covers) {
-            narrative += `**PAYS FOR ITSELF:** $${formatCurrency(Math.round(sfx.revenue))} of the request's own revenue covers its $${formatCurrency(Math.round(sfx.cost))} cost, so it is treated as self-funding.\n\n`;
+            narrative += `**PAYS FOR ITSELF:** ${money(Math.round(sfx.revenue))} of the request's own revenue covers its ${money(Math.round(sfx.cost))} cost, so it is treated as self-funding.\n\n`;
         } else if (sfx.cliff) {
-            narrative += `**REVENUE OFFSET:** the request's revenue covers its cost in total, but $${formatCurrency(Math.round(sfx.revenueOnetime))} of it is one-time money paying for ongoing cost — not self-funding.\n\n`;
+            narrative += `**REVENUE OFFSET:** the request's revenue covers its cost in total, but ${money(Math.round(sfx.revenueOnetime))} of it is one-time money paying for ongoing cost — not self-funding.\n\n`;
         } else {
             narrative += `**REVENUE OFFSET:** the request's own revenue covers ${Math.round(sfx.share * 100)}% of its cost; the rest draws on the fund(s) listed above.\n\n`;
         }
     }
     const fpx = analysis.fundProfile;
     if (fpx && fpx.gf > 0 && fpx.nonGf > 0 && !analysis.isReduction) {
-        narrative += `**MIXED FUNDING:** $${formatCurrency(Math.round(fpx.gf))} General Fund and $${formatCurrency(Math.round(fpx.nonGf))} other funds. Any General Fund share makes the request General Fund for the PBB grid — move the General Fund portion to a non-GF source, or split it into its own request, to be judged on the non-GF rail.\n\n`;
+        narrative += `**MIXED FUNDING:** ${money(Math.round(fpx.gf))} General Fund and ${money(Math.round(fpx.nonGf))} other funds. Any General Fund share makes the request General Fund for the PBB grid — move the General Fund portion to a non-GF source, or split it into its own request, to be judged on the non-GF rail.\n\n`;
     }
 
     const impacts = (analysis.programImpacts || []).filter(i => i.currentCost != null);
@@ -2886,11 +2976,12 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
         for (const i of impacts) {
             let line = `- **${i.program}**`;
             if (i.quartile) line += ` (${i.quartile})`;
-            line += ` — current $${formatCurrency(Math.round(i.currentCost))}`;
-            line += `, requested $${formatCurrency(Math.round(i.requestCost))}`;
-            line += `, proposed $${formatCurrency(Math.round(i.proposedCost))}`;
-            if (i.expansionShare != null) line += ` (**+${Math.round(i.expansionShare * 100)}%**)`;
-            if (i.currentRecovery != null && i.proposedRecovery != null) {
+            line += ` — current ${money(Math.round(i.currentCost))}`;
+            line += `, requested ${money(Math.round(i.requestCost))}`;
+            line += `, proposed ${money(Math.round(i.proposedCost))}`;
+            if (i.expansionShare != null) line += ` (**${i.expansionShare < 0 ? '−' : '+'}${Math.abs(Math.round(i.expansionShare * 100))}%**)`;
+            if (i.currentRecovery != null && i.proposedRecovery != null &&
+                Math.round(i.currentRecovery * 100) !== Math.round(i.proposedRecovery * 100)) {
                 line += `. Cost recovery ${Math.round(i.currentRecovery * 100)}% → ${Math.round(i.proposedRecovery * 100)}%`;
             }
             narrative += line + `\n`;
@@ -2903,13 +2994,13 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     const baselines = analysis.lineItemBaselines || [];
     if (baselines.length > 0) {
         narrative += `**LINE ITEM BASELINE:**\n\n`;
-        const signed = v => `${v < 0 ? '-' : '+'}$${formatCurrency(Math.abs(Math.round(v)))}`;
+        const signed = signedMoney;
         for (const b of baselines) {
             let line = `- **${b.name || 'Line item'}**`;
             if (b.acctCode) line += ` (${b.acctCode})`;
             if (b.status === 'existing') {
-                line += ` — current $${formatCurrency(Math.round(b.currentCost))}, change ${signed(b.change)}`;
-                if (b.changeShare != null) line += ` (**${b.changeShare < 0 ? '' : '+'}${Math.round(b.changeShare * 100)}%**)`;
+                line += ` — current ${money(Math.round(b.currentCost))}, change ${signed(b.change)}`;
+                if (b.changeShare != null) line += ` (**${b.changeShare < 0 ? '−' : '+'}${Math.abs(Math.round(b.changeShare * 100))}%**)`;
             } else if (b.status === 'new_item') {
                 line += ` — new line item with no current budget; ${signed(b.change)} is entirely new cost`;
             } else {
@@ -2925,7 +3016,6 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     const wl = analysis.weakestLink;
     if (wl && !wl.isReduction && (wl.mandateDrag || wl.quartileDrag)) {
         narrative += `**REALLOCATION OPPORTUNITY:** added dollars are judged by their weakest program, so a low-mandate or low-quartile slice pulls the whole request down.\n\n`;
-        const money = v => `$${formatCurrency(Math.round(v))}`;
         const describe = d => d.slices.map(sl => `${sl.program} (${money(sl.amount)})`).join(', ');
         if (wl.mandateDrag) {
             const d = wl.mandateDrag;
@@ -2939,13 +3029,13 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
         narrative += `\n`;
     }
     if (wl && wl.isReduction) {
-        narrative += `**REDUCTION CHECK:** this request reduces spending, so the PBB check runs in reverse — cuts should come from lower-quartile, low-mandate programs.\n\n`;
+        narrative += `**REDUCTION CHECK:** this request reduces spending, so the PBB check runs in reverse — reductions should come from lower-quartile, low-mandate programs.\n\n`;
         for (const sl of wl.cuts) {
             const parts = [];
             if (sl.quartile) parts.push(normalizeQuartile(sl.quartile) || sl.quartile);
             if (sl.mandateScore !== null) parts.push(`mandate ${sl.mandateScore}`);
             const flagged = wl.reductionFlags.includes(sl);
-            narrative += `- ${flagged ? '⚠️ ' : ''}**${sl.program}** — cut $${formatCurrency(Math.abs(Math.round(sl.amount)))}${parts.length ? ` (${parts.join(', ')})` : ''}\n`;
+            narrative += `- ${flagged ? '⚠️ ' : ''}**${sl.program}** — reduces ${money(Math.abs(Math.round(sl.amount)))}${parts.length ? ` (${parts.join(', ')})` : ''}\n`;
         }
         narrative += `\n`;
     }
@@ -3056,11 +3146,13 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
         narrative += `\n`;
     }
     
-    // Specific follow-up prompts based on weaknesses
+    // Specific follow-up prompts based on weaknesses (ask-oriented; not for reductions)
+    if (!analysis.isReduction) {
     narrative += `**SPECIFIC FOLLOW-UP ACTIONS:**\n\n`;
     
     if (analysis.outcomeScore < 2) {
-        narrative += `**KPIs & Evaluation:** Please add baseline→target values for 2–3 KPIs, the data source, and review cadence (e.g., monthly). We'll approve as a 90-day pilot pending KPI progress.\n\n`;
+        const pilot = analysis.disposition === 'APPROVE' || analysis.disposition === 'MODIFY' || analysis.disposition === 'VERIFY';
+        narrative += `**KPIs & Evaluation:** Please add baseline→target values for 2–3 KPIs, the data source, and review cadence (e.g., monthly).${pilot ? ' Approval can proceed as a 90-day pilot pending KPI progress.' : ''}\n\n`;
     }
     
     if (analysis.fundingScore === 0 && (analysis.quartileBand === 'Low' || analysis.disposition !== 'APPROVE')) {
@@ -3094,6 +3186,7 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     if (analysis.mandateLevel === 'Mandated' && analysis.quartileBand === 'Low') {
         narrative += `**Sunset/True-up:** Add a 12-month sunset and a true-up clause to right-size funding based on measured demand and KPI performance.\n\n`;
     }
+    }
     
     return narrative;
 }
@@ -3113,8 +3206,8 @@ function generateFundingPriorityOrder() {
         <p>Requests are ordered by the framework's recommendation first, then — within each recommendation —
         by program alignment quartile, the program's own PBB score, and General Fund exposure. The ordering
         <strong>never overrides the disposition</strong>; it sequences requests that share one.
-        Total requested: <strong class="amount">$${formatCurrency(Math.round(totalAsk))}</strong>,
-        of which <strong class="amount">$${formatCurrency(Math.round(totalGf))}</strong> would come from the General Fund.</p>
+        Total requested: <strong class="amount">${money(Math.round(totalAsk))}</strong>,
+        of which <strong class="amount">${money(Math.round(totalGf))}</strong> would come from the General Fund.</p>
 
         <div style="margin: 15px 0; padding: 12px 15px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
             <label style="font-weight: 600; color: #334155; margin-right: 10px;">Available General Fund for new requests:</label>
@@ -3166,9 +3259,9 @@ function generateFundingPriorityOrder() {
                 <td style="padding: 8px 6px; text-align: center;">
                     <span style="background: ${a.dispositionColor}; color: white; padding: 3px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600;">${a.disposition}</span>
                 </td>
-                <td style="padding: 8px 6px; text-align: right;">$${formatCurrency(Math.round(a.requestTotal || 0))}</td>
+                <td style="padding: 8px 6px; text-align: right;">${money(Math.round(a.requestTotal || 0))}</td>
                 <td style="padding: 8px 6px; text-align: right; color: ${gf > 0 ? '#dc2626' : '#059669'}; font-weight: 600;">${gf > 0 ? '$' + formatCurrency(Math.round(gf)) : '—'}</td>
-                <td style="padding: 8px 6px; text-align: right; color: #475569;">$${formatCurrency(Math.round(row.cumulativeGf))}</td>
+                <td style="padding: 8px 6px; text-align: right; color: #475569;">${money(Math.round(row.cumulativeGf))}</td>
             </tr>
         `;
     });
@@ -3206,7 +3299,7 @@ function applyAffordabilityLine() {
         }
     });
     const total = rows.length;
-    note.innerHTML = `<strong>${fundable}</strong> of ${total} requests fit within $${formatCurrency(Math.round(limit))} of General Fund. <strong>${total - fundable}</strong> fall below the line.`;
+    note.innerHTML = `<strong>${fundable}</strong> of ${total} requests fit within ${money(Math.round(limit))} of General Fund. <strong>${total - fundable}</strong> fall below the line.`;
     note.style.color = '#334155';
 }
 
@@ -3266,7 +3359,7 @@ function generatePortfolioAnalysis() {
             <div style="margin-bottom: 14px;">
                 <div style="display: flex; justify-content: space-between; font-size: 0.88rem; margin-bottom: 4px;">
                     <span style="font-weight: 600; color: #1f2937;">${q}</span>
-                    <span style="color: #475569;">$${formatCurrency(Math.round(b.requested))} · ${pct.toFixed(1)}% of new money · ${Math.round(gfPct)}% General Fund</span>
+                    <span style="color: #475569;">${money(Math.round(b.requested))} · ${pct.toFixed(1)}% of new money · ${Math.round(gfPct)}% General Fund</span>
                 </div>
                 <div style="background: #f1f5f9; border-radius: 5px; height: 22px; overflow: hidden; display: flex;">
                     <div style="width: ${pct}%; background: ${COLORS[q]}; height: 100%;"></div>
@@ -3311,9 +3404,9 @@ function generatePortfolioAnalysis() {
                 <td style="padding: 11px 8px;">Total</td>
                 <td style="padding: 11px 8px; text-align: center;">${ranked.length}</td>
                 <td style="padding: 11px 8px; text-align: right;">${inventoryTotal > 0 ? '$' + formatCurrency(Math.round(inventoryTotal)) : '—'}</td>
-                <td style="padding: 11px 8px; text-align: right; color: #b45309;">$${formatCurrency(Math.round(totalRequested))}</td>
-                <td style="padding: 11px 8px; text-align: right; color: #dc2626;">$${formatCurrency(Math.round(totalGf))}</td>
-                <td style="padding: 11px 8px; text-align: right; color: #059669;">$${formatCurrency(Math.round(totalRequested - totalGf))}</td>
+                <td style="padding: 11px 8px; text-align: right; color: #b45309;">${money(Math.round(totalRequested))}</td>
+                <td style="padding: 11px 8px; text-align: right; color: #dc2626;">${money(Math.round(totalGf))}</td>
+                <td style="padding: 11px 8px; text-align: right; color: #059669;">${money(Math.round(totalRequested - totalGf))}</td>
                 <td style="padding: 11px 8px; text-align: right; color: #047857;">${inventoryTotal > 0 ? '$' + formatCurrency(Math.round(inventoryTotal + totalRequested)) : '—'}</td>
             </tr>
             </tbody>
@@ -3327,7 +3420,7 @@ function generatePortfolioAnalysis() {
         html += `
             <div style="padding: 14px 18px; background: ${lowPct >= 25 ? '#fef2f2' : '#f0fdf4'}; border-left: 5px solid ${lowPct >= 25 ? '#dc2626' : '#059669'}; border-radius: 6px; margin: 15px 0;">
                 <strong style="color: ${lowPct >= 25 ? '#991b1b' : '#065f46'};">General Fund going to lower-alignment programs:</strong>
-                $${formatCurrency(Math.round(lowAlign))} of $${formatCurrency(Math.round(totalGf))} (<strong>${lowPct}%</strong>)
+                ${money(Math.round(lowAlign))} of ${money(Math.round(totalGf))} (<strong>${lowPct}%</strong>)
                 is requested for Less or Least Aligned programs.
                 ${lowPct >= 25
                     ? 'A quarter or more of new General Fund spending is going to the programs furthest from the priorities. This is the conversation the framework exists to start.'
@@ -3471,7 +3564,7 @@ function generateProgramSummary() {
         const amounts = getRequestAmount(request);
         
         lineItems.forEach(item => {
-            const dept = getPrimaryValue([item], 'department') || 'Unknown Department';
+            const dept = getProgramOwnerDept(item);
             const program = getPrimaryValue([item], 'program') || 'Unknown Program';
             const quartile = getPrimaryValue([item], 'quartile') || 'N/A';
             
@@ -3628,9 +3721,8 @@ function generateProgramSummary() {
             
             // Calculate percentage increase
             let percentIncrease = '';
-            if (data.totalCost > 0 && data.requestedAmount > 0) {
-                const pct = ((data.requestedAmount / data.totalCost) * 100).toFixed(1);
-                percentIncrease = ` (+${pct}%)`;
+            if (data.totalCost > 0 && data.requestedAmount !== 0) {
+                percentIncrease = ` (${signedPct(data.requestedAmount, data.totalCost)})`;
             } else if (data.totalCost === 0 && data.requestedAmount > 0) {
                 percentIncrease = ' (New)';
             }
@@ -3642,25 +3734,22 @@ function generateProgramSummary() {
                 <tr style="border-bottom: 1px solid #e0e0e0; ${rowStyle}">
                     <td style="padding: 10px 8px; text-align: center;">${quartileBadge}</td>
                     <td style="padding: 10px 8px;">${program}${newProgramBadge}</td>
-                    <td style="padding: 10px 8px; text-align: right; color: #333;">$${formatCurrency(Math.round(data.totalCost))}</td>
-                    <td style="padding: 10px 8px; text-align: right; color: ${data.requestedAmount > 0 ? '#ffc107' : '#999'}; font-weight: ${data.requestedAmount > 0 ? '600' : 'normal'};">$${formatCurrency(Math.round(data.requestedAmount))}</td>
-                    <td style="padding: 10px 8px; text-align: right; color: #28a745; font-weight: 600;">$${formatCurrency(Math.round(data.proposedTotalCost))}${percentIncrease}</td>
+                    <td style="padding: 10px 8px; text-align: right; color: #333;">${money(Math.round(data.totalCost))}</td>
+                    <td style="padding: 10px 8px; text-align: right; color: ${data.requestedAmount > 0 ? '#ffc107' : data.requestedAmount < 0 ? '#dc2626' : '#999'}; font-weight: ${data.requestedAmount !== 0 ? '600' : 'normal'};">${data.requestedAmount ? signedMoney(data.requestedAmount) : money(0)}</td>
+                    <td style="padding: 10px 8px; text-align: right; color: #28a745; font-weight: 600;">${money(Math.round(data.proposedTotalCost))}${percentIncrease}</td>
                 </tr>
             `;
         });
         
         // Add department total row
-        const deptPctIncrease = departmentTotal.totalCost > 0 ? 
-            ((departmentTotal.requestedAmount / departmentTotal.totalCost) * 100).toFixed(1) : 
-            'N/A';
         
         html += `
                 <tr style="background: #f8f9ff; border-top: 2px solid #667eea; font-weight: 600;">
                     <td style="padding: 12px 8px; text-align: center; color: #667eea;">TOTAL</td>
                     <td style="padding: 12px 8px; color: #667eea;">${dept} Department Total</td>
-                    <td style="padding: 12px 8px; text-align: right; color: #333;">$${formatCurrency(Math.round(departmentTotal.totalCost))}</td>
-                    <td style="padding: 12px 8px; text-align: right; color: #ffc107;">$${formatCurrency(Math.round(departmentTotal.requestedAmount))}</td>
-                    <td style="padding: 12px 8px; text-align: right; color: #28a745;">$${formatCurrency(Math.round(departmentTotal.proposedTotalCost))}</td>
+                    <td style="padding: 12px 8px; text-align: right; color: #333;">${money(Math.round(departmentTotal.totalCost))}</td>
+                    <td style="padding: 12px 8px; text-align: right; color: #ffc107;">${money(Math.round(departmentTotal.requestedAmount))}</td>
+                    <td style="padding: 12px 8px; text-align: right; color: #28a745;">${money(Math.round(departmentTotal.proposedTotalCost))}</td>
                 </tr>
             </tbody>
         </table>
@@ -3669,12 +3758,11 @@ function generateProgramSummary() {
             <strong>Department Impact Summary:</strong> ${dept} has ${Object.keys(programs).length} total programs 
             (${Object.values(programs).filter(p => p.hasRequests).length} with requests, 
             ${Object.values(programs).filter(p => !p.hasRequests).length} without requests).
-            ${departmentTotal.requestedAmount > 0 ? `Requesting 
-            <span style="color: #ffc107; font-weight: 600;">$${formatCurrency(Math.round(departmentTotal.requestedAmount))}</span> 
-            in additional funding, which would increase the department's total budget from 
-            <span style="color: #333;">$${formatCurrency(Math.round(departmentTotal.totalCost))}</span> to 
-            <span style="color: #28a745; font-weight: 600;">$${formatCurrency(Math.round(departmentTotal.proposedTotalCost))}</span> 
-            (${deptPctIncrease}% increase).` : 'No new funding requests for this department.'}
+            ${departmentTotal.requestedAmount !== 0 ? `Requests make a net change of
+            <span style="color: ${departmentTotal.requestedAmount < 0 ? '#dc2626' : '#ffc107'}; font-weight: 600;">${signedMoney(departmentTotal.requestedAmount)}</span>,
+            taking the department's total budget from
+            <span style="color: #333;">${money(departmentTotal.totalCost)}</span> to
+            <span style="color: #28a745; font-weight: 600;">${money(departmentTotal.proposedTotalCost)}</span>${departmentTotal.totalCost > 0 ? ` (${signedPct(departmentTotal.requestedAmount, departmentTotal.totalCost)})` : ''}.` : 'No funding changes requested for this department.'}
         </div>
         
         </div>
@@ -3748,7 +3836,7 @@ function generateDepartmentSummary() {
                         </div>
                         <div class="detail-item">
                             <div class="detail-label">Total Amount</div>
-                            <div class="detail-value amount">$${formatCurrency(data.amount)}</div>
+                            <div class="detail-value amount">${money(data.amount)}</div>
                         </div>
                     </div>
                     
@@ -3757,19 +3845,19 @@ function generateDepartmentSummary() {
                         <div class="detail-grid">
                             <div class="detail-item">
                                 <div class="detail-label">Most Aligned</div>
-                                <div class="detail-value amount">$${formatCurrency(data.quartiles['Most Aligned'])}</div>
+                                <div class="detail-value amount">${money(data.quartiles['Most Aligned'])}</div>
                             </div>
                             <div class="detail-item">
                                 <div class="detail-label">More Aligned</div>
-                                <div class="detail-value amount">$${formatCurrency(data.quartiles['More Aligned'])}</div>
+                                <div class="detail-value amount">${money(data.quartiles['More Aligned'])}</div>
                             </div>
                             <div class="detail-item">
                                 <div class="detail-label">Less Aligned</div>
-                                <div class="detail-value amount">$${formatCurrency(data.quartiles['Less Aligned'])}</div>
+                                <div class="detail-value amount">${money(data.quartiles['Less Aligned'])}</div>
                             </div>
                             <div class="detail-item">
                                 <div class="detail-label">Least Aligned</div>
-                                <div class="detail-value amount">$${formatCurrency(data.quartiles['Least Aligned'])}</div>
+                                <div class="detail-value amount">${money(data.quartiles['Least Aligned'])}</div>
                             </div>
                         </div>
                     </div>
@@ -3825,7 +3913,7 @@ function generateQuartileAnalysis() {
                         </div>
                         <div class="detail-item">
                             <div class="detail-label">Total Amount</div>
-                            <div class="detail-value amount">$${formatCurrency(data.amount)}</div>
+                            <div class="detail-value amount">${money(data.amount)}</div>
                         </div>
                     </div>
                 </div>
@@ -3870,7 +3958,7 @@ function generateDetailedRequestReport() {
                             </div>
                             <div class="detail-item">
                                 <div class="detail-label">Total Amount</div>
-                                <div class="detail-value amount">$${formatCurrency(amounts.total)}</div>
+                                <div class="detail-value amount">${money(amounts.total)}</div>
                             </div>
                         </div>
                     </div>
@@ -3925,7 +4013,7 @@ function generateDetailedRequestReportStandard() {
                         <strong>Request ${requestId}:</strong> ${description}
                     </div>
                     <span class="request-accordion-badge" style="background: #28a745;">
-                        $${formatCurrency(amounts.total)}
+                        ${money(amounts.total)}
                     </span>
                     ${primaryQuartile !== 'N/A' ? 
                         `<span class="quartile-badge quartile-${primaryQuartile.toLowerCase().replace(' ', '-')}" style="margin: 0 10px;">${primaryQuartile}</span>` 
@@ -3946,7 +4034,7 @@ function generateDetailedRequestReportStandard() {
                                 </div>
                                 <div class="summary-item">
                                     <div class="summary-label">Total Amount</div>
-                                    <div class="summary-value" style="color: #28a745;">$${formatCurrency(amounts.total)}</div>
+                                    <div class="summary-value" style="color: #28a745;">${money(amounts.total)}</div>
                                 </div>
                                 <div class="summary-item">
                                     <div class="summary-label">Department</div>
@@ -4040,7 +4128,7 @@ function generateDetailedRequestReportAnalytical() {
                         ${analysis.disposition}
                     </span>
                     <span class="request-accordion-badge" style="background: #667eea;">
-                        Archetype #${analysis.archetypeNumber}
+                        Archetype ${archetypeLabel(analysis)}
                     </span>
                     <span class="request-accordion-arrow" id="${uniqueId}-arrow">▼</span>
                 </div>
@@ -4058,7 +4146,7 @@ function generateDetailedRequestReportAnalytical() {
                                 </div>
                                 <div class="summary-item">
                                     <div class="summary-label">Total Amount</div>
-                                    <div class="summary-value" style="color: #28a745;">$${formatCurrency(amounts.total)}</div>
+                                    <div class="summary-value" style="color: #28a745;">${money(amounts.total)}</div>
                                 </div>
                                 <div class="summary-item">
                                     <div class="summary-label">Department</div>
@@ -4096,7 +4184,7 @@ function generateDetailedRequestReportAnalytical() {
                                 <div style="text-align: center; margin-bottom: 25px; padding: 25px; background: linear-gradient(135deg, ${analysis.dispositionColor}15, ${analysis.dispositionColor}05); border-radius: 12px; border: 2px solid ${analysis.dispositionColor};">
                                     <div style="font-size: 0.9rem; color: #666; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;">Budget Request Archetype</div>
                                     <div style="font-size: 3rem; font-weight: 800; color: ${analysis.dispositionColor}; margin-bottom: 5px;">
-                                        #${analysis.archetypeNumber}
+                                        ${archetypeLabel(analysis)}
                                     </div>
                                     <div style="font-size: 1.8rem; font-weight: 700; color: ${analysis.dispositionColor}; margin-bottom: 15px;">
                                         ${analysis.disposition}
@@ -4168,7 +4256,7 @@ function generateDetailedRequestReportAnalytical() {
                                 <!-- Strategic Recommendation -->
                                 <div class="narrative-box" style="background: #f8f9ff; padding: 20px; border-radius: 8px; border-left: 4px solid ${analysis.dispositionColor};">
                                     <h4 style="color: #667eea; margin-bottom: 15px; font-size: 1.2rem;">🔍 Strategic Recommendation</h4>
-                                    <div style="white-space: pre-wrap; font-size: 1.05rem; line-height: 1.8;">${markdownToHtml(analysis.narrative)}</div>
+                                    <div style="font-size: 1.05rem; line-height: 1.7;">${narrativeToHtml(analysis.narrative)}</div>
                                 </div>
                             </div>
                         </div>
@@ -4217,6 +4305,7 @@ function generateDetailedRequestReportAnalytical() {
 function generateAnalyticalSummary() {
     const scores = { approve: 0, verify: 0, modify: 0, defer: 0, reject: 0, review: 0 };
     const amounts = { approve: 0, verify: 0, modify: 0, defer: 0, reject: 0, review: 0 };
+    const cuts = { approve: 0, verify: 0, modify: 0, defer: 0, reject: 0, review: 0 };
 
     filteredData.forEach(request => {
         const analysis = scoreRequest(request);
@@ -4225,14 +4314,15 @@ function generateAnalyticalSummary() {
         if (scores[key] !== undefined) {
             scores[key]++;
             amounts[key] += requestAmounts.total;
+            if (requestAmounts.total < 0) cuts[key] += requestAmounts.total;
         }
     });
 
-    const tile = (label, count, amt, bg, border, textColor) => `
+    const tile = (label, count, amt, bg, border, textColor, key) => `
         <div class="detail-item" style="background: ${bg}; border: 2px solid ${border};">
             <div class="detail-label">${label}</div>
             <div class="detail-value" style="font-size: 1.5rem; color: ${textColor};">${count} Requests</div>
-            <div class="amount" style="font-size: 1.2rem; color: ${textColor};">$${formatCurrency(amt)}</div>
+            <div class="amount" style="font-size: 1.2rem; color: ${textColor};">${dispositionAmountText(amt - cuts[key], cuts[key])}</div>
         </div>
     `;
 
@@ -4240,7 +4330,7 @@ function generateAnalyticalSummary() {
     // quartile data is fully populated.
     const reviewTile = scores.review > 0
         ? tile('PBB Framework Needs Review', scores.review, amounts.review,
-               'linear-gradient(135deg, #e2e8f0, #cbd5e1)', '#64748b', '#475569')
+               'linear-gradient(135deg, #e2e8f0, #cbd5e1)', '#64748b', '#475569', 'review')
         : '';
 
     return `
@@ -4249,15 +4339,15 @@ function generateAnalyticalSummary() {
             <div class="request-details">
                 <div class="detail-grid">
                     ${tile('PBB Framework Suggests Approve', scores.approve, amounts.approve,
-                           'linear-gradient(135deg, #d4edda, #c3e6cb)', '#28a745', '#28a745')}
-                    ${tile('PBB Suggests Verify Mandate', scores.verify, amounts.verify,
-                           'linear-gradient(135deg, #e0e7ff, #c7d2fe)', '#6366f1', '#4338ca')}
+                           'linear-gradient(135deg, #d4edda, #c3e6cb)', '#28a745', '#28a745', 'approve')}
+                    ${tile('PBB Framework Suggests Verify', scores.verify, amounts.verify,
+                           'linear-gradient(135deg, #e0e7ff, #c7d2fe)', '#6366f1', '#4338ca', 'verify')}
                     ${tile('PBB Framework Suggests Modify', scores.modify, amounts.modify,
-                           'linear-gradient(135deg, #fff3cd, #ffeeba)', '#ffc107', '#856404')}
+                           'linear-gradient(135deg, #fff3cd, #ffeeba)', '#ffc107', '#856404', 'modify')}
                     ${tile('PBB Framework Suggests Defer', scores.defer, amounts.defer,
-                           'linear-gradient(135deg, #ffe5d0, #ffd1a8)', '#fd7e14', '#9a4a09')}
+                           'linear-gradient(135deg, #ffe5d0, #ffd1a8)', '#fd7e14', '#9a4a09', 'defer')}
                     ${tile('PBB Framework Suggests Reject', scores.reject, amounts.reject,
-                           'linear-gradient(135deg, #f8d7da, #f5c6cb)', '#dc3545', '#dc3545')}
+                           'linear-gradient(135deg, #f8d7da, #f5c6cb)', '#dc3545', '#dc3545', 'reject')}
                     ${reviewTile}
                 </div>
             </div>
@@ -4321,6 +4411,7 @@ function downloadAnalyticalWordReport() {
     let totalAmount = 0, totalOngoing = 0, totalOnetime = 0;
     const dStats = { approve: 0, verify: 0, modify: 0, defer: 0, reject: 0, review: 0 };
     const dAmounts = { approve: 0, verify: 0, modify: 0, defer: 0, reject: 0, review: 0 };
+    const dCuts = { approve: 0, verify: 0, modify: 0, defer: 0, reject: 0, review: 0 };
 
     filteredData.forEach(request => {
         const amounts = getRequestAmount(request);
@@ -4329,7 +4420,11 @@ function downloadAnalyticalWordReport() {
         totalOnetime += amounts.onetime;
         const analysis = scoreRequest(request);
         const disp = (analysis.disposition || '').toLowerCase();
-        if (dStats[disp] !== undefined) { dStats[disp]++; dAmounts[disp] += amounts.total; }
+        if (dStats[disp] !== undefined) {
+            dStats[disp]++;
+            dAmounts[disp] += amounts.total;
+            if (amounts.total < 0) dCuts[disp] += amounts.total;
+        }
     });
     
     // Build summary table rows
@@ -4357,8 +4452,8 @@ function downloadAnalyticalWordReport() {
                 <td style="padding: 8px; border: 1px solid #e2e8f0;">${shortDesc}</td>
                 <td style="padding: 8px; border: 1px solid #e2e8f0;">${primaryDept}</td>
                 <td style="padding: 8px; border: 1px solid #e2e8f0;">${primaryQuartile}</td>
-                <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: right;">$${formatCurrency(amounts.total)}</td>
-                <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: center; font-weight: bold;">#${analysis.archetypeNumber}</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: right;">${money(amounts.total)}</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: center; font-weight: bold;">${archetypeLabel(analysis)}</td>
                 <td style="padding: 8px; border: 1px solid #e2e8f0; background: ${dispColor}; color: white; font-weight: bold; text-align: center;">${analysis.disposition}</td>
             </tr>
         `;
@@ -4409,14 +4504,14 @@ function downloadAnalyticalWordReport() {
                         <tr>
                             <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">Department</div><div style="font-weight: 600;">${primaryDept}</div></td>
                             <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">Quartile</div><div style="font-weight: 600;">${primaryQuartile}</div></td>
-                            <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">Total Amount</div><div style="font-weight: 600; color: #10b981;">$${formatCurrency(amounts.total)}</div></td>
-                            <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">Ongoing</div><div style="font-weight: 600;">$${formatCurrency(amounts.ongoing)}</div></td>
-                            <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">One-time</div><div style="font-weight: 600;">$${formatCurrency(amounts.onetime)}</div></td>
+                            <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">Total Amount</div><div style="font-weight: 600; color: #10b981;">${money(amounts.total)}</div></td>
+                            <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">Ongoing</div><div style="font-weight: 600;">${money(amounts.ongoing)}</div></td>
+                            <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">One-time</div><div style="font-weight: 600;">${money(amounts.onetime)}</div></td>
                             <td style="width: 16%; padding: 8px; background: ${dispColor}; border-radius: 4px; text-align: center; color: white;"><div style="font-size: 10px;">Recommendation</div><div style="font-weight: 700;">${analysis.disposition}</div></td>
                         </tr>
                     </table>
                     
-                    <h4 style="color: #1e3a5f; margin: 15px 0 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">🎯 Archetype #${analysis.archetypeNumber}: ${analysis.disposition}</h4>
+                    <h4 style="color: #1e3a5f; margin: 15px 0 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">🎯 ${analysis.isReduction ? 'Reduction' : `Archetype ${archetypeLabel(analysis)}`}: ${analysis.disposition}</h4>
                     <p style="font-style: italic; color: #555; margin-bottom: 15px;">"${analysis.keyConsideration}"</p>
                     
                     <h4 style="color: #64748b; margin: 15px 0 10px;">Decision Factors (4 inputs)</h4>
@@ -4459,7 +4554,7 @@ function downloadAnalyticalWordReport() {
                     
                     <div style="margin-top: 15px; padding: 12px; background: #f0f9ff; border-radius: 6px; border-left: 4px solid #0ea5e9;">
                         <strong style="color: #0369a1;">Overall Rationale:</strong><br/>
-                        ${analysis.narrative}
+                        ${narrativeToHtml(analysis.narrative)}
                     </div>
                     
                     ${qaHtml ? `<h4 style="color: #1e3a5f; margin: 20px 0 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">Request Context & Details</h4>${qaHtml}` : ''}
@@ -4483,34 +4578,34 @@ function downloadAnalyticalWordReport() {
             </div>
             
             <h2 style="color: #1e3a5f; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">Executive Summary</h2>
-            <p>This report analyzes <strong>${filteredData.length} budget requests</strong> totaling <strong style="color: #10b981;">$${formatCurrency(totalAmount)}</strong>.</p>
+            <p>This report analyzes ${totalsSentence(splitRequestTotals(filteredData))}.</p>
             
             <table style="width: 100%; border-collapse: separate; border-spacing: 8px; margin: 20px 0;">
                 <tr>
                     <td style="width: 20%; padding: 18px; text-align: center; background: linear-gradient(135deg, #d1fae5, #a7f3d0); border-radius: 8px;">
                         <div style="font-size: 30px; font-weight: bold; color: #059669;">${dStats.approve}</div>
                         <div style="color: #065f46; font-weight: 600;">✓ APPROVE</div>
-                        <div style="font-size: 12px; color: #065f46;">$${formatCurrency(dAmounts.approve)}</div>
+                        <div style="font-size: 12px; color: #065f46;">${dispositionAmountText(dAmounts.approve - dCuts.approve, dCuts.approve)}</div>
                     </td>
                     <td style="width: 20%; padding: 18px; text-align: center; background: linear-gradient(135deg, #e0e7ff, #c7d2fe); border-radius: 8px;">
                         <div style="font-size: 30px; font-weight: bold; color: #4f46e5;">${dStats.verify}</div>
                         <div style="color: #3730a3; font-weight: 600;">🔍 VERIFY</div>
-                        <div style="font-size: 12px; color: #3730a3;">$${formatCurrency(dAmounts.verify)}</div>
+                        <div style="font-size: 12px; color: #3730a3;">${dispositionAmountText(dAmounts.verify - dCuts.verify, dCuts.verify)}</div>
                     </td>
                     <td style="width: 20%; padding: 18px; text-align: center; background: linear-gradient(135deg, #fef3c7, #fde68a); border-radius: 8px;">
                         <div style="font-size: 30px; font-weight: bold; color: #d97706;">${dStats.modify}</div>
                         <div style="color: #92400e; font-weight: 600;">⚠ MODIFY</div>
-                        <div style="font-size: 12px; color: #92400e;">$${formatCurrency(dAmounts.modify)}</div>
+                        <div style="font-size: 12px; color: #92400e;">${dispositionAmountText(dAmounts.modify - dCuts.modify, dCuts.modify)}</div>
                     </td>
                     <td style="width: 20%; padding: 18px; text-align: center; background: linear-gradient(135deg, #e2e8f0, #cbd5e1); border-radius: 8px;">
                         <div style="font-size: 30px; font-weight: bold; color: #475569;">${dStats.defer}</div>
                         <div style="color: #334155; font-weight: 600;">⏸ DEFER</div>
-                        <div style="font-size: 12px; color: #334155;">$${formatCurrency(dAmounts.defer)}</div>
+                        <div style="font-size: 12px; color: #334155;">${dispositionAmountText(dAmounts.defer - dCuts.defer, dCuts.defer)}</div>
                     </td>
                     <td style="width: 20%; padding: 18px; text-align: center; background: linear-gradient(135deg, #fee2e2, #fecaca); border-radius: 8px;">
                         <div style="font-size: 30px; font-weight: bold; color: #dc2626;">${dStats.reject}</div>
                         <div style="color: #991b1b; font-weight: 600;">✗ REJECT</div>
-                        <div style="font-size: 12px; color: #991b1b;">$${formatCurrency(dAmounts.reject)}</div>
+                        <div style="font-size: 12px; color: #991b1b;">${dispositionAmountText(dAmounts.reject - dCuts.reject, dCuts.reject)}</div>
                     </td>
                 </tr>
             </table>
@@ -4562,6 +4657,7 @@ function downloadAnalyticalPdfReport() {
     let totalAmount = 0, totalOngoing = 0, totalOnetime = 0;
     const dStats = { approve: 0, verify: 0, modify: 0, defer: 0, reject: 0, review: 0 };
     const dAmounts = { approve: 0, verify: 0, modify: 0, defer: 0, reject: 0, review: 0 };
+    const dCuts = { approve: 0, verify: 0, modify: 0, defer: 0, reject: 0, review: 0 };
     const deptStats = {};
     
     filteredData.forEach(request => {
@@ -4571,7 +4667,11 @@ function downloadAnalyticalPdfReport() {
         totalOnetime += amounts.onetime;
         const analysis = scoreRequest(request);
         const disp = (analysis.disposition || '').toLowerCase();
-        if (dStats[disp] !== undefined) { dStats[disp]++; dAmounts[disp] += amounts.total; }
+        if (dStats[disp] !== undefined) {
+            dStats[disp]++;
+            dAmounts[disp] += amounts.total;
+            if (amounts.total < 0) dCuts[disp] += amounts.total;
+        }
         
         const requestId = getRequestId(request);
         const lineItems = getLineItemsForRequest(requestId);
@@ -4606,8 +4706,8 @@ function downloadAnalyticalPdfReport() {
             <td>${shortDesc}</td>
             <td>${primaryDept}</td>
             <td><span class="badge ${qBadge}">${primaryQuartile}</span></td>
-            <td class="amount">$${formatCurrency(amounts.total)}</td>
-            <td style="text-align: center; font-weight: bold;">#${analysis.archetypeNumber}</td>
+            <td class="${amountClass(amounts.total)}">${money(amounts.total)}</td>
+            <td style="text-align: center; font-weight: bold;">${archetypeLabel(analysis)}</td>
             <td><span class="badge ${dispBadge}">${analysis.disposition}</span></td>
         </tr>`;
     });
@@ -4682,15 +4782,15 @@ function downloadAnalyticalPdfReport() {
                         <!-- Archetype Badge -->
                         <div style="text-align: center; padding: 15px; margin-bottom: 15px; background: linear-gradient(135deg, ${dispColor}15, ${dispColor}05); border-radius: 8px; border: 2px solid ${dispColor};">
                             <div style="font-size: 8px; color: #666; text-transform: uppercase;">Archetype</div>
-                            <div style="font-size: 24px; font-weight: 800; color: ${dispColor};">#${analysis.archetypeNumber} ${analysis.disposition}</div>
+                            <div style="font-size: 24px; font-weight: 800; color: ${dispColor};">${archetypeLabel(analysis)} · ${analysis.disposition}</div>
                             <div style="font-size: 9px; color: #444; font-style: italic;">"${analysis.keyConsideration}"</div>
                         </div>
                         
                         <div class="meta-grid">
                             <div class="meta-item"><div class="meta-label">Department</div><div class="meta-value">${primaryDept}</div></div>
-                            <div class="meta-item"><div class="meta-label">Total Amount</div><div class="meta-value amount">$${formatCurrency(amounts.total)}</div></div>
-                            <div class="meta-item"><div class="meta-label">Ongoing</div><div class="meta-value">$${formatCurrency(amounts.ongoing)}</div></div>
-                            <div class="meta-item"><div class="meta-label">One-time</div><div class="meta-value">$${formatCurrency(amounts.onetime)}</div></div>
+                            <div class="meta-item"><div class="meta-label">Total Amount</div><div class="meta-value ${amountClass(amounts.total)}">${money(amounts.total)}</div></div>
+                            <div class="meta-item"><div class="meta-label">Ongoing</div><div class="meta-value">${money(amounts.ongoing)}</div></div>
+                            <div class="meta-item"><div class="meta-label">One-time</div><div class="meta-value">${money(amounts.onetime)}</div></div>
                         </div>
                         
                         <h4 class="section-header">Decision Factors (4 inputs)</h4>
@@ -4707,7 +4807,7 @@ function downloadAnalyticalPdfReport() {
                             ${includeAccessEquity ? `<div class="score-card"><div class="score-name">Access/Equity</div><div class="score-value">${analysis.accessScore}/2</div><div class="score-reason">${analysis.accessReason}</div></div>` : ''}
                         </div>
                         
-                        <div class="rationale-box"><strong>Overall Rationale:</strong> ${analysis.narrative}</div>
+                        <div class="rationale-box"><div class="rationale-title">Overall Rationale</div>${narrativeToHtml(analysis.narrative)}</div>
                         
                         ${qaHtml ? `<h4 class="section-header">Request Context & Details</h4><div class="qa-section">${qaHtml}</div>` : ''}
                         
@@ -4722,7 +4822,7 @@ function downloadAnalyticalPdfReport() {
     const pdfHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PBB Analysis Report</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-@page { size: A4; margin: 0.5in; }
+@page { size: A4; margin: 0.5in; @top-left { content: ""; } @top-center { content: ""; } @top-right { content: ""; } @bottom-left { content: ""; } @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; color: #94a3b8; font-family: 'Inter', sans-serif; } }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; background: white; font-size: 10px; }
 
@@ -4739,8 +4839,9 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
 .cover-footer { padding: 40px 60px; border-top: 1px solid rgba(255,255,255,0.2); display: flex; justify-content: space-between; font-size: 12px; opacity: 0.7; }
 
 /* Content Pages */
-.content-page, .request-page { padding: 35px 45px; }
-.page-header { display: flex; justify-content: space-between; padding-bottom: 10px; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px; }
+/* No bottom padding: trailing padding on a full page spills onto a blank page. */
+.content-page, .request-page { padding: 35px 45px 0; }
+.page-header { display: flex; justify-content: space-between; padding-bottom: 10px; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px; break-after: avoid; }
 .page-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; font-weight: 600; }
 .page-number { font-size: 10px; color: #64748b; }
 .section-title { font-size: 22px; font-weight: 700; color: #059669; margin-bottom: 6px; }
@@ -4783,6 +4884,7 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
 .badge-high { background: #10b981; color: white; }
 .badge-low { background: #64748b; color: white; }
 .amount { color: #059669; font-weight: 600; }
+.amount.neg { color: #dc2626; }
 
 /* Request Cards */
 .request-card { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
@@ -4803,6 +4905,8 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
 
 /* Rationale Box */
 .rationale-box { margin: 15px 0; padding: 12px; background: #f0fdf4; border-radius: 6px; border-left: 4px solid #10b981; font-size: 10px; line-height: 1.5; }
+.rationale-title { font-weight: 700; color: #065f46; margin-bottom: 6px; }
+.rationale-box li, .rationale-box p { break-inside: avoid; }
 
 /* Q&A Section */
 .qa-section { margin-bottom: 15px; }
@@ -4821,8 +4925,7 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
 @media print { 
     .page-break { page-break-before: always; } 
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .request-card { break-inside: avoid; }
-    .score-card { break-inside: avoid; }
+    .score-card, .qa-item, .line-item-card, .meta-grid, .scoring-grid { break-inside: avoid; }
 }
 </style></head><body>
 
@@ -4833,9 +4936,11 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
         <h1 class="cover-title">PBB Analysis &<br>Recommendations Report</h1>
         <p class="cover-subtitle">Comprehensive Priority Based Budgeting Framework Scoring</p>
         <div class="cover-stats">
+            ${(() => { const t = splitRequestTotals(filteredData); return `
             <div class="cover-stat"><div class="cover-stat-value">${filteredData.length}</div><div class="cover-stat-label">Requests Analyzed</div></div>
-            <div class="cover-stat"><div class="cover-stat-value">$${formatCurrency(totalAmount)}</div><div class="cover-stat-label">Total Amount</div></div>
-            <div class="cover-stat"><div class="cover-stat-value">${dStats.approve}</div><div class="cover-stat-label">Recommended Approvals</div></div>
+            <div class="cover-stat"><div class="cover-stat-value">${money(t.increases)}</div><div class="cover-stat-label">Increases</div></div>
+            <div class="cover-stat"><div class="cover-stat-value">${money(Math.abs(t.reductions))}</div><div class="cover-stat-label">Reductions</div></div>
+            <div class="cover-stat"><div class="cover-stat-value">${dStats.approve}</div><div class="cover-stat-label">Recommended Approvals</div></div>`; })()}
         </div>
     </div>
     <div class="cover-footer"><span>Generated on ${reportDate}</span><span>Advisory Analysis • Not Binding Decisions</span></div>
@@ -4845,14 +4950,14 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
 <div class="content-page page-break">
     <div class="page-header"><span class="page-title">Executive Summary</span></div>
     <h2 class="section-title">PBB Framework Recommendations</h2>
-    <p class="section-subtitle">Analysis of ${filteredData.length} budget requests totaling $${formatCurrency(totalAmount)}</p>
+    <p class="section-subtitle">Analysis of ${totalsSentence(splitRequestTotals(filteredData))}</p>
     
     <div class="summary-cards">
-        <div class="summary-card approve"><div class="summary-card-value">${dStats.approve}</div><div class="summary-card-label">✓ Approve</div><div class="summary-card-amount">$${formatCurrency(dAmounts.approve)}</div></div>
-        <div class="summary-card verify"><div class="summary-card-value">${dStats.verify}</div><div class="summary-card-label">🔍 Verify Mandate</div><div class="summary-card-amount">$${formatCurrency(dAmounts.verify)}</div></div>
-        <div class="summary-card modify"><div class="summary-card-value">${dStats.modify}</div><div class="summary-card-label">⚠ Modify</div><div class="summary-card-amount">$${formatCurrency(dAmounts.modify)}</div></div>
-        <div class="summary-card defer"><div class="summary-card-value">${dStats.defer}</div><div class="summary-card-label">⏸ Defer</div><div class="summary-card-amount">$${formatCurrency(dAmounts.defer)}</div></div>
-        <div class="summary-card reject"><div class="summary-card-value">${dStats.reject}</div><div class="summary-card-label">✗ Reject</div><div class="summary-card-amount">$${formatCurrency(dAmounts.reject)}</div></div>
+        <div class="summary-card approve"><div class="summary-card-value">${dStats.approve}</div><div class="summary-card-label">✓ Approve</div><div class="summary-card-amount">${dispositionAmountText(dAmounts.approve - dCuts.approve, dCuts.approve)}</div></div>
+        <div class="summary-card verify"><div class="summary-card-value">${dStats.verify}</div><div class="summary-card-label">🔍 Verify</div><div class="summary-card-amount">${dispositionAmountText(dAmounts.verify - dCuts.verify, dCuts.verify)}</div></div>
+        <div class="summary-card modify"><div class="summary-card-value">${dStats.modify}</div><div class="summary-card-label">⚠ Modify</div><div class="summary-card-amount">${dispositionAmountText(dAmounts.modify - dCuts.modify, dCuts.modify)}</div></div>
+        <div class="summary-card defer"><div class="summary-card-value">${dStats.defer}</div><div class="summary-card-label">⏸ Defer</div><div class="summary-card-amount">${dispositionAmountText(dAmounts.defer - dCuts.defer, dCuts.defer)}</div></div>
+        <div class="summary-card reject"><div class="summary-card-value">${dStats.reject}</div><div class="summary-card-label">✗ Reject</div><div class="summary-card-amount">${dispositionAmountText(dAmounts.reject - dCuts.reject, dCuts.reject)}</div></div>
     </div>
     
     <h3 style="font-size: 16px; color: #1e3a5f; margin: 25px 0 12px;">All Requests Summary</h3>
@@ -4871,7 +4976,7 @@ ${detailedPagesHtml}
     newWindow.document.write(pdfHtml);
     newWindow.document.close();
     newWindow.focus();
-    setTimeout(() => alert('Comprehensive PBB Analysis Report opened!\\n\\nTo save as PDF:\\n1. Press Ctrl+P (Cmd+P on Mac)\\n2. Select "Save as PDF"\\n3. Click Save'), 500);
+    setTimeout(() => alert('Comprehensive PBB Analysis Report opened!\\n\\nTo save as PDF:\\n1. Press Ctrl+P (Cmd+P on Mac)\\n2. Select "Save as PDF"\\n3. Click Save\\n\\nIf a date or "about:blank" prints at the top of each page, turn off "Headers and footers" under More settings.'), 500);
 }
 
 function generateRequestQASection(qa) {
@@ -5103,7 +5208,7 @@ function generateWordProgramSummary() {
         const amounts = getRequestAmount(request);
         
         lineItems.forEach(item => {
-            const dept = getPrimaryValue([item], 'department') || 'Unknown Department';
+            const dept = getProgramOwnerDept(item);
             const program = getPrimaryValue([item], 'program') || 'Unknown Program';
             const quartile = getPrimaryValue([item], 'quartile') || 'N/A';
             
@@ -5189,9 +5294,9 @@ function generateWordProgramSummary() {
                 <tr style="border-bottom: 1px solid #ddd;">
                     <td style="padding: 6px 4px; text-align: center;">${quartileBadge}</td>
                     <td style="padding: 6px 4px; font-size: 10px;">${program}</td>
-                    <td style="padding: 6px 4px; text-align: right;">$${formatCurrency(Math.round(data.totalCost))}</td>
-                    <td style="padding: 6px 4px; text-align: right; color: #ffc107;" class="amount">$${formatCurrency(Math.round(data.requestedAmount))}</td>
-                    <td style="padding: 6px 4px; text-align: right; color: #28a745;" class="amount">$${formatCurrency(Math.round(data.proposedTotalCost))}</td>
+                    <td style="padding: 6px 4px; text-align: right;">${money(Math.round(data.totalCost))}</td>
+                    <td style="padding: 6px 4px; text-align: right; color: #ffc107;" class="amount">${money(Math.round(data.requestedAmount))}</td>
+                    <td style="padding: 6px 4px; text-align: right; color: #28a745;" class="amount">${money(Math.round(data.proposedTotalCost))}</td>
                 </tr>
             `;
         });
@@ -5200,19 +5305,18 @@ function generateWordProgramSummary() {
                 <tr style="background: #f8f9ff; border-top: 2px solid #667eea; font-weight: 600;">
                     <td style="padding: 8px 4px; text-align: center; color: #667eea;">TOTAL</td>
                     <td style="padding: 8px 4px; color: #667eea; font-size: 10px;">${dept} Total</td>
-                    <td style="padding: 8px 4px; text-align: right;">$${formatCurrency(Math.round(departmentTotal.totalCost))}</td>
-                    <td style="padding: 8px 4px; text-align: right; color: #ffc107;">$${formatCurrency(Math.round(departmentTotal.requestedAmount))}</td>
-                    <td style="padding: 8px 4px; text-align: right; color: #28a745;">$${formatCurrency(Math.round(departmentTotal.proposedTotalCost))}</td>
+                    <td style="padding: 8px 4px; text-align: right;">${money(Math.round(departmentTotal.totalCost))}</td>
+                    <td style="padding: 8px 4px; text-align: right; color: #ffc107;">${money(Math.round(departmentTotal.requestedAmount))}</td>
+                    <td style="padding: 8px 4px; text-align: right; color: #28a745;">${money(Math.round(departmentTotal.proposedTotalCost))}</td>
                 </tr>
             </tbody>
         </table>
         
         <div style="margin-top: 10px; padding: 8px; background: #f0f8ff; border-radius: 5px; font-size: 10px;">
-            <strong>Impact:</strong> ${Object.keys(programs).length} programs requesting 
-            <span class="amount">$${formatCurrency(Math.round(departmentTotal.requestedAmount))}</span>, 
-            increasing budget from $${formatCurrency(Math.round(departmentTotal.totalCost))} to 
-            <span class="amount">$${formatCurrency(Math.round(departmentTotal.proposedTotalCost))}</span> 
-            (${((departmentTotal.requestedAmount / departmentTotal.totalCost) * 100).toFixed(1)}% increase).
+            <strong>Impact:</strong> ${Object.keys(programs).length} program${Object.keys(programs).length === 1 ? '' : 's'}, net change
+            <span class="amount">${signedMoney(departmentTotal.requestedAmount)}</span>:
+            budget ${money(departmentTotal.totalCost)} →
+            <span class="amount">${money(departmentTotal.proposedTotalCost)}</span>${departmentTotal.totalCost > 0 ? ` (${signedPct(departmentTotal.requestedAmount, departmentTotal.totalCost)})` : ''}.
         </div>
         
         </div>
@@ -5466,7 +5570,7 @@ function downloadWordReport() {
     // Executive Summary
     wordHtml += `
         <div class="section-header">Executive Summary</div>
-        <p>This comprehensive report analyzes <strong>${filteredData.length} budget requests</strong> totaling <strong class="amount">$${formatCurrency(totalAmount)}</strong> in requested funding. The requests span multiple departments and programs, with varying levels of alignment to organizational priorities.</p>
+        <p>This comprehensive report analyzes ${totalsSentence(splitRequestTotals(filteredData))}. The requests span multiple departments and programs, with varying levels of alignment to organizational priorities.</p>
     `;
 
     // Filter Summary with page break
@@ -5541,7 +5645,7 @@ function generateWordDetailedRequests() {
                         </div>
                         <div class="detail-row">
                             <div class="detail-cell detail-label">Total Amount:</div>
-                            <div class="detail-cell detail-value amount">$${formatCurrency(amounts.total)}</div>
+                            <div class="detail-cell detail-value amount">${money(amounts.total)}</div>
                         </div>
                     </div>
         `;
@@ -5796,7 +5900,7 @@ function generateWordVisualAnalysis() {
             <tr>
                 <td>${dept}</td>
                 <td style="font-family: monospace; font-size: 14px; color: #667eea;">${bar} ${Math.round(percentage)}%</td>
-                <td style="text-align: right;" class="amount">$${formatCurrency(amount)}</td>
+                <td style="text-align: right;" class="amount">${money(amount)}</td>
             </tr>
         `;
     });
@@ -5838,7 +5942,7 @@ function generateWordVisualAnalysis() {
             <tr>
                 <td><span class="quartile-badge quartile-${badgeClass}">${quartile}</span></td>
                 <td style="font-family: monospace; font-size: 14px; color: ${quartileColors[quartile]};">${bar} ${Math.round(percentage)}%</td>
-                <td style="text-align: right;" class="amount">$${formatCurrency(amount)}</td>
+                <td style="text-align: right;" class="amount">${money(amount)}</td>
             </tr>
         `;
     });
@@ -5930,7 +6034,7 @@ function generateWordRequestTable() {
                 <td style="padding: 6px 4px;">${primaryDept}</td>
                 <td style="padding: 6px 4px; font-size: 0.8rem;">${shortProgram}</td>
                 <td style="padding: 6px 4px; text-align: center;">${quartileBadge}${quartileNoteHtml(programInfo.quartileNote, '0.65rem')}</td>
-                <td style="padding: 6px 4px; text-align: right; font-weight: 600;" class="amount">$${formatCurrency(amounts.total)}</td>
+                <td style="padding: 6px 4px; text-align: right; font-weight: 600;" class="amount">${money(amounts.total)}</td>
             </tr>
         `;
     });
@@ -5999,7 +6103,7 @@ function generateWordDepartmentSummary() {
                             <div style="font-size: 0.8rem; color: #666;">Programs</div>
                         </div>
                         <div style="background: #f8f9ff; padding: 10px; border-radius: 5px;">
-                            <div style="font-size: 1.1rem; font-weight: bold; color: #28a745;">$${formatCurrency(data.amount)}</div>
+                            <div style="font-size: 1.1rem; font-weight: bold; color: #28a745;">${money(data.amount)}</div>
                             <div style="font-size: 0.8rem; color: #666;">Total</div>
                         </div>
                     </div>
@@ -6008,19 +6112,19 @@ function generateWordDepartmentSummary() {
                     <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; font-size: 0.8rem;">
                         <div style="display: flex; justify-content: space-between; padding: 4px 8px; background: #f0f8f0; border-radius: 3px;">
                             <span>Most Aligned:</span>
-                            <span class="amount">$${formatCurrency(data.quartiles['Most Aligned'])}</span>
+                            <span class="amount">${money(data.quartiles['Most Aligned'])}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 4px 8px; background: #f0f8ff; border-radius: 3px;">
                             <span>More Aligned:</span>
-                            <span class="amount">$${formatCurrency(data.quartiles['More Aligned'])}</span>
+                            <span class="amount">${money(data.quartiles['More Aligned'])}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 4px 8px; background: #fff8f0; border-radius: 3px;">
                             <span>Less Aligned:</span>
-                            <span class="amount">$${formatCurrency(data.quartiles['Less Aligned'])}</span>
+                            <span class="amount">${money(data.quartiles['Less Aligned'])}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; padding: 4px 8px; background: #fff0f0; border-radius: 3px;">
                             <span>Least Aligned:</span>
-                            <span class="amount">$${formatCurrency(data.quartiles['Least Aligned'])}</span>
+                            <span class="amount">${money(data.quartiles['Least Aligned'])}</span>
                         </div>
                     </div>
                 </div>
@@ -6058,7 +6162,7 @@ function generateWordDetailedRequests() {
                         </div>
                         <div style="background: #f0f8f0; padding: 12px; border-radius: 8px; border-left: 4px solid #28a745;">
                             <div style="font-size: 0.8rem; color: #666; margin-bottom: 5px;">Total Amount</div>
-                            <div style="font-size: 1.1rem; font-weight: 600; color: #28a745;">$${formatCurrency(amounts.total)}</div>
+                            <div style="font-size: 1.1rem; font-weight: 600; color: #28a745;">${money(amounts.total)}</div>
                         </div>
                         <div style="background: #fff8f0; padding: 12px; border-radius: 8px; border-left: 4px solid #ffc107;">
                             <div style="font-size: 0.8rem; color: #666; margin-bottom: 5px;">Line Items</div>
@@ -6133,7 +6237,7 @@ function generateWordDetailedRequests() {
                                 // Check if the value is numeric
                                 const numValue = parseFloat(value);
                                 if (!isNaN(numValue)) {
-                                    displayValue = `$${formatCurrency(numValue)}`;
+                                    displayValue = `${money(numValue)}`;
                                 }
                             }
 
@@ -6168,8 +6272,11 @@ function downloadPdfReport() {
     
     const reportDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     let totalAmount = 0, totalOngoing = 0, totalOnetime = 0;
+    // Increases and reductions tracked separately per quartile and department.
     const quartileStats = { 'Most Aligned': 0, 'More Aligned': 0, 'Less Aligned': 0, 'Least Aligned': 0 };
+    const quartileCuts = { 'Most Aligned': 0, 'More Aligned': 0, 'Less Aligned': 0, 'Least Aligned': 0 };
     const deptStats = {};
+    const totals = splitRequestTotals(filteredData);
     
     filteredData.forEach(request => {
         const amounts = getRequestAmount(request);
@@ -6181,19 +6288,23 @@ function downloadPdfReport() {
         const lineItems = getLineItemsForRequest(requestId);
         const dept = getPrimaryValue(lineItems, 'department') || 'Unknown';
         
-        if (!deptStats[dept]) deptStats[dept] = { count: 0, amount: 0 };
+        if (!deptStats[dept]) deptStats[dept] = { count: 0, amount: 0, increases: 0, reductions: 0 };
         deptStats[dept].count++;
         deptStats[dept].amount += amounts.total;
+        if (amounts.total > 0) deptStats[dept].increases += amounts.total;
+        else deptStats[dept].reductions += amounts.total;
         
         lineItems.forEach(item => {
             const quartile = getPrimaryValue([item], 'quartile');
             if (quartile && quartileStats.hasOwnProperty(quartile)) {
                 // Use ACTUAL line item cost
-                const lineItemAmount = getLineItemAmount(item);
-                quartileStats[quartile] += lineItemAmount.total;
+                const amt = getLineItemAmount(item).total;
+                if (amt >= 0) quartileStats[quartile] += amt;
+                else quartileCuts[quartile] += amt;
             }
         });
     });
+    const quartileIncreaseTotal = Object.values(quartileStats).reduce((a, b) => a + b, 0);
     
     // Build request table rows
     let tableRows = '';
@@ -6213,18 +6324,20 @@ function downloadPdfReport() {
             <td>${shortDesc}</td>
             <td>${primaryDept}</td>
             <td><span class="badge ${qBadge}">${primaryQuartile}</span></td>
-            <td class="amount">$${formatCurrency(amounts.total)}</td>
+            <td class="${amountClass(amounts.total)}" style="text-align: right;">${money(amounts.total)}</td>
         </tr>`;
     });
     
     // Build department summary
     let deptRows = '';
-    Object.entries(deptStats).sort((a, b) => b[1].amount - a[1].amount).forEach(([dept, stats]) => {
+    Object.entries(deptStats).sort((a, b) => b[1].increases - a[1].increases || a[1].reductions - b[1].reductions).forEach(([dept, stats]) => {
         deptRows += `<tr>
             <td>${dept}</td>
             <td style="text-align: center;">${stats.count}</td>
-            <td class="amount">$${formatCurrency(stats.amount)}</td>
-            <td style="text-align: center;">${((stats.amount / totalAmount) * 100).toFixed(1)}%</td>
+            <td class="amount" style="text-align: right;">${stats.increases ? money(stats.increases) : '—'}</td>
+            <td class="amount neg" style="text-align: right;">${stats.reductions ? money(stats.reductions) : '—'}</td>
+            <td class="${amountClass(stats.amount)}" style="text-align: right;">${signedMoney(stats.amount)}</td>
+            <td style="text-align: center;">${totals.increases > 0 && stats.increases ? Math.round(stats.increases / totals.increases * 100) + '%' : '—'}</td>
         </tr>`;
     });
     
@@ -6236,14 +6349,16 @@ function downloadPdfReport() {
         const amounts = getRequestAmount(request);
         
         lineItems.forEach(item => {
-            const dept = getPrimaryValue([item], 'department') || 'Unknown Department';
+            const requestingDept = getPrimaryValue([item], 'department') || 'Unknown Department';
+            const dept = getProgramOwnerDept(item);
             const program = getPrimaryValue([item], 'program') || 'Unknown Program';
             const quartile = getPrimaryValue([item], 'quartile') || 'N/A';
             
             if (!programData[dept]) programData[dept] = {};
             if (!programData[dept][program]) {
-                programData[dept][program] = { quartile: quartile, totalCost: 0, requestedAmount: 0, proposedTotalCost: 0 };
+                programData[dept][program] = { quartile: quartile, totalCost: 0, requestedAmount: 0, proposedTotalCost: 0, requestedBy: new Set() };
             }
+            if (requestingDept !== dept) programData[dept][program].requestedBy.add(requestingDept);
             // Use ACTUAL line item cost (not divided total)
             const lineItemAmount = getLineItemAmount(item);
             programData[dept][program].requestedAmount += lineItemAmount.total;
@@ -6278,10 +6393,10 @@ function downloadPdfReport() {
             const qClass = data.quartile.includes('Most') ? 'badge-q1' : data.quartile.includes('More') ? 'badge-q2' : data.quartile.includes('Less') ? 'badge-q3' : 'badge-q4';
             programRows += `<tr>
                 <td><span class="badge ${qClass}">${data.quartile}</span></td>
-                <td>${program}</td>
-                <td style="text-align: right;">$${formatCurrency(Math.round(data.totalCost))}</td>
-                <td style="text-align: right;" class="amount">$${formatCurrency(Math.round(data.requestedAmount))}</td>
-                <td style="text-align: right;" class="amount">$${formatCurrency(Math.round(data.proposedTotalCost))}</td>
+                <td>${program}${data.requestedBy.size ? `<div style="font-size: 8px; color: #64748b;">incl. requests from ${[...data.requestedBy].join(', ')}</div>` : ''}</td>
+                <td style="text-align: right;">${money(Math.round(data.totalCost))}</td>
+                <td style="text-align: right;" class="${amountClass(data.requestedAmount)}">${signedMoney(data.requestedAmount)}</td>
+                <td style="text-align: right;">${money(Math.round(data.proposedTotalCost))}</td>
             </tr>`;
         });
         
@@ -6295,16 +6410,15 @@ function downloadPdfReport() {
                             ${programRows}
                             <tr class="total-row">
                                 <td colspan="2"><strong>${dept} Total</strong></td>
-                                <td style="text-align: right;"><strong>$${formatCurrency(Math.round(deptTotal.totalCost))}</strong></td>
-                                <td style="text-align: right;" class="amount"><strong>$${formatCurrency(Math.round(deptTotal.requestedAmount))}</strong></td>
-                                <td style="text-align: right;" class="amount"><strong>$${formatCurrency(Math.round(deptTotal.proposedTotalCost))}</strong></td>
+                                <td style="text-align: right;"><strong>${money(Math.round(deptTotal.totalCost))}</strong></td>
+                                <td style="text-align: right;" class="${amountClass(deptTotal.requestedAmount)}"><strong>${signedMoney(deptTotal.requestedAmount)}</strong></td>
+                                <td style="text-align: right;"><strong>${money(Math.round(deptTotal.proposedTotalCost))}</strong></td>
                             </tr>
                         </tbody>
                     </table>
                     <div class="impact-note">
-                        <strong>Impact:</strong> ${Object.keys(programs).length} programs requesting $${formatCurrency(Math.round(deptTotal.requestedAmount))}, 
-                        increasing budget from $${formatCurrency(Math.round(deptTotal.totalCost))} to $${formatCurrency(Math.round(deptTotal.proposedTotalCost))} 
-                        (${((deptTotal.requestedAmount / deptTotal.totalCost) * 100).toFixed(1)}% increase)
+                        <strong>Impact:</strong> ${Object.keys(programs).length} program${Object.keys(programs).length === 1 ? '' : 's'}, net change ${signedMoney(deptTotal.requestedAmount)}:
+                        budget ${money(deptTotal.totalCost)} → ${money(deptTotal.proposedTotalCost)}${deptTotal.totalCost > 0 ? ` (${signedPct(deptTotal.requestedAmount, deptTotal.totalCost)})` : ''}
                     </div>
                 </div>
             </div>
@@ -6423,11 +6537,11 @@ function downloadPdfReport() {
                     <div class="request-body">
                         <div class="request-meta-grid">
                             <div class="meta-item"><div class="meta-label">Request ID</div><div class="meta-value">${requestId}</div></div>
-                            <div class="meta-item"><div class="meta-label">Total Amount</div><div class="meta-value amount">$${formatCurrency(amounts.total)}</div></div>
+                            <div class="meta-item"><div class="meta-label">Total Amount</div><div class="meta-value ${amountClass(amounts.total)}">${money(amounts.total)}</div></div>
                             <div class="meta-item"><div class="meta-label">Department</div><div class="meta-value">${primaryDept}</div></div>
                             <div class="meta-item"><div class="meta-label">Quartile</div><div class="meta-value">${primaryQuartile}</div></div>
                             <div class="meta-item"><div class="meta-label">Line Items</div><div class="meta-value">${lineItems.length}</div></div>
-                            <div class="meta-item"><div class="meta-label">Ongoing</div><div class="meta-value">$${formatCurrency(amounts.ongoing)}</div></div>
+                            <div class="meta-item"><div class="meta-label">Ongoing</div><div class="meta-value">${money(amounts.ongoing)}</div></div>
                         </div>
                         ${qaHtml ? `<div class="qa-section"><h4>Request Context & Details</h4>${qaHtml}</div>` : ''}
                         <div class="line-items-section"><h4>Line Item Details</h4>${lineItemsHtml}</div>
@@ -6440,7 +6554,7 @@ function downloadPdfReport() {
     const pdfHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Priority Based Budgeting Report</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-@page { size: A4; margin: 0.5in; }
+@page { size: A4; margin: 0.5in; @top-left { content: ""; } @top-center { content: ""; } @top-right { content: ""; } @bottom-left { content: ""; } @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; color: #94a3b8; font-family: 'Inter', sans-serif; } }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; background: white; font-size: 11px; }
 
@@ -6457,8 +6571,9 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
 .cover-footer { padding: 40px 60px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; font-size: 12px; opacity: 0.7; }
 
 /* Content Pages */
-.content-page { padding: 40px 50px; }
-.page-header { display: flex; justify-content: space-between; padding-bottom: 12px; border-bottom: 2px solid #e2e8f0; margin-bottom: 25px; }
+/* No bottom padding: trailing padding on a full page spills onto a blank page. */
+.content-page { padding: 40px 50px 0; }
+.page-header { display: flex; justify-content: space-between; padding-bottom: 12px; border-bottom: 2px solid #e2e8f0; margin-bottom: 25px; break-after: avoid; }
 .page-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; font-weight: 600; }
 .page-number { font-size: 11px; color: #64748b; }
 .section-title { font-size: 24px; font-weight: 700; color: #1e3a5f; margin-bottom: 6px; }
@@ -6466,9 +6581,9 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
 .page-break { page-break-before: always; }
 
 /* Stats Grid */
-.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
-.stat-card { padding: 20px; border-radius: 10px; text-align: center; background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
-.stat-value { font-size: 26px; font-weight: 700; display: block; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 30px; }
+.stat-card { padding: 18px 10px; border-radius: 10px; text-align: center; background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+.stat-value { font-size: 21px; font-weight: 700; display: block; white-space: nowrap; }
 .stat-label { font-size: 11px; opacity: 0.9; margin-top: 4px; }
 
 /* Quartile Grid */
@@ -6508,6 +6623,8 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
 .badge-q3 { background: #f59e0b; color: white; }
 .badge-q4 { background: #ef4444; color: white; }
 .amount { color: #10b981; font-weight: 600; }
+.amount.neg { color: #dc2626; }
+.quartile-cut { font-size: 9px; color: #dc2626; margin-top: 2px; }
 
 /* Department Cards */
 .dept-card { margin-bottom: 25px; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; page-break-inside: avoid; }
@@ -6516,7 +6633,7 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
 .impact-note { margin-top: 12px; padding: 10px; background: #f0f9ff; border-radius: 6px; font-size: 11px; color: #0369a1; border-left: 3px solid #0ea5e9; }
 
 /* Request Detail Pages */
-.request-detail-page { padding: 30px 40px; }
+.request-detail-page { padding: 30px 40px 0; }
 .request-card { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
 .request-header { background: linear-gradient(135deg, #1e3a5f, #2a4a73); color: white; padding: 15px 20px; font-weight: 600; font-size: 14px; }
 .request-body { padding: 20px; }
@@ -6561,7 +6678,8 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
         <p class="cover-subtitle">Comprehensive Budget Request Analysis</p>
         <div class="cover-stats">
             <div class="cover-stat"><div class="cover-stat-value">${filteredData.length}</div><div class="cover-stat-label">Budget Requests</div></div>
-            <div class="cover-stat"><div class="cover-stat-value">$${formatCurrency(totalAmount)}</div><div class="cover-stat-label">Total Amount</div></div>
+            <div class="cover-stat"><div class="cover-stat-value">${money(totals.increases)}</div><div class="cover-stat-label">Increases</div></div>
+            <div class="cover-stat"><div class="cover-stat-value">${money(Math.abs(totals.reductions))}</div><div class="cover-stat-label">Reductions</div></div>
             <div class="cover-stat"><div class="cover-stat-value">${Object.keys(deptStats).length}</div><div class="cover-stat-label">Departments</div></div>
         </div>
     </div>
@@ -6572,29 +6690,29 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
 <div class="content-page page-break">
     <div class="page-header"><span class="page-title">Executive Summary</span></div>
     <h2 class="section-title">Budget Request Overview</h2>
-    <p class="section-subtitle">Analysis of ${filteredData.length} budget requests totaling $${formatCurrency(totalAmount)}</p>
+    <p class="section-subtitle">Analysis of ${totalsSentence(splitRequestTotals(filteredData))}</p>
     
     <div class="stats-grid">
         <div class="stat-card"><span class="stat-value">${filteredData.length}</span><div class="stat-label">Total Requests</div></div>
-        <div class="stat-card"><span class="stat-value">$${formatCurrency(totalOngoing)}</span><div class="stat-label">Ongoing</div></div>
-        <div class="stat-card"><span class="stat-value">$${formatCurrency(totalOnetime)}</span><div class="stat-label">One-time</div></div>
-        <div class="stat-card"><span class="stat-value">$${formatCurrency(totalAmount)}</span><div class="stat-label">Total Amount</div></div>
+        <div class="stat-card"><span class="stat-value">${money(totals.increases)}</span><div class="stat-label">Increases (${totals.increaseCount})</div></div>
+        <div class="stat-card"><span class="stat-value">${money(totals.reductions)}</span><div class="stat-label">Reductions (${totals.reductionCount})</div></div>
+        <div class="stat-card"><span class="stat-value">${signedMoney(totals.net)}</span><div class="stat-label">Net Change</div></div>
     </div>
     
-    <h3 style="font-size: 16px; color: #1e3a5f; margin: 25px 0 15px;">Quartile Distribution</h3>
+    <h3 style="font-size: 16px; color: #1e3a5f; margin: 25px 0 15px;">Quartile Distribution <span style="font-size: 11px; font-weight: 400; color: #64748b;">— increases by program quartile</span></h3>
     <div class="quartile-grid">
-        <div class="quartile-card q1"><div class="quartile-value">$${formatCurrency(quartileStats['Most Aligned'])}</div><div class="quartile-label">Most Aligned (Q1)</div></div>
-        <div class="quartile-card q2"><div class="quartile-value">$${formatCurrency(quartileStats['More Aligned'])}</div><div class="quartile-label">More Aligned (Q2)</div></div>
-        <div class="quartile-card q3"><div class="quartile-value">$${formatCurrency(quartileStats['Less Aligned'])}</div><div class="quartile-label">Less Aligned (Q3)</div></div>
-        <div class="quartile-card q4"><div class="quartile-value">$${formatCurrency(quartileStats['Least Aligned'])}</div><div class="quartile-label">Least Aligned (Q4)</div></div>
+        <div class="quartile-card q1"><div class="quartile-value">${money(quartileStats['Most Aligned'])}</div><div class="quartile-label">Most Aligned (Q1)</div>${quartileCuts['Most Aligned'] ? `<div class="quartile-cut">${money(quartileCuts['Most Aligned'])} in reductions</div>` : ''}</div>
+        <div class="quartile-card q2"><div class="quartile-value">${money(quartileStats['More Aligned'])}</div><div class="quartile-label">More Aligned (Q2)</div>${quartileCuts['More Aligned'] ? `<div class="quartile-cut">${money(quartileCuts['More Aligned'])} in reductions</div>` : ''}</div>
+        <div class="quartile-card q3"><div class="quartile-value">${money(quartileStats['Less Aligned'])}</div><div class="quartile-label">Less Aligned (Q3)</div>${quartileCuts['Less Aligned'] ? `<div class="quartile-cut">${money(quartileCuts['Less Aligned'])} in reductions</div>` : ''}</div>
+        <div class="quartile-card q4"><div class="quartile-value">${money(quartileStats['Least Aligned'])}</div><div class="quartile-label">Least Aligned (Q4)</div>${quartileCuts['Least Aligned'] ? `<div class="quartile-cut">${money(quartileCuts['Least Aligned'])} in reductions</div>` : ''}</div>
     </div>
     
     <h3 style="font-size: 16px; color: #1e3a5f; margin: 25px 0 15px;">Key Findings</h3>
     <div class="findings-grid">
-        <div class="finding-card"><div class="finding-title">High Priority Requests</div><div class="finding-text">$${formatCurrency(quartileStats['Most Aligned'] + quartileStats['More Aligned'])} (${totalAmount > 0 ? Math.round((quartileStats['Most Aligned'] + quartileStats['More Aligned']) / totalAmount * 100) : 0}%) in Q1/Q2 aligned programs</div></div>
-        <div class="finding-card"><div class="finding-title">Funding Mix</div><div class="finding-text">Ongoing: $${formatCurrency(totalOngoing)} | One-time: $${formatCurrency(totalOnetime)}</div></div>
+        <div class="finding-card"><div class="finding-title">High Priority Increases</div><div class="finding-text">${money(quartileStats['Most Aligned'] + quartileStats['More Aligned'])} (${quartileIncreaseTotal > 0 ? Math.round((quartileStats['Most Aligned'] + quartileStats['More Aligned']) / quartileIncreaseTotal * 100) : 0}% of increases) goes to Q1/Q2 aligned programs</div></div>
+        <div class="finding-card"><div class="finding-title">Funding Mix of Increases</div><div class="finding-text">Ongoing: ${money(totals.incOngoing)} | One-time: ${money(totals.incOnetime)}</div></div>
         <div class="finding-card"><div class="finding-title">Department Coverage</div><div class="finding-text">${Object.keys(deptStats).length} departments with budget requests submitted</div></div>
-        <div class="finding-card"><div class="finding-title">Average Request</div><div class="finding-text">$${formatCurrency(Math.round(totalAmount / filteredData.length))} per request</div></div>
+        <div class="finding-card"><div class="finding-title">Reductions Offered</div><div class="finding-text">${totals.reductionCount} request${totals.reductionCount === 1 ? '' : 's'} reduce spending by ${money(Math.abs(totals.reductions))}</div></div>
     </div>
 </div>
 
@@ -6604,7 +6722,7 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
     <h2 class="section-title">Requests by Department</h2>
     <p class="section-subtitle">Budget request distribution across organizational units</p>
     <table class="data-table">
-        <thead><tr><th>Department</th><th style="text-align: center;">Requests</th><th>Total Amount</th><th style="text-align: center;">% of Total</th></tr></thead>
+        <thead><tr><th>Department</th><th style="text-align: center;">Requests</th><th style="text-align: right;">Increases</th><th style="text-align: right;">Reductions</th><th style="text-align: right;">Net</th><th style="text-align: center;">Share of Increases</th></tr></thead>
         <tbody>${deptRows}</tbody>
     </table>
 </div>
@@ -6637,7 +6755,7 @@ ${detailedRequestsHtml}
     newWindow.document.write(pdfHtml);
     newWindow.document.close();
     newWindow.focus();
-    setTimeout(() => alert('Comprehensive PDF Report opened!\\n\\nTo save as PDF:\\n1. Press Ctrl+P (Cmd+P on Mac)\\n2. Select "Save as PDF"\\n3. Click Save'), 500);
+    setTimeout(() => alert('Comprehensive PDF Report opened!\\n\\nTo save as PDF:\\n1. Press Ctrl+P (Cmd+P on Mac)\\n2. Select "Save as PDF"\\n3. Click Save\\n\\nIf a date or "about:blank" prints at the top of each page, turn off "Headers and footers" under More settings.'), 500);
 }
 
 function captureChartAsImage(chartId) {
@@ -6669,15 +6787,15 @@ function generatePDFSummaryStats() {
                 <div class="stats-label">Total Requests</div>
             </div>
             <div class="stats-card">
-                <span class="stats-value">$${formatCurrency(totalOngoing)}</span>
+                <span class="stats-value">${money(totalOngoing)}</span>
                 <div class="stats-label">Ongoing</div>
             </div>
             <div class="stats-card">
-                <span class="stats-value">$${formatCurrency(totalOnetime)}</span>
+                <span class="stats-value">${money(totalOnetime)}</span>
                 <div class="stats-label">One-time</div>
             </div>
             <div class="stats-card">
-                <span class="stats-value">$${formatCurrency(totalOngoing + totalOnetime)}</span>
+                <span class="stats-value">${money(totalOngoing + totalOnetime)}</span>
                 <div class="stats-label">Total Amount</div>
             </div>
         </div>
@@ -6716,7 +6834,7 @@ function generatePDFRequestTable() {
                 <td>${shortDesc}</td>
                 <td>${primaryDept}</td>
                 <td>${quartileBadge}</td>
-                <td class="amount">$${formatCurrency(amounts.total)}</td>
+                <td class="amount">${money(amounts.total)}</td>
             </tr>
         `;
     });
@@ -6750,7 +6868,7 @@ function generatePDFDetailedRequests() {
                         </div>
                         <div style="background: #f0f8f0; padding: 8px; border-radius: 5px; text-align: center; border-left: 3px solid #28a745;">
                             <div style="font-size: 8px; color: #666; margin-bottom: 3px;">Total Amount</div>
-                            <div style="font-size: 11px; font-weight: 600; color: #28a745;">$${formatCurrency(amounts.total)}</div>
+                            <div style="font-size: 11px; font-weight: 600; color: #28a745;">${money(amounts.total)}</div>
                         </div>
                         <div style="background: #fff8f0; padding: 8px; border-radius: 5px; text-align: center; border-left: 3px solid #ffc107;">
                             <div style="font-size: 8px; color: #666; margin-bottom: 3px;">Line Items</div>
@@ -6925,7 +7043,7 @@ function formatFieldValue(field, value) {
         console.log('Found ongoing cost field:', field);
         const numValue = parseFloat(value);
         if (!isNaN(numValue)) {
-            const formatted = `$${formatCurrency(numValue)}`;
+            const formatted = `${money(numValue)}`;
             console.log('Formatting', value, 'to', formatted);
             return formatted;
         }
@@ -6933,7 +7051,7 @@ function formatFieldValue(field, value) {
         console.log('Found onetime cost field:', field);
         const numValue = parseFloat(value);
         if (!isNaN(numValue)) {
-            const formatted = `$${formatCurrency(numValue)}`;
+            const formatted = `${money(numValue)}`;
             console.log('Formatting', value, 'to', formatted);
             return formatted;
         }
@@ -7132,7 +7250,7 @@ function exportPBBAnalysisToExcel() {
             primaryProgram,
             primaryQuartile,
             amounts.total,
-            analysis.archetypeNumber,
+            analysis.isReduction ? 'Reduction' : analysis.archetypeNumber,
             analysis.gridKey,
             analysis.totalScore,
             analysis.disposition,
@@ -7158,7 +7276,7 @@ function exportPBBAnalysisToExcel() {
             analysis.efficiencyScore,
             analysis.efficiencyReason,
             ...(includeAccessEquity ? [analysis.accessScore, analysis.accessReason] : []),
-            analysis.narrative
+            narrativeToText(analysis.narrative)
         ]);
     });
     

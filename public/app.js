@@ -113,8 +113,10 @@ function processCurrentBudgetFile(file) {
             console.log('Current Budget - Available sheets:', workbook.SheetNames);
             
             // Parse the Programs sheet (or first sheet if "Programs" doesn't exist)
-            const programsSheet = workbook.Sheets['Programs'] || workbook.Sheets[workbook.SheetNames[0]];
-            currentBudgetData = XLSX.utils.sheet_to_json(programsSheet, { defval: '' });
+            const programsSheet = workbook.Sheets['Programs'] || workbook.Sheets['Programs inventory']
+                || workbook.Sheets[workbook.SheetNames[0]];
+            currentBudgetData = XLSX.utils.sheet_to_json(programsSheet, { defval: '' })
+                .map(normalizeInventoryRow);
 
             console.log(`Loaded ${currentBudgetData.length} programs from current budget`);
             console.log('Sample program:', currentBudgetData[0]);
@@ -126,7 +128,8 @@ function processCurrentBudgetFile(file) {
             programAttributesMap = {};
             const detailsSheet = workbook.Sheets['Details'] || workbook.Sheets['details'];
             if (detailsSheet) {
-                const detailsRows = XLSX.utils.sheet_to_json(detailsSheet, { defval: '' });
+                const detailsRows = XLSX.utils.sheet_to_json(detailsSheet, { defval: '' })
+                    .map(normalizeInventoryRow);
                 buildProgramAttributesMap(detailsRows);
                 console.log(`Built program attributes for ${Object.keys(programAttributesMap).length} program keys from Details sheet`);
             }
@@ -168,6 +171,29 @@ function processCurrentBudgetFile(file) {
         }
     };
     reader.readAsArrayBuffer(file);
+}
+
+// Newer ResourceX Summary report exports renamed several columns ("User Group" ->
+// "Cost Center", "Final Score" -> "Final score", ...) and dropped "Total Program Cost".
+// Copy them onto the original names so the rest of the app reads either format.
+function normalizeInventoryRow(row) {
+    const alias = (canonical, ...alts) => {
+        if (row[canonical] !== undefined && row[canonical] !== '') return;
+        const hit = alts.find(a => row[a] !== undefined && row[a] !== '');
+        if (hit) row[canonical] = row[hit];
+    };
+    alias('User Group', 'Cost Center');
+    alias('User Group(prgs)', 'Cost Center(prgs)');
+    alias('User Group(accts)', 'Cost Center(accts)');
+    alias('Final Score', 'Final score');
+    alias('Description', 'Program description');
+    // Programs sheet only: total expense = Personnel + NonPersonnel (matches the
+    // sum of expense allocations on the Details sheet). Revenue stays separate.
+    if ((row['Total Program Cost'] === undefined || row['Total Program Cost'] === '')
+        && (row['Personnel'] !== undefined || row['NonPersonnel'] !== undefined)) {
+        row['Total Program Cost'] = (parseFloat(row['Personnel']) || 0) + (parseFloat(row['NonPersonnel']) || 0);
+    }
+    return row;
 }
 
 function showCurrentBudgetMessage(message, type) {
@@ -1304,14 +1330,22 @@ function getCurrentBudgetForProgram(department, programName) {
     console.log(`Looking for match: Dept="${department}", Program="${programName}"`);
     
     // Try to find exact match by User Group (Department) and Program Name
-    const match = currentBudgetData.find(prog => {
+    const deptUpper = (department || '').toString().trim().toUpperCase();
+    const progNameUpper = (programName || '').toString().trim().toUpperCase();
+    let match = currentBudgetData.find(prog => {
         const userGroup = (prog['User Group'] || '').toString().trim().toUpperCase();
         const progName = (prog['Program'] || '').toString().trim().toUpperCase();
-        const deptUpper = (department || '').toString().trim().toUpperCase();
-        const progNameUpper = (programName || '').toString().trim().toUpperCase();
-        
         return userGroup === deptUpper && progName === progNameUpper;
     });
+
+    // Line items are often allocated to a program owned by another department
+    // (e.g. Public Works staff on Parks' "Park Maintenance"). Fall back to the
+    // program name alone, but only when it is unambiguous.
+    if (!match && progNameUpper) {
+        const byName = currentBudgetData.filter(prog =>
+            (prog['Program'] || '').toString().trim().toUpperCase() === progNameUpper);
+        if (byName.length === 1) match = byName[0];
+    }
     
     if (match) {
         console.log(`✅ Match found! Current budget: $${match['Total Program Cost']}`);

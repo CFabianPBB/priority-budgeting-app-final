@@ -1179,8 +1179,9 @@ function generateRequestSummaryTable() {
         console.log(`Request ${requestId}: ${lineItems.length} line items`);
         
         const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
-        const primaryProgram = getPrimaryValue(lineItems, 'program') || 'N/A';
-        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        const programInfo = getRequestProgramInfo(lineItems);
+        const primaryProgram = programInfo.label;
+        const primaryQuartile = getRequestQuartile(lineItems) || 'N/A';
         const amounts = getRequestAmount(request);
 
         console.log(`Request ${requestId}: Dept=${primaryDept}, Program=${primaryProgram}, Amount=${amounts.total}`);
@@ -1195,7 +1196,7 @@ function generateRequestSummaryTable() {
                 <td style="padding: 10px;">${description || 'N/A'}</td>
                 <td style="padding: 10px;">${primaryDept}</td>
                 <td style="padding: 10px;">${primaryProgram}</td>
-                <td style="padding: 10px;">${quartileBadge}</td>
+                <td style="padding: 10px;">${quartileBadge}${quartileNoteHtml(programInfo.quartileNote)}</td>
                 <td style="padding: 10px; text-align: right; font-weight: 600; color: #28a745;">$${formatCurrency(amounts.total)}</td>
             </tr>
         `;
@@ -1691,13 +1692,14 @@ function getWeakestLinkProfile(lineItems, qa) {
     }
 
     const ranked = governing.filter(sl => normalizeQuartile(sl.quartile));
-    let quartile = null;
+    let quartile = null, quartileProgram = null;
     if (ranked.length > 0) {
         const pick = ranked.reduce((a, b) => {
             const ra = quartileRank(a.quartile), rb = quartileRank(b.quartile);
             return isReduction ? (rb < ra ? b : a) : (rb > ra ? b : a);
         });
         quartile = normalizeQuartile(pick.quartile);
+        quartileProgram = pick.program;
     }
 
     const addedTotal = added.reduce((t, sl) => t + sl.amount, 0);
@@ -1731,8 +1733,36 @@ function getWeakestLinkProfile(lineItems, qa) {
     const reductionFlags = cuts.filter(sl =>
         (sl.mandateScore !== null && sl.mandateScore >= 3) || quartileRank(sl.quartile) <= 2);
 
-    return { slices, added, cuts, isReduction, mandateScore, mandateSource, quartile,
+    return { slices, added, cuts, isReduction, mandateScore, mandateSource, quartile, quartileProgram,
              mandateDrag, quartileDrag, reductionFlags };
+}
+
+// The quartile a request is judged on (weakest link for added dollars, strongest
+// program cut for a reduction). Every request-level display uses this so the table
+// matches the recommendation.
+function getRequestQuartile(lineItems) {
+    return getWeakestLinkProfile(lineItems, []).quartile;
+}
+
+// Program labels for request-level displays. A request spanning several programs
+// shows its largest program plus "+N more", and names the program that sets its
+// quartile so the two columns don't appear to contradict each other.
+function getRequestProgramInfo(lineItems) {
+    const profile = getWeakestLinkProfile(lineItems, []);
+    const slices = profile.slices;
+    if (slices.length === 0) return { name: 'N/A', more: 0, label: 'N/A', quartileNote: '' };
+    const largest = slices.reduce((a, b) => (Math.abs(b.amount) > Math.abs(a.amount) ? b : a));
+    const more = slices.length - 1;
+    return {
+        name: largest.program,
+        more,
+        label: more > 0 ? `${largest.program} +${more} more` : largest.program,
+        quartileNote: more > 0 && profile.quartileProgram ? `set by ${profile.quartileProgram}` : ''
+    };
+}
+
+function quartileNoteHtml(note, size) {
+    return note ? `<div style="font-size: ${size || '0.72rem'}; color: #64748b; margin-top: 3px;">${note}</div>` : '';
 }
 
 function getMandateScore(profile) {
@@ -2809,10 +2839,11 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     const requestId = getRequestId(request);
     const amounts = getRequestAmount(request);
     const dept = getPrimaryValue(lineItems, 'department') || 'Unknown';
-    const program = getPrimaryValue(lineItems, 'program') || 'Unknown';
+    const programInfo = getRequestProgramInfo(lineItems);
+    const program = programInfo.label !== 'N/A' ? programInfo.label : 'Unknown';
     
     let narrative = `**Program:** ${program} (${dept})\n`;
-    narrative += `**Quartile:** ${analysis.bestQuartile} (${analysis.quartileBand} Relevance)\n`;
+    narrative += `**Quartile:** ${analysis.bestQuartile} (${analysis.quartileBand} Relevance)${programInfo.quartileNote ? ` — ${programInfo.quartileNote}` : ''}\n`;
     narrative += `**Total Amount:** $${formatCurrency(amounts.total)}\n`;
     narrative += `**Decision Profile:** ${analysis.gridKey}\n\n`;
     
@@ -3114,7 +3145,8 @@ function generateFundingPriorityOrder() {
     ranked.forEach(row => {
         const a = row.analysis;
         const lineItems = getLineItemsForRequest(row.requestId);
-        const program = getPrimaryValue(lineItems, 'program') || 'Unknown Program';
+        const programInfo = getRequestProgramInfo(lineItems);
+        const program = programInfo.label !== 'N/A' ? programInfo.label : 'Unknown Program';
         const dept = getPrimaryValue(lineItems, 'department') || '';
         const gf = a.gfExposure ? a.gfExposure.gf : 0;
         const q = a.bestQuartile || 'N/A';
@@ -3129,7 +3161,7 @@ function generateFundingPriorityOrder() {
                     <div style="font-weight: 600; color: #1f2937;">${program}</div>
                     <div style="font-size: 0.78rem; color: #6b7280;">${dept}${dept ? ' · ' : ''}${row.requestId}</div>
                 </td>
-                <td style="padding: 8px 6px; text-align: center;">${qBadge}</td>
+                <td style="padding: 8px 6px; text-align: center;">${qBadge}${quartileNoteHtml(programInfo.quartileNote, '0.68rem')}</td>
                 <td style="padding: 8px 6px; text-align: center; color: #475569;">${a.programFinalScore != null ? a.programFinalScore : '—'}</td>
                 <td style="padding: 8px 6px; text-align: center;">
                     <span style="background: ${a.dispositionColor}; color: white; padding: 3px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600;">${a.disposition}</span>
@@ -3881,8 +3913,9 @@ function generateDetailedRequestReportStandard() {
         
         const uniqueId = `standard-request-accordion-${requestId}`;
         const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
-        const primaryProgram = getPrimaryValue(lineItems, 'program') || 'N/A';
-        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        const programInfo = getRequestProgramInfo(lineItems);
+        const primaryProgram = programInfo.label;
+        const primaryQuartile = getRequestQuartile(lineItems) || 'N/A';
 
         html += `
             <!-- Request Accordion -->
@@ -3929,6 +3962,7 @@ function generateDetailedRequestReportStandard() {
                                         ${primaryQuartile !== 'N/A' ? 
                                             `<span class="quartile-badge quartile-${primaryQuartile.toLowerCase().replace(' ', '-')}">${primaryQuartile}</span>` 
                                             : 'N/A'}
+                                        ${quartileNoteHtml(programInfo.quartileNote)}
                                     </div>
                                 </div>
                                 <div class="summary-item">
@@ -4032,7 +4066,7 @@ function generateDetailedRequestReportAnalytical() {
                                 </div>
                                 <div class="summary-item">
                                     <div class="summary-label">Program</div>
-                                    <div class="summary-value" style="font-size: 1rem;">${getPrimaryValue(lineItems, 'program') || 'N/A'}</div>
+                                    <div class="summary-value" style="font-size: 1rem;">${getRequestProgramInfo(lineItems).label}</div>
                                 </div>
                                 <div class="summary-item">
                                     <div class="summary-label">Quartile</div>
@@ -4040,6 +4074,7 @@ function generateDetailedRequestReportAnalytical() {
                                         ${analysis.bestQuartile
                                             ? `<span class="quartile-badge quartile-${analysis.bestQuartile.toString().toLowerCase().replace(/ /g, '-')}">${analysis.bestQuartile}</span>`
                                             : `<span class="quartile-badge">N/A</span>`}
+                                        ${quartileNoteHtml(getRequestProgramInfo(lineItems).quartileNote)}
                                     </div>
                                 </div>
                                 <div class="summary-item">
@@ -4304,7 +4339,7 @@ function downloadAnalyticalWordReport() {
         const description = getRequestDescription(request);
         const lineItems = getLineItemsForRequest(requestId);
         const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
-        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        const primaryQuartile = getRequestQuartile(lineItems) || 'N/A';
         const amounts = getRequestAmount(request);
         const analysis = scoreRequest(request);
         const shortDesc = description && description.length > 30 ? description.substring(0, 30) + '...' : (description || 'N/A');
@@ -4337,7 +4372,7 @@ function downloadAnalyticalWordReport() {
         const lineItems = getLineItemsForRequest(requestId);
         const qa = getRequestQA(requestId);
         const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
-        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        const primaryQuartile = getRequestQuartile(lineItems) || 'N/A';
         const amounts = getRequestAmount(request);
         const analysis = scoreRequest(request);
         
@@ -4553,7 +4588,7 @@ function downloadAnalyticalPdfReport() {
         const description = getRequestDescription(request);
         const lineItems = getLineItemsForRequest(requestId);
         const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
-        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        const primaryQuartile = getRequestQuartile(lineItems) || 'N/A';
         const amounts = getRequestAmount(request);
         const analysis = scoreRequest(request);
         const shortDesc = description && description.length > 35 ? description.substring(0, 35) + '...' : (description || 'N/A');
@@ -4585,7 +4620,7 @@ function downloadAnalyticalPdfReport() {
         const lineItems = getLineItemsForRequest(requestId);
         const qa = getRequestQA(requestId);
         const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
-        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        const primaryQuartile = getRequestQuartile(lineItems) || 'N/A';
         const amounts = getRequestAmount(request);
         const analysis = scoreRequest(request);
         
@@ -5871,15 +5906,16 @@ function generateWordRequestTable() {
         const description = getRequestDescription(request);
         const lineItems = getLineItemsForRequest(requestId);
         const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
-        const primaryProgram = getPrimaryValue(lineItems, 'program') || 'N/A';
-        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        const programInfo = getRequestProgramInfo(lineItems);
+        const primaryQuartile = getRequestQuartile(lineItems) || 'N/A';
         const amounts = getRequestAmount(request);
 
         // Truncate long descriptions for table
         const shortDesc = description && description.length > 25 ? 
             description.substring(0, 25) + '...' : (description || 'N/A');
-        const shortProgram = primaryProgram.length > 20 ? 
-            primaryProgram.substring(0, 20) + '...' : primaryProgram;
+        const shortProgram = (programInfo.name.length > 20 ?
+            programInfo.name.substring(0, 20) + '...' : programInfo.name) +
+            (programInfo.more > 0 ? ` +${programInfo.more}` : '');
 
         const quartileBadge = primaryQuartile !== 'N/A' ? 
             `<span class="quartile-badge quartile-${primaryQuartile.toLowerCase().replace(' ', '-')}" style="font-size: 0.7rem; padding: 2px 8px;">${primaryQuartile.replace(' Aligned', '')}</span>` : 
@@ -5893,7 +5929,7 @@ function generateWordRequestTable() {
                 <td style="padding: 6px 4px; font-size: 0.8rem;">${shortDesc}</td>
                 <td style="padding: 6px 4px;">${primaryDept}</td>
                 <td style="padding: 6px 4px; font-size: 0.8rem;">${shortProgram}</td>
-                <td style="padding: 6px 4px; text-align: center;">${quartileBadge}</td>
+                <td style="padding: 6px 4px; text-align: center;">${quartileBadge}${quartileNoteHtml(programInfo.quartileNote, '0.65rem')}</td>
                 <td style="padding: 6px 4px; text-align: right; font-weight: 600;" class="amount">$${formatCurrency(amounts.total)}</td>
             </tr>
         `;
@@ -6166,7 +6202,7 @@ function downloadPdfReport() {
         const description = getRequestDescription(request);
         const lineItems = getLineItemsForRequest(requestId);
         const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
-        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        const primaryQuartile = getRequestQuartile(lineItems) || 'N/A';
         const amounts = getRequestAmount(request);
         const shortDesc = description && description.length > 40 ? description.substring(0, 40) + '...' : (description || 'N/A');
         
@@ -6284,7 +6320,7 @@ function downloadPdfReport() {
         const qa = getRequestQA(requestId);
         const amounts = getRequestAmount(request);
         const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
-        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        const primaryQuartile = getRequestQuartile(lineItems) || 'N/A';
         
         // Q&A Section
         let qaHtml = '';
@@ -6665,7 +6701,7 @@ function generatePDFRequestTable() {
         const description = getRequestDescription(request);
         const lineItems = getLineItemsForRequest(requestId);
         const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
-        const primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        const primaryQuartile = getRequestQuartile(lineItems) || 'N/A';
         const amounts = getRequestAmount(request);
 
         const shortDesc = description && description.length > 25 ? 
@@ -7074,9 +7110,9 @@ function exportPBBAnalysisToExcel() {
         const description = getRequestDescription(request);
         const lineItems = getLineItemsForRequest(requestId);
         const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
-        const primaryProgram = getPrimaryValue(lineItems, 'program') || 'N/A';
+        const primaryProgram = getRequestProgramInfo(lineItems).label;
         // Get and normalize quartile for display
-        let primaryQuartile = getPrimaryValue(lineItems, 'quartile') || 'N/A';
+        let primaryQuartile = getRequestQuartile(lineItems) || 'N/A';
         if (primaryQuartile !== 'N/A') {
             const qStr = primaryQuartile.toString().trim();
             if (qStr === '1' || qStr === 'Q1') primaryQuartile = 'Most Aligned (Q1)';

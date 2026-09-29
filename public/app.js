@@ -257,12 +257,16 @@ function processFile(file) {
 function parseSheetWithDebug(workbook, sheetName) {
     console.log(`\n=== Parsing ${sheetName} ===`);
     
-    if (!workbook.Sheets[sheetName]) {
+    // Match sheet names case- and whitespace-insensitively; exports have
+    // shipped both "Request Summary" and "Request summary".
+    const normName = n => n.toLowerCase().replace(/\s+/g, ' ').trim();
+    const actualName = workbook.SheetNames.find(n => normName(n) === normName(sheetName));
+    if (!actualName) {
         console.warn(`Sheet ${sheetName} not found`);
         return [];
     }
     
-    const sheet = workbook.Sheets[sheetName];
+    const sheet = workbook.Sheets[actualName];
     const range = XLSX.utils.decode_range(sheet['!ref']);
     
     console.log(`Sheet range: ${sheet['!ref']}`);
@@ -400,7 +404,8 @@ function setupFilters() {
     
     // From Request Summary (for request-level filters)
     budgetData.requestSummary.forEach(item => {
-        if (item['Request Type']) filters.requestType.add(item['Request Type']);
+        const reqType = item['Request Type'] || item['Request type'];
+        if (reqType) filters.requestType.add(reqType);
         if (item.Status) filters.status.add(item.Status);
     });
 

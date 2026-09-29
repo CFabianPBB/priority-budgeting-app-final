@@ -13,6 +13,10 @@ let currentBudgetData = []; // ← ADD THIS LINE
 // the Q&A narrative is empty or import boilerplate. Keyed by `${DEPT}::${PROGRAM}` and
 // `*::${PROGRAM}` (uppercased) for tolerant lookup.
 let programAttributesMap = {};
+// ID indexes built from the Summary report. IDs are stable across renames and
+// disambiguate programs that share a name, so they are tried before names.
+let inventoryProgramsById = {}; // ProgramID -> Programs inventory row
+let inventoryItemsById = {};    // ItemID -> { name, acctCode, totalCost, allocations: { ProgramID: {program, pct, cost} } }
 
 // Requests scored and ranked once per report run, shared by the priority-order and
 // portfolio sections so scoreRequest() is not re-run per section.
@@ -126,11 +130,19 @@ function processCurrentBudgetFile(file) {
             // engine access to Mandate / Cost Recovery / Final Score even when the request
             // Q&A is missing or boilerplate.
             programAttributesMap = {};
+            inventoryProgramsById = {};
+            inventoryItemsById = {};
+            for (const prog of currentBudgetData) {
+                const id = normalizeId(prog.ProgramID);
+                if (id) inventoryProgramsById[id] = prog;
+            }
             const detailsSheet = workbook.Sheets['Details'] || workbook.Sheets['details'];
             if (detailsSheet) {
                 const detailsRows = XLSX.utils.sheet_to_json(detailsSheet, { defval: '' })
                     .map(normalizeInventoryRow);
                 buildProgramAttributesMap(detailsRows);
+                buildInventoryItemsIndex(detailsRows);
+                console.log(`Indexed ${Object.keys(inventoryItemsById).length} line items by ItemID from Details sheet`);
                 console.log(`Built program attributes for ${Object.keys(programAttributesMap).length} program keys from Details sheet`);
             }
 
@@ -187,6 +199,7 @@ function normalizeInventoryRow(row) {
     alias('User Group(accts)', 'Cost Center(accts)');
     alias('Final Score', 'Final score');
     alias('Description', 'Program description');
+    alias('ProgramID', 'ProgId', 'Program ID');
     // Programs sheet only: total expense = Personnel + NonPersonnel (matches the
     // sum of expense allocations on the Details sheet). Revenue stays separate.
     if ((row['Total Program Cost'] === undefined || row['Total Program Cost'] === '')
@@ -194,6 +207,46 @@ function normalizeInventoryRow(row) {
         row['Total Program Cost'] = (parseFloat(row['Personnel']) || 0) + (parseFloat(row['NonPersonnel']) || 0);
     }
     return row;
+}
+
+// IDs arrive as numbers or strings ("50", 50, "50.0"); compare them as canonical strings.
+function normalizeId(v) {
+    if (v === null || v === undefined) return '';
+    const str = v.toString().trim();
+    if (!str) return '';
+    const n = Number(str);
+    return Number.isFinite(n) ? String(n) : str.toUpperCase();
+}
+
+function getProgramIdForItem(item) {
+    return normalizeId(item.ProgramID != null ? item.ProgramID : (item.ProgId != null ? item.ProgId : item['Program ID']));
+}
+
+// Details carries one row per (item, program) allocation, with the item's full cost
+// repeated on each. Collapse to one entry per ItemID. Revenue items are skipped: they
+// are not a cost baseline.
+function buildInventoryItemsIndex(rows) {
+    for (const row of rows) {
+        const itemId = normalizeId(row.ItemID);
+        if (!itemId) continue;
+        if ((row['Account type'] || '').toString().trim().toLowerCase() === 'revenue') continue;
+        if (!inventoryItemsById[itemId]) {
+            inventoryItemsById[itemId] = {
+                name: (row['Item category 1'] || row['Item category 2'] || '').toString().trim(),
+                acctCode: (row.AcctCode || '').toString().trim(),
+                totalCost: parseFloat(row['Total item cost']) || 0,
+                allocations: {}
+            };
+        }
+        const progId = normalizeId(row.ProgramID);
+        if (progId) {
+            inventoryItemsById[itemId].allocations[progId] = {
+                program: (row.Program || '').toString().trim(),
+                pct: parseFloat(row.Allocation) || 0,
+                cost: parseFloat(row['Total Program cost']) || 0
+            };
+        }
+    }
 }
 
 function showCurrentBudgetMessage(message, type) {
@@ -1205,6 +1258,8 @@ function buildProgramAttributesMap(rows) {
         // getProgramAttributesForLineItems() report a match with nothing behind it.
         if (attrs.mandate == null && attrs.costRecovery == null && attrs.finalScore == null) continue;
         const keys = [`${dept}::${program}`, `*::${program}`];
+        const progId = normalizeId(row.ProgramID);
+        if (progId) keys.unshift(`ID::${progId}`);
         for (const k of keys) {
             const existing = programAttributesMap[k];
             if (!existing) {
@@ -1236,6 +1291,15 @@ function classifyCostRecovery(val) {
     return null;
 }
 
+function lookupProgramAttributes(item) {
+    const progId = getProgramIdForItem(item);
+    if (progId && programAttributesMap[`ID::${progId}`]) return programAttributesMap[`ID::${progId}`];
+    const program = (item.Program || '').toString().trim().toUpperCase();
+    if (!program) return null;
+    const dept = (item.Department || item['Cost Center'] || item['User Group'] || '').toString().trim().toUpperCase();
+    return programAttributesMap[`${dept}::${program}`] || programAttributesMap[`*::${program}`] || null;
+}
+
 // Aggregate the strongest program-level signals across all line items for a request.
 function getProgramAttributesForLineItems(lineItems) {
     if (!lineItems || lineItems.length === 0) return null;
@@ -1250,10 +1314,7 @@ function getProgramAttributesForLineItems(lineItems) {
     let matched = false;
 
     for (const item of lineItems) {
-        const program = (item.Program || '').toString().trim().toUpperCase();
-        if (!program) continue;
-        const dept = (item.Department || item['Cost Center'] || item['User Group'] || '').toString().trim().toUpperCase();
-        const attrs = programAttributesMap[`${dept}::${program}`] || programAttributesMap[`*::${program}`];
+        const attrs = lookupProgramAttributes(item);
         if (!attrs) continue;
         matched = true;
         if (attrs.mandate && mandateRank[attrs.mandate] > bestMandate) {
@@ -1281,6 +1342,9 @@ function getQuartileForLineItem(item) {
     if (direct) return direct;
 
     if (currentBudgetData.length === 0) return null;
+
+    const byId = inventoryProgramsById[getProgramIdForItem(item)];
+    if (byId) return normalizeQuartile(byId.Quartile);
 
     const program = (item.Program || '').toString().trim().toUpperCase();
     if (!program) return null;
@@ -1322,17 +1386,18 @@ function getPrimaryValue(lineItems, fieldType) {
 }
 
 // ===== MATCH PROGRAM WITH CURRENT BUDGET =====
-function getCurrentBudgetForProgram(department, programName) {
+function getCurrentBudgetForProgram(department, programName, programId) {
     if (currentBudgetData.length === 0) {
         return null; // No current budget data loaded
     }
     
-    console.log(`Looking for match: Dept="${department}", Program="${programName}"`);
+    console.log(`Looking for match: Dept="${department}", Program="${programName}", ID="${programId || ''}"`);
     
-    // Try to find exact match by User Group (Department) and Program Name
+    // Program ID first; then User Group (Department) + Program Name
     const deptUpper = (department || '').toString().trim().toUpperCase();
     const progNameUpper = (programName || '').toString().trim().toUpperCase();
-    let match = currentBudgetData.find(prog => {
+    let match = inventoryProgramsById[normalizeId(programId)];
+    if (!match) match = currentBudgetData.find(prog => {
         const userGroup = (prog['User Group'] || '').toString().trim().toUpperCase();
         const progName = (prog['Program'] || '').toString().trim().toUpperCase();
         return userGroup === deptUpper && progName === progNameUpper;
@@ -1658,7 +1723,7 @@ function getProgramImpacts(lineItems) {
         const program = getPrimaryValue([item], 'program') || 'Unknown Program';
         const key = `${dept}::${program}`;
         if (!byKey[key]) {
-            const cur = getCurrentBudgetForProgram(dept, program);
+            const cur = getCurrentBudgetForProgram(dept, program, getProgramIdForItem(item));
             const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
             byKey[key] = {
                 dept: dept,
@@ -1698,6 +1763,50 @@ function getProgramImpacts(lineItems) {
                 ? proposedRevenue / proposedCost : null
         });
     });
+}
+
+// Compare each line item the request touches against that item's current cost in the
+// Summary report (joined on ItemID). Request rows are split per program allocation, so
+// they are summed per ItemID first. Flags items that are new, and existing items being
+// allocated to a program they did not fund before.
+function getLineItemBaselines(lineItems) {
+    if (Object.keys(inventoryItemsById).length === 0) return [];
+    const byItem = {};
+    for (const item of lineItems) {
+        if (isRevenueLineItem(item)) continue;
+        const itemId = normalizeId(item.ItemID);
+        const key = itemId || `new::${(item.AcctCode || '').toString().trim()}`;
+        if (!byItem[key]) {
+            const inv = itemId ? inventoryItemsById[itemId] : null;
+            byItem[key] = {
+                itemId: itemId || null,
+                name: (inv && inv.name) || (item.Position || item['Account Category'] || '').toString().trim(),
+                acctCode: (inv && inv.acctCode) || (item.AcctCode || '').toString().trim(),
+                currentCost: inv ? inv.totalCost : null,
+                change: 0,
+                status: inv ? 'existing' : (itemId ? 'not_in_inventory' : 'new_item'),
+                newAllocations: [],
+                eliminatedAllocations: []
+            };
+        }
+        const e = byItem[key];
+        const amt = getLineItemAmount(item).total || 0;
+        e.change += amt;
+        const inv = itemId ? inventoryItemsById[itemId] : null;
+        const progId = getProgramIdForItem(item);
+        const program = (item.Program || '').toString().trim();
+        if (inv && progId) {
+            const alloc = inv.allocations[progId];
+            if (!alloc) {
+                if (program && !e.newAllocations.includes(program)) e.newAllocations.push(program);
+            } else if (alloc.cost > 0 && amt <= -alloc.cost + 0.5) {
+                e.eliminatedAllocations.push(alloc.program || program);
+            }
+        }
+    }
+    return Object.values(byItem).map(e => Object.assign(e, {
+        changeShare: e.currentCost > 0 ? e.change / e.currentCost : null
+    }));
 }
 
 // Collapse per-program impacts into the few facts a reviewer needs in one line.
@@ -1791,6 +1900,8 @@ function computeDataCoverage() {
         lineItems: 0,
         withProgramName: 0,
         matchedToInventory: 0,
+        linkedByProgramId: 0,
+        itemsLinkedById: 0,
         withQuartile: 0,
         withFund: 0,
         revenueLineItems: 0,
@@ -1816,12 +1927,13 @@ function computeDataCoverage() {
                 const key = `${dept}::${program}`;
                 if (!seenPrograms.has(key)) {
                     seenPrograms.add(key);
-                    const attrs = programAttributesMap[`${dept.toUpperCase()}::${program.toUpperCase()}`]
-                               || programAttributesMap[`*::${program.toUpperCase()}`];
+                    const attrs = lookupProgramAttributes(item);
                     if (attrs && attrs.mandate) cov.programsWithMandate++;
                 }
                 if (cov.inventoryLoaded) {
-                    if (getCurrentBudgetForProgram(dept, program)) cov.matchedToInventory++;
+                    if (inventoryProgramsById[getProgramIdForItem(item)]) cov.linkedByProgramId++;
+                    if (inventoryItemsById[normalizeId(item.ItemID)]) cov.itemsLinkedById++;
+                    if (getCurrentBudgetForProgram(dept, program, getProgramIdForItem(item))) cov.matchedToInventory++;
                     else unmatched.add(`${dept} — ${program}`);
                 }
             }
@@ -1975,6 +2087,7 @@ function scoreRequest(request) {
     analysis.requestRevenue = getRequestRevenue(lineItems);
     analysis.programImpacts = getProgramImpacts(lineItems);
     analysis.impactSummary = summarizeProgramImpacts(analysis.programImpacts);
+    analysis.lineItemBaselines = getLineItemBaselines(lineItems);
     analysis.programFinalScore = progAttrs ? progAttrs.finalScore : null;
     analysis.quartileRank = quartileRank(bestQuartile);
 
@@ -2397,6 +2510,28 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
         narrative += `\n`;
     } else if (analysis.programImpacts && analysis.programImpacts.length > 0) {
         narrative += `**PROGRAM IMPACT:** the affected program(s) could not be matched to the uploaded budget, so the change relative to current spending is unknown. Upload a Program Inventory covering ${analysis.programImpacts.map(i => i.program).join(', ')} to show it.\n\n`;
+    }
+
+    const baselines = analysis.lineItemBaselines || [];
+    if (baselines.length > 0) {
+        narrative += `**LINE ITEM BASELINE:**\n\n`;
+        const signed = v => `${v < 0 ? '-' : '+'}$${formatCurrency(Math.abs(Math.round(v)))}`;
+        for (const b of baselines) {
+            let line = `- **${b.name || 'Line item'}**`;
+            if (b.acctCode) line += ` (${b.acctCode})`;
+            if (b.status === 'existing') {
+                line += ` — current $${formatCurrency(Math.round(b.currentCost))}, change ${signed(b.change)}`;
+                if (b.changeShare != null) line += ` (**${b.changeShare < 0 ? '' : '+'}${Math.round(b.changeShare * 100)}%**)`;
+            } else if (b.status === 'new_item') {
+                line += ` — new line item with no current budget; ${signed(b.change)} is entirely new cost`;
+            } else {
+                line += ` — ItemID ${b.itemId} not found in the Summary report; change ${signed(b.change)}`;
+            }
+            if (b.newAllocations.length > 0) line += `. Newly allocated to ${b.newAllocations.join(', ')}`;
+            if (b.eliminatedAllocations.length > 0) line += `. Removes this item's full share from ${b.eliminatedAllocations.join(', ')}`;
+            narrative += line + `\n`;
+        }
+        narrative += `\n`;
     }
 
     if (analysis.programFinalScore != null) {
@@ -2822,6 +2957,7 @@ function renderDataCoveragePanel() {
                 ${formatCurrency(c.requestsWithLineItems)} of ${formatCurrency(c.requests)} requests have line items
                 · ${formatCurrency(c.revenueLineItems)} revenue line items identified as offsets
                 · mandate data found for ${formatCurrency(c.programsWithMandate)} program${c.programsWithMandate === 1 ? '' : 's'}
+                ${c.inventoryLoaded ? `· ${formatCurrency(c.linkedByProgramId)} of ${formatCurrency(c.withProgramName)} line items linked by Program ID, ${formatCurrency(c.itemsLinkedById)} by Item ID` : ''}
             </div>
     `;
 
@@ -2909,7 +3045,7 @@ function generateProgramSummary() {
             
             // Get current budget from uploaded data or use $0 for new programs
             if (programData[dept][program].totalCost === 0) {
-                const currentBudget = getCurrentBudgetForProgram(dept, program);
+                const currentBudget = getCurrentBudgetForProgram(dept, program, getProgramIdForItem(item));
                 if (currentBudget) {
                     programData[dept][program].totalCost = currentBudget.totalCost;
                     programData[dept][program].isNewProgram = false;
@@ -4534,7 +4670,7 @@ function generateWordProgramSummary() {
             
             // Get current budget from uploaded Program Inventory data
             if (programData[dept][program].totalCost === 0) {
-                const currentBudget = getCurrentBudgetForProgram(dept, program);
+                const currentBudget = getCurrentBudgetForProgram(dept, program, getProgramIdForItem(item));
                 if (currentBudget) {
                     programData[dept][program].totalCost = currentBudget.totalCost;
                 }
@@ -5654,7 +5790,7 @@ function downloadPdfReport() {
             programData[dept][program].requestedAmount += lineItemAmount.total;
             // Get current budget from uploaded Program Inventory data
             if (programData[dept][program].totalCost === 0) {
-                const currentBudget = getCurrentBudgetForProgram(dept, program);
+                const currentBudget = getCurrentBudgetForProgram(dept, program, getProgramIdForItem(item));
                 if (currentBudget) {
                     programData[dept][program].totalCost = currentBudget.totalCost;
                 }

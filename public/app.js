@@ -2152,7 +2152,7 @@ function applyDecisionGrid(analysis) {
             disposition: 'REVIEW',
             color: '#64748b',
             keyConsideration: 'Insufficient quartile data — manual review required before applying the PBB framework',
-            verifyNow: ['Add a Quartile value to the line items, or upload a Program Inventory that includes a Quartile column'],
+            verifyNow: ['Add a Quartile value to the line items, or upload a Summary Report that includes a Quartile column'],
             strengthenWith: ['Provide program-level alignment data so the framework can score this request'],
             gridKey: gridKey
         };
@@ -2509,7 +2509,7 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
         }
         narrative += `\n`;
     } else if (analysis.programImpacts && analysis.programImpacts.length > 0) {
-        narrative += `**PROGRAM IMPACT:** the affected program(s) could not be matched to the uploaded budget, so the change relative to current spending is unknown. Upload a Program Inventory covering ${analysis.programImpacts.map(i => i.program).join(', ')} to show it.\n\n`;
+        narrative += `**PROGRAM IMPACT:** the affected program(s) could not be matched to the uploaded budget, so the change relative to current spending is unknown. Upload a Summary Report covering ${analysis.programImpacts.map(i => i.program).join(', ')} to show it.\n\n`;
     }
 
     const baselines = analysis.lineItemBaselines || [];
@@ -2611,7 +2611,7 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
         narrative += `This low-relevance, GF-only request with weak outcomes does not meet PBB funding criteria. PBB recommends fundamental changes before reconsideration.\n\n`;
     } else if (analysis.disposition === 'REVIEW') {
         narrative += `**PBB Framework Advisory:** PBB suggests MANUAL REVIEW. `;
-        narrative += `This request is missing the quartile alignment data required to apply the PBB framework. Add a Quartile value to the line items, or upload a Program Inventory that includes a Quartile column, then re-run the analysis. Until then, no APPROVE/VERIFY/MODIFY/DEFER/REJECT recommendation should be inferred.\n\n`;
+        narrative += `This request is missing the quartile alignment data required to apply the PBB framework. Add a Quartile value to the line items, or upload a Summary Report that includes a Quartile column, then re-run the analysis. Until then, no APPROVE/VERIFY/MODIFY/DEFER/REJECT recommendation should be inferred.\n\n`;
     }
     
     // Verification requirements
@@ -2913,7 +2913,7 @@ function generatePortfolioAnalysis() {
 
     if (inventoryTotal === 0) {
         html += `<p style="color: #92400e; background: #fffbeb; padding: 10px 14px; border-radius: 6px;">
-            <strong>Note:</strong> no Program Inventory is loaded, so current spend and proposed totals are unavailable.
+            <strong>Note:</strong> no Summary Report is loaded, so current spend and proposed totals are unavailable.
             Upload the approved budget to see how these requests change the shape of the portfolio.</p>`;
     }
 
@@ -2963,7 +2963,7 @@ function renderDataCoveragePanel() {
 
     if (!c.inventoryLoaded) {
         html += `<div style="margin-top: 10px; padding: 9px 13px; background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 5px; font-size: 0.85rem; color: #92400e;">
-            No Program Inventory loaded. Quartiles fall back to the line items' own column, and program cost, revenue and mandate data are unavailable.
+            No Summary Report loaded. Quartiles fall back to the line items' own column, and program cost, revenue and mandate data are unavailable.
         </div>`;
     } else if (!c.attributesLoaded) {
         html += `<div style="margin-top: 10px; padding: 9px 13px; background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 5px; font-size: 0.85rem; color: #92400e;">

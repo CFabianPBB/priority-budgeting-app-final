@@ -234,6 +234,7 @@ function buildInventoryItemsIndex(rows) {
             inventoryItemsById[itemId] = {
                 name: (row['Item category 1'] || row['Item category 2'] || '').toString().trim(),
                 acctCode: (row.AcctCode || '').toString().trim(),
+                fund: (row.Fund || '').toString().trim(),
                 totalCost: parseFloat(row['Total item cost']) || 0,
                 allocations: {}
             };
@@ -712,7 +713,7 @@ function getRequestAmount(request) {
 // request — expense PLUS the revenue that offsets it — which is why department/program
 // rollups were showing roughly 2x the true ask.
 function isRevenueLineItem(item) {
-    const t = item && (item.AcctType ?? item['Acct Type'] ?? item.AccountType);
+    const t = item && (item.AcctType ?? item['Acct Type'] ?? item.AccountType ?? item['Account type'] ?? item['Account Type']);
     return t != null && t.toString().trim().toLowerCase() === 'revenue';
 }
 
@@ -1248,6 +1249,7 @@ function buildProgramAttributesMap(rows) {
         const dept = norm(row['User Group(prgs)'] || row['User Group(accts)'] || row['Department'] || row['User Group']);
         const attrs = {
             mandate: classifyMandate(row['Mandate']),
+            mandateScore: parseMandateScore(row['Mandate']),
             costRecovery: classifyCostRecovery(row['Cost Recovery']),
             finalScore: typeof row['Final Score'] === 'number' ? row['Final Score'] : parseFloat(row['Final Score']) || null,
             rawMandate: row['Mandate'] || null,
@@ -1256,7 +1258,7 @@ function buildProgramAttributesMap(rows) {
         // A row that carries none of the three attributes is not a signal — recording it
         // would make the loaded-keys count meaningless and would make
         // getProgramAttributesForLineItems() report a match with nothing behind it.
-        if (attrs.mandate == null && attrs.costRecovery == null && attrs.finalScore == null) continue;
+        if (attrs.mandate == null && attrs.mandateScore == null && attrs.costRecovery == null && attrs.finalScore == null) continue;
         const keys = [`${dept}::${program}`, `*::${program}`];
         const progId = normalizeId(row.ProgramID);
         if (progId) keys.unshift(`ID::${progId}`);
@@ -1267,6 +1269,7 @@ function buildProgramAttributesMap(rows) {
             } else {
                 // Upgrade in place if the new row has stronger / non-empty values
                 if (!existing.mandate && attrs.mandate) existing.mandate = attrs.mandate;
+                if (existing.mandateScore == null && attrs.mandateScore != null) existing.mandateScore = attrs.mandateScore;
                 if (existing.costRecovery == null && attrs.costRecovery != null) existing.costRecovery = attrs.costRecovery;
                 if (!existing.finalScore && attrs.finalScore) existing.finalScore = attrs.finalScore;
             }
@@ -1281,6 +1284,39 @@ function classifyMandate(val) {
     if (s.includes('self') || s.includes('ordinance') || s.includes('charter') || s.includes('commission')) return 'self';
     if (s.includes('no mandate') || /^no\b/.test(s) || s.includes('(0)')) return 'none';
     return null;
+}
+
+// Degree of mandate from the scored PBB attribute, e.g. "State or Federal Mandate (4)",
+// "Self Mandate or Ordinance (2)", "No Mandate (0)". The number in parentheses is
+// authoritative; label text is only used when there is no number.
+// The number in a scored PBB attribute label: "Less than 50% cost recovery (2)" -> 2.
+function parseParenScore(val) {
+    if (val === null || val === undefined) return null;
+    if (typeof val === 'number') return val;
+    const str = val.toString().trim();
+    if (!str || str === '-') return null;
+    const nums = [...str.matchAll(/\((\d+(?:\.\d+)?)\)/g)];
+    if (nums.length > 0) return parseFloat(nums[nums.length - 1][1]);
+    if (/^\d+(\.\d+)?$/.test(str)) return parseFloat(str);
+    return null;
+}
+
+function parseMandateScore(val) {
+    const n = parseParenScore(val);
+    if (n !== null) return n;
+    if (val === null || val === undefined) return null;
+    const str = val.toString().trim();
+    if (!str || str === '-') return null;
+    const cls = classifyMandate(str);
+    return cls === 'state_federal' ? 4 : cls === 'self' ? 2 : cls === 'none' ? 0 : null;
+}
+
+// 3-4 = highly mandated, 1-2 = low mandate, 0 = no mandate.
+function mandateLevelForScore(score) {
+    if (score === null || score === undefined) return null;
+    if (score >= 3) return 'Mandated';
+    if (score >= 1) return 'Compliance';
+    return 'None';
 }
 
 function classifyCostRecovery(val) {
@@ -1510,7 +1546,19 @@ function getOutcomeScore(qa, qaText) {
     return { score: 0, reason: "No measurable outcomes, KPIs, targets, or performance data provided in request documentation" };
 }
 
-function getFundingScore(qa, qaText, progAttrs, fundProfile) {
+function getFundingScore(qa, qaText, progAttrs, fundProfile, selfFunding) {
+    if (selfFunding && selfFunding.covers) {
+        return { score: 2, reason: `Request pays for itself: its own revenue ($${formatCurrency(Math.round(selfFunding.revenue))}) covers its cost ($${formatCurrency(Math.round(selfFunding.cost))})` };
+    }
+    if (fundProfile && fundProfile.hasFundData && fundProfile.fundingClass === 'Review') {
+        return { score: 0, reason: `Charged to a custodial / fiduciary fund (${fundProfile.reviewFunds.join(', ')}) — funding source needs review` };
+    }
+    if (fundProfile && fundProfile.hasFundData && fundProfile.fundingClass === 'GFonly') {
+        if (selfFunding && selfFunding.revenue > 0) {
+            return { score: 1, reason: `General Fund request; its own revenue offsets ${Math.round(selfFunding.share * 100)}% of the cost` };
+        }
+        return { score: 0, reason: `General Fund dollars per the Fund column (${fundProfile.funds.join(', ')}) with no offsetting revenue in the request` };
+    }
     // Authoritative: the structured Fund column already names a non-General-Fund source.
     if (fundProfile && fundProfile.hasFundData && fundProfile.fundingClass === 'NonGF') {
         const names = fundProfile.funds.join(', ');
@@ -1539,27 +1587,169 @@ function getFundingScore(qa, qaText, progAttrs, fundProfile) {
     return { score: 0, reason: "No non-General Fund sources identified - request is 100% dependent on General Fund appropriation" };
 }
 
-function getMandateScore(qa, qaText, progAttrs) {
-    const hasMandate = /board motion|consent decree|doj|mandate|statute|ordinance|charter/i.test(qaText);
-    const hasCompliance = /audit|liability|compliance|risk|safety|violation|penalty/i.test(qaText);
+// Mandate score for one line item: the request's own scored column first
+// ("MANDATED to PROVIDE PROGRAM"), then the program's score in the Summary Report.
+function getMandateScoreForLineItem(item) {
+    for (const key of Object.keys(item)) {
+        if (!/mandat/i.test(key)) continue;
+        const score = parseMandateScore(item[key]);
+        if (score !== null) return score;
+    }
+    const attrs = lookupProgramAttributes(item);
+    return attrs && attrs.mandateScore != null ? attrs.mandateScore : null;
+}
 
-    if (hasMandate && hasCompliance) {
-        return { score: 2, reason: "Request cites specific legal/regulatory mandate (board motion, statute, consent decree) AND identifies compliance risks or penalties" };
+function getCostRecoveryScoreForLineItem(item) {
+    for (const key of Object.keys(item)) {
+        if (!/cost recovery/i.test(key)) continue;
+        const score = parseParenScore(item[key]);
+        if (score !== null) return score;
     }
-    if (hasMandate) {
-        return { score: 1, reason: "Request references legal or regulatory mandate, board motion, or statutory requirement" };
+    const attrs = lookupProgramAttributes(item);
+    return attrs ? parseParenScore(attrs.rawCostRecovery) : null;
+}
+
+// Does the request pay for itself? Only its own revenue lines count, and ongoing
+// revenue must cover ongoing cost — one-time money (a grant) paying for ongoing cost
+// leaves the General Fund holding it later.
+function getSelfFundingCheck(lineItems) {
+    let costOngoing = 0, costOnetime = 0;
+    for (const item of lineItems) {
+        if (isRevenueLineItem(item)) continue;
+        const a = getLineItemAmount(item);
+        if ((a.total || 0) <= 0) continue;
+        costOngoing += Math.max(0, a.ongoing || 0);
+        costOnetime += Math.max(0, a.onetime || 0);
     }
-    if (hasCompliance) {
-        return { score: 1, reason: "Request addresses compliance obligations, audit findings, liability mitigation, or safety risks" };
+    const rev = getRequestRevenue(lineItems);
+    const revOngoing = Math.abs(rev.ongoing || 0), revOnetime = Math.abs(rev.onetime || 0);
+    const revTotal = revOngoing + revOnetime, costTotal = costOngoing + costOnetime;
+    const tol = 0.5;
+    const covers = revTotal > 0 && costTotal > 0 && revOngoing >= costOngoing - tol && revTotal >= costTotal - tol;
+    return {
+        revenue: revTotal, revenueOngoing: revOngoing, revenueOnetime: revOnetime,
+        cost: costTotal, costOngoing, costOnetime,
+        covers,
+        cliff: !covers && revOnetime > 0 && revTotal >= costTotal - tol && costOngoing > revOngoing + tol,
+        share: costTotal > 0 ? Math.min(1, revTotal / costTotal) : null
+    };
+}
+
+// Only when no line item carries a score: the requester's answer to the mandate
+// question (never a keyword search, which matched the question text itself).
+function getMandateScoreFromQA(qa) {
+    for (const row of qa) {
+        const question = (row.Question || '').toString();
+        if (!/mandate impact|comply with a mandate/i.test(question)) continue;
+        const answer = (row.Answer || '').toString().trim().toLowerCase();
+        if (!answer) continue;
+        if (/^no\b|no mandate|none|n\/a/.test(answer)) return { score: 0, answer: row.Answer };
+        if (/federal|state/.test(answer)) return { score: 4, answer: row.Answer };
+        return { score: 2, answer: row.Answer };
     }
-    // Fallback to program-level structured data when narrative is silent
-    if (progAttrs && progAttrs.mandate === 'state_federal') {
-        return { score: 2, reason: "Program inventory classifies this program as a State or Federal Mandate — legal/regulatory obligation established at the program level" };
+    return null;
+}
+
+// One slice per program a request's dollars touch, carrying that program's mandate
+// score and quartile. The weakest-link rules below run over these.
+function getRequestSlices(lineItems) {
+    const byKey = {};
+    for (const item of lineItems) {
+        if (isRevenueLineItem(item)) continue;
+        const program = (item.Program || '').toString().trim() || 'Unknown Program';
+        const key = getProgramIdForItem(item) || program.toUpperCase();
+        if (!byKey[key]) byKey[key] = { program, amount: 0, mandateScore: null, quartile: null, recoveryScore: null };
+        const e = byKey[key];
+        e.amount += getLineItemAmount(item).total || 0;
+        if (e.mandateScore === null) e.mandateScore = getMandateScoreForLineItem(item);
+        if (!e.quartile) e.quartile = getQuartileForLineItem(item);
+        if (e.recoveryScore === null) e.recoveryScore = getCostRecoveryScoreForLineItem(item);
     }
-    if (progAttrs && progAttrs.mandate === 'self') {
-        return { score: 1, reason: "Program inventory classifies this program as a Self Mandate (commission, ordinance, or charter) — local compliance obligation at the program level" };
+    return Object.values(byKey);
+}
+
+// Weakest link: added dollars are judged by their least-mandated and least-aligned
+// program, so a mandated or top-quartile slice cannot carry unrelated spending.
+// Reductions are the reverse: the risk is cutting from a mandated or top-quartile
+// program, so the strongest program cut governs and gets flagged.
+function getWeakestLinkProfile(lineItems, qa) {
+    const slices = getRequestSlices(lineItems);
+    const added = slices.filter(sl => sl.amount > 0);
+    const cuts = slices.filter(sl => sl.amount < 0);
+    const isReduction = added.length === 0 && cuts.length > 0;
+    const governing = isReduction ? cuts : (added.length > 0 ? added : slices);
+
+    const scored = governing.filter(sl => sl.mandateScore !== null);
+    let mandateScore = null, mandateSource = null;
+    if (scored.length > 0) {
+        const scores = scored.map(sl => sl.mandateScore);
+        mandateScore = isReduction ? Math.max(...scores) : Math.min(...scores);
+        mandateSource = 'scores';
+    } else {
+        const fromQA = getMandateScoreFromQA(qa);
+        if (fromQA) { mandateScore = fromQA.score; mandateSource = `Q&A answer "${fromQA.answer}"`; }
     }
-    return { score: 0, reason: "No legal mandates, compliance obligations, or significant regulatory risks identified in request" };
+
+    const ranked = governing.filter(sl => normalizeQuartile(sl.quartile));
+    let quartile = null;
+    if (ranked.length > 0) {
+        const pick = ranked.reduce((a, b) => {
+            const ra = quartileRank(a.quartile), rb = quartileRank(b.quartile);
+            return isReduction ? (rb < ra ? b : a) : (rb > ra ? b : a);
+        });
+        quartile = normalizeQuartile(pick.quartile);
+    }
+
+    const addedTotal = added.reduce((t, sl) => t + sl.amount, 0);
+    // Slices dragging an increase down: those at the governing level while other
+    // added slices sit higher. Removing them lifts the rest to the next level.
+    const drag = (levelOf, rankOf) => {
+        const known = added.filter(sl => levelOf(sl) !== null);
+        if (known.length < 2) return null;
+        const worst = Math.max(...known.map(rankOf));
+        const low = known.filter(sl => rankOf(sl) === worst);
+        const rest = known.filter(sl => rankOf(sl) !== worst);
+        if (rest.length === 0) return null;
+        const restWorst = rest.reduce((a, b) => (rankOf(b) > rankOf(a) ? b : a));
+        return {
+            slices: low,
+            amount: low.reduce((t, sl) => t + sl.amount, 0),
+            share: addedTotal > 0 ? low.reduce((t, sl) => t + sl.amount, 0) / addedTotal : null,
+            from: levelOf(low[0]),
+            to: levelOf(restWorst),
+            restAmount: rest.reduce((t, sl) => t + sl.amount, 0)
+        };
+    };
+    const MANDATE_RANK = { Mandated: 1, Compliance: 2, None: 3 };
+    const mandateDrag = isReduction ? null : drag(
+        sl => mandateLevelForScore(sl.mandateScore),
+        sl => MANDATE_RANK[mandateLevelForScore(sl.mandateScore)]);
+    const quartileDrag = isReduction ? null : drag(
+        sl => normalizeQuartile(sl.quartile),
+        sl => quartileRank(sl.quartile));
+
+    const reductionFlags = cuts.filter(sl =>
+        (sl.mandateScore !== null && sl.mandateScore >= 3) || quartileRank(sl.quartile) <= 2);
+
+    return { slices, added, cuts, isReduction, mandateScore, mandateSource, quartile,
+             mandateDrag, quartileDrag, reductionFlags };
+}
+
+function getMandateScore(profile) {
+    const level = mandateLevelForScore(profile.mandateScore);
+    if (level === null) {
+        return { score: 0, reason: "No mandate score on the line items or in the Summary Report, and no answer to the mandate question" };
+    }
+    const src = profile.mandateSource === 'scores'
+        ? (profile.isReduction ? 'the most-mandated program this request cuts' : 'the least-mandated program this request adds funding to')
+        : profile.mandateSource;
+    if (level === 'Mandated') {
+        return { score: 2, reason: `Mandate score ${profile.mandateScore} (highly mandated), from ${src}` };
+    }
+    if (level === 'Compliance') {
+        return { score: 1, reason: `Mandate score ${profile.mandateScore} (low mandate), from ${src}` };
+    }
+    return { score: 0, reason: `Mandate score 0 (no mandate), from ${src}` };
 }
 
 function getEfficiencyScore(qa, qaText) {
@@ -1600,50 +1790,110 @@ function getAccessScore(qa, qaText) {
 // a dedicated/enterprise/restricted source ('NonGF'), or unrecognized ('Unknown').
 // This is the AUTHORITATIVE funding signal — it reads the actual fund on the line
 // item rather than guessing from narrative keywords.
-function classifyFundName(fund) {
+// Fund types and how each counts on the archetype funding axis. Internal service
+// funds are charged back to (mostly General Fund) departments, so they count as GF.
+// Custodial / fiduciary money is held for others and should not fund a city program.
+const FUND_TYPES = {
+    GF:              { label: 'General Fund',          countsAs: 'GF' },
+    InternalService: { label: 'Internal service',      countsAs: 'GF' },
+    Enterprise:      { label: 'Enterprise',            countsAs: 'NonGF' },
+    Restricted:      { label: 'Restricted / other',    countsAs: 'NonGF' },
+    Custodial:       { label: 'Custodial / fiduciary', countsAs: 'Review' }
+};
+
+// Classification is by fund NAME only. Fund numbering differs by state (5xx is
+// internal service under Washington BARS but enterprise under GFOA-style charts),
+// so numbers are not trusted. Unrecognized named funds default to Restricted, and
+// users can correct any call from the Data Coverage panel.
+function classifyFundType(fund, useOverride = true) {
     if (fund === null || fund === undefined) return null;
-    const s = fund.toString().trim().toLowerCase();
+    const raw = fund.toString().trim();
+    const s = raw.toLowerCase();
     // Blank or placeholder values carry no fund signal.
     if (!s || /^(n\/?a|n\.a\.?|none|tbd|unknown|null|0|-+)$/.test(s)) return null;
+    const override = useOverride ? fundOverrides[s] : null;
+    if (override && FUND_TYPES[override]) return { type: override, basis: 'override' };
     // Recognizable General Fund: draws on countywide ad valorem / the General Fund.
     if (/general fund|ad valorem|countywide general|\bgf\b|^0*1$|^0*1\b|^00?1\s*-/.test(s)) {
-        return 'GF';
+        return { type: 'GF', basis: 'name' };
     }
-    // Any other NAMED fund is a distinct fiscal entity with its own dedicated revenue —
-    // enterprise/utility (paid from user rates), special revenue, MSTU, grant, tourism,
-    // road & bridge, solid waste, etc. None of these draw on the General Fund.
-    return 'NonGF';
+    if (/custodial|fiduciary|agency fund|pension|retirement (trust|system|fund)|\bopeb\b|relief (and|&) pension|(fire|police)(men'?s)? relief/.test(s)) {
+        return { type: 'Custodial', basis: 'name' };
+    }
+    if (/internal service|\bisf\b|fleet|equipment (rental|replacement|services?)|motor pool|central garage|garage fund|self[- ]?insur|risk (management|mgmt|pool)|liability (insurance|fund)|insurance fund|workers'? ?comp|unemployment|medical (reimb|insur|benefit|self|plan|trust)|health (insur|benefit|plan|trust)|dental|employee benefit|benefits fund|information (technology|systems|services) fund|technology (services|replacement) fund|\bit (services|fund)\b|central services fund|print(ing)? shop|facilit(y|ies) (maintenance|management) fund/.test(s)) {
+        return { type: 'InternalService', basis: 'name' };
+    }
+    if (/enterprise|utilit(y|ies)|\bwater\b|sewer|wastewater|storm ?water|drainage|electric|solid waste|refuse|sanitation|garbage|recycling|landfill|golf|airport|transit|parking|harbor|\bport\b|marina|cemetery|broadband|aquatic|convention center|ambulance/.test(s)) {
+        return { type: 'Enterprise', basis: 'name' };
+    }
+    if (/special revenue|street|road|bridge|highway|gas tax|fuel tax|\breet\b|real estate excise|tourism|lodging|hotel|motel|grant|cdbg|capital|debt|bond|levy|impact fee|\btax\b|park|arts|library|housing|trust|forfeiture|seizure|drug|e?911|\bems\b|emergency medical|tif\b|tax increment|redevelopment|perpetual care|permanent fund/.test(s)) {
+        return { type: 'Restricted', basis: 'name' };
+    }
+    // Any other NAMED fund is a distinct fiscal entity with its own dedicated revenue;
+    // default to Restricted but mark it unrecognized so a user can check it.
+    return { type: 'Restricted', basis: 'default' };
 }
 
-// Aggregate the structured Fund column across a request's line items, weighted by
-// dollar amount. Returns the dominant funding class plus the distinct fund names so
-// the UI can show the real source (e.g. "Enterprise/Utility Fund") instead of "GF Only".
+// 'GF' | 'NonGF' | 'Review' | null (no fund signal)
+function classifyFundName(fund) {
+    const c = classifyFundType(fund);
+    return c ? FUND_TYPES[c.type].countsAs : null;
+}
+
+// The request line's own Fund, else the fund of the same ItemID in the Summary Report.
+function resolveFund(item) {
+    if (item.Fund !== undefined && item.Fund !== null && classifyFundType(item.Fund)) return item.Fund;
+    const inv = inventoryItemsById[normalizeId(item.ItemID)];
+    return inv && inv.fund ? inv.fund : item.Fund;
+}
+
+// Per-browser corrections to the automatic fund classification.
+let fundOverrides = (() => {
+    try { return JSON.parse(localStorage.getItem('pbbFundOverrides') || '{}') || {}; }
+    catch (e) { return {}; }
+})();
+
+function setFundOverride(index, type) {
+    const fund = (window.coverageFundList || [])[index];
+    if (!fund) return;
+    const key = fund.toString().trim().toLowerCase();
+    if (type) fundOverrides[key] = type; else delete fundOverrides[key];
+    try { localStorage.setItem('pbbFundOverrides', JSON.stringify(fundOverrides)); } catch (e) { /* storage blocked */ }
+    renderDataCoveragePanel();
+    updateStats();
+}
+
 function getFundProfile(lineItems) {
-    let gf = 0, nonGf = 0, unknown = 0;
+    let gf = 0, nonGf = 0, review = 0;
     const funds = new Set();
+    const reviewFunds = new Set();
     let sawAnyFund = false;
-    for (const item of lineItems) {
-        const cls = classifyFundName(item.Fund);
+    // Judge the dollars being added; a pure reduction falls back to all of its lines.
+    const costLines = lineItems.filter(item => !isRevenueLineItem(item));
+    const addLines = costLines.filter(item => (getLineItemAmount(item).total || 0) > 0);
+    for (const item of (addLines.length > 0 ? addLines : costLines)) {
+        const fund = resolveFund(item);
+        const cls = classifyFundName(fund);
         if (cls === null) continue; // blank / placeholder fund — no signal
         sawAnyFund = true;
-        funds.add(item.Fund.toString().trim());
+        funds.add(fund.toString().trim());
         const amt = getLineItemAmount(item).total || 0;
         const w = amt > 0 ? amt : 1; // fall back to a per-line vote when amounts are absent
         if (cls === 'GF') gf += w;
         else if (cls === 'NonGF') nonGf += w;
-        else unknown += w;
+        else { review += w; reviewFunds.add(fund.toString().trim()); }
     }
     if (!sawAnyFund) {
-        return { hasFundData: false, funds: [], fundingClass: null, gf: 0, nonGf: 0, unknown: 0 };
+        return { hasFundData: false, funds: [], reviewFunds: [], fundingClass: null, gf: 0, nonGf: 0, review: 0 };
     }
-    // Any non-GF dollars => the request has a non-GF offset. Only fall to GFonly when
-    // the recognizable funding is entirely General Fund. Funds we can't recognize at
-    // all stay Unknown rather than silently defaulting to "GF Only".
+    // Weakest link: any General Fund dollars make the request GF, so a small grant or
+    // restricted slice cannot carry a General Fund ask. Custodial money needs review.
     let fundingClass;
-    if (nonGf > 0) fundingClass = 'NonGF';
+    if (review > 0) fundingClass = 'Review';
     else if (gf > 0) fundingClass = 'GFonly';
-    else fundingClass = 'Unknown';
-    return { hasFundData: true, funds: [...funds], fundingClass, gf, nonGf, unknown };
+    else fundingClass = 'NonGF';
+    return { hasFundData: true, funds: [...funds], reviewFunds: [...reviewFunds], fundingClass, gf, nonGf, review,
+             gfShare: gf + nonGf > 0 ? gf / (gf + nonGf) : null };
 }
 
 // Display attributes for the Funding decision factor, including the real fund name(s).
@@ -1652,6 +1902,12 @@ function getFundingDisplay(analysis) {
     const sub = fp && fp.funds && fp.funds.length ? fp.funds.join(', ') : '';
     if (analysis.fundingType === 'NonGF') {
         return { label: '💚 Non-GF', sub, text: '#059669', grad: 'linear-gradient(135deg, #d1fae5, #a7f3d0)', plain: '#d1fae5', border: '#10b981' };
+    }
+    if (analysis.fundingType === 'Review') {
+        return { label: '⚠️ Review', sub, text: '#b45309', grad: 'linear-gradient(135deg, #fef3c7, #fde68a)', plain: '#fef3c7', border: '#f59e0b' };
+    }
+    if (analysis.selfFunding && analysis.selfFunding.covers) {
+        return { label: '💚 Self-funding', sub, text: '#059669', grad: 'linear-gradient(135deg, #d1fae5, #a7f3d0)', plain: '#d1fae5', border: '#10b981' };
     }
     if (analysis.fundingType === 'Unknown') {
         return { label: '⚪ Unknown', sub, text: '#475569', grad: 'linear-gradient(135deg, #f1f5f9, #e2e8f0)', plain: '#f1f5f9', border: '#94a3b8' };
@@ -1690,7 +1946,7 @@ function getGfExposure(lineItems) {
         if (isRevenueLineItem(item)) continue;
         const amt = getLineItemAmount(item).total || 0;
         if (!amt) continue;
-        const cls = classifyFundName(item.Fund);
+        const cls = classifyFundName(resolveFund(item));
         if (cls === 'GF') gf += amt;
         else if (cls === 'NonGF') nonGf += amt;
         else unclassified += amt;
@@ -1901,6 +2157,7 @@ function computeDataCoverage() {
         withProgramName: 0,
         matchedToInventory: 0,
         linkedByProgramId: 0,
+        fundLines: {},
         itemsLinkedById: 0,
         withQuartile: 0,
         withFund: 0,
@@ -1938,7 +2195,12 @@ function computeDataCoverage() {
                 }
             }
             if (getQuartileForLineItem(item)) cov.withQuartile++;
-            if (classifyFundName(item.Fund)) cov.withFund++;
+            const fund = resolveFund(item);
+            if (classifyFundName(fund)) {
+                cov.withFund++;
+                const name = fund.toString().trim();
+                cov.fundLines[name] = (cov.fundLines[name] || 0) + 1;
+            }
         }
     }
     cov.unmatchedPrograms = [...unmatched].sort();
@@ -1951,10 +2213,17 @@ function scoreRequest(request) {
     const qa = getRequestQA(requestId);
     const amounts = getRequestAmount(request);
     const fundProfile = getFundProfile(lineItems);
+    const selfFunding = getSelfFundingCheck(lineItems);
     
-    const quartiles = lineItems.map(li => getPrimaryValue([li], 'quartile')).filter(q => q);
-    const bestQuartile = getBestQuartile(quartiles);
+    const profile = getWeakestLinkProfile(lineItems, qa);
+    // Governing quartile: the least-aligned program receiving added dollars (or, for a
+    // reduction, the most-aligned program being cut). Kept under the legacy name
+    // bestQuartile because the report UI reads that field.
+    const bestQuartile = profile.quartile;
     const qaText = qa.map(q => Object.values(q).join(' ')).join(' ').toLowerCase();
+    // Answers only — the question text ("...Mandate Impact...", "...ROI...") would
+    // otherwise match every request.
+    const answerText = qa.map(q => (q.Answer == null ? '' : q.Answer.toString())).join(' ').toLowerCase();
 
     // Pull program-level structured PBB attributes (Mandate / Cost Recovery / Final Score)
     // from the uploaded Programs Inventory. These act as a fallback when the request Q&A
@@ -1963,9 +2232,9 @@ function scoreRequest(request) {
 
     // Score each criterion with explicit reasoning
     const quartileAnalysis = getQuartileScore(bestQuartile);
-    const outcomeAnalysis = getOutcomeScore(qa, qaText);
-    const fundingAnalysis = getFundingScore(qa, qaText, progAttrs, fundProfile);
-    const mandateAnalysis = getMandateScore(qa, qaText, progAttrs);
+    const outcomeAnalysis = getOutcomeScore(qa, answerText);
+    const fundingAnalysis = getFundingScore(qa, qaText, progAttrs, fundProfile, selfFunding);
+    const mandateAnalysis = getMandateScore(profile);
     const efficiencyAnalysis = getEfficiencyScore(qa, qaText);
     const accessAnalysis = getAccessScore(qa, qaText);
 
@@ -1999,12 +2268,10 @@ function scoreRequest(request) {
         hasOutsideFunding:
             /outside funding.*yes|grant|fee|partner|cost recovery/i.test(qaText) ||
             (progAttrs && progAttrs.costRecovery === true),
-        isMandated:
-            /board motion|consent decree|doj|mandate|statute/i.test(qaText) ||
-            (progAttrs && progAttrs.mandate === 'state_federal'),
-        isCompliance:
-            /audit|liability|compliance|risk|safety/i.test(qaText) ||
-            (progAttrs && progAttrs.mandate === 'self')
+        isMandated: mandateLevelForScore(profile.mandateScore) === 'Mandated',
+        isCompliance: mandateLevelForScore(profile.mandateScore) === 'Compliance',
+        isReduction: profile.isReduction,
+        weakestLink: profile
     };
     
     // Calculate total score (Access/Equity excluded when client toggle is off)
@@ -2060,14 +2327,20 @@ function scoreRequest(request) {
     // paid from user rates were being labeled General Fund).
     if (fundProfile.hasFundData && fundProfile.fundingClass !== 'Unknown') {
         analysis.fundingType = fundProfile.fundingClass;
+        // A General Fund request whose own revenue covers its cost does not draw on the
+        // General Fund in net terms — treat it as self-funding.
+        if (analysis.fundingType === 'GFonly' && selfFunding.covers) analysis.fundingType = 'NonGF';
     } else if (analysis.hasOutsideFunding) {
         analysis.fundingType = 'NonGF';
     } else {
         analysis.fundingType = 'Unknown';
     }
-    // Keep the narrative's non-GF flag consistent with the structured signal.
-    analysis.hasOutsideFunding = analysis.hasOutsideFunding ||
-        (fundProfile.hasFundData && fundProfile.fundingClass === 'NonGF');
+    // Structured fund data is authoritative for the non-GF flag; narrative keywords only
+    // count when no fund is supplied.
+    analysis.hasOutsideFunding = fundProfile.hasFundData
+        ? analysis.fundingType === 'NonGF'
+        : analysis.hasOutsideFunding;
+    analysis.selfFunding = selfFunding;
     
     // Determine outcomes strength
     analysis.outcomesStrength = outcomeAnalysis.score >= 2 ? 'Strong' : 'Weak';
@@ -2130,6 +2403,30 @@ function scoreRequest(request) {
         );
     }
 
+    // Funding checks against the request's own revenue and the programs' cost recovery.
+    if (!analysis.isReduction) {
+        const sf = analysis.selfFunding;
+        const added = (analysis.weakestLink && analysis.weakestLink.added) || [];
+        if (sf.cliff) {
+            analysis.verifyNow.push(
+                `One-time revenue ($${formatCurrency(Math.round(sf.revenueOnetime))}) pays for ongoing cost ` +
+                `($${formatCurrency(Math.round(sf.costOngoing))}/yr). When it ends, the ongoing cost falls to the General Fund.`
+            );
+        }
+        if (sf.revenue > 0 && added.length > 0 && added.every(sl => sl.recoveryScore === 0)) {
+            analysis.verifyNow.push(
+                `The request counts $${formatCurrency(Math.round(sf.revenue))} of new revenue in program(s) rated "No cost recovery". Confirm the revenue estimate.`
+            );
+        }
+        if (sf.revenue === 0 && analysis.fundingType === 'GFonly') {
+            for (const sl of added.filter(sl => sl.recoveryScore !== null && sl.recoveryScore >= 3)) {
+                analysis.verifyNow.push(
+                    `${sl.program} normally recovers most of its cost through fees, but this request adds $${formatCurrency(Math.round(sl.amount))} with no revenue. Consider a fee to hold its recovery rate.`
+                );
+            }
+        }
+    }
+
     // Generate enhanced narrative
     analysis.narrative = generateEnhancedNarrative(request, lineItems, qa, analysis);
     
@@ -2142,6 +2439,38 @@ function applyDecisionGrid(analysis) {
 
     // Create lookup key
     const gridKey = `${quartileBand}-${mandateLevel}-${fundingType}-${outcomesStrength}`;
+
+    // The 24 archetypes judge requests for more money. A reduction runs the reverse
+    // check: cutting from unmandated, lower-quartile programs is what PBB asks for;
+    // cutting from a highly mandated or top-quartile program needs verification.
+    if (analysis.isReduction) {
+        const flags = (analysis.weakestLink && analysis.weakestLink.reductionFlags) || [];
+        if (flags.length > 0) {
+            return {
+                archetypeNumber: 0,
+                disposition: 'VERIFY',
+                color: '#f59e0b',
+                keyConsideration: 'Reduction cuts from a highly mandated or top-quartile program — confirm mandate minimums and priority service levels still hold',
+                verifyNow: flags.map(sl => {
+                    const why = [];
+                    if (sl.mandateScore !== null && sl.mandateScore >= 3) why.push(`mandate score ${sl.mandateScore}`);
+                    if (quartileRank(sl.quartile) <= 2) why.push(normalizeQuartile(sl.quartile));
+                    return `Cut of $${formatCurrency(Math.abs(Math.round(sl.amount)))} from ${sl.program} (${why.join(', ')}): confirm the program still meets its mandate and service commitments`;
+                }),
+                strengthenWith: ['Take the reduction from lower-quartile or unmandated programs instead', 'Document the service-level impact of the cut'],
+                gridKey: 'Reduction-Flagged'
+            };
+        }
+        return {
+            archetypeNumber: 0,
+            disposition: 'APPROVE',
+            color: '#28a745',
+            keyConsideration: 'Reduction from lower-quartile / low-mandate programs — consistent with PBB reallocation',
+            verifyNow: ['Confirm the service-level impact is understood and accepted'],
+            strengthenWith: ['Consider redirecting the savings to Most/More Aligned or mandated programs'],
+            gridKey: 'Reduction-Clean'
+        };
+    }
 
     // Without quartile data, the entire strategic-priority axis collapses and the grid
     // can't produce a defensible disposition. Surface a REVIEW state instead of forcing
@@ -2169,6 +2498,19 @@ function applyDecisionGrid(analysis) {
             keyConsideration: 'Funding source could not be determined — confirm whether this draws on the General Fund or a dedicated/enterprise (rate-, grant-, or fee-funded) source before applying a disposition.',
             verifyNow: ['Add a Fund value to the line items (e.g. General Fund, Enterprise/Utility Fund), or state the funding source in the request Q&A'],
             strengthenWith: ['Tag each line item with its fund so the framework can separate General Fund impact from rate- or grant-funded requests'],
+            gridKey: gridKey
+        };
+    }
+
+    if (fundingType === 'Review') {
+        const names = (analysis.fundProfile && analysis.fundProfile.reviewFunds || []).join(', ');
+        return {
+            archetypeNumber: 0,
+            disposition: 'REVIEW',
+            color: '#64748b',
+            keyConsideration: `Charged to a custodial / fiduciary fund (${names}) — money held on behalf of others generally cannot fund a program. Confirm the correct fund`,
+            verifyNow: [`Confirm the fund for this request; if ${names} is not custodial, correct its classification in the Data Coverage panel`],
+            strengthenWith: ['Charge the request to the operating fund that will actually pay for it'],
             gridKey: gridKey
         };
     }
@@ -2492,6 +2834,21 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
         }
     }
 
+    const sfx = analysis.selfFunding;
+    if (sfx && sfx.revenue > 0 && !analysis.isReduction) {
+        if (sfx.covers) {
+            narrative += `**PAYS FOR ITSELF:** $${formatCurrency(Math.round(sfx.revenue))} of the request's own revenue covers its $${formatCurrency(Math.round(sfx.cost))} cost, so it is treated as self-funding.\n\n`;
+        } else if (sfx.cliff) {
+            narrative += `**REVENUE OFFSET:** the request's revenue covers its cost in total, but $${formatCurrency(Math.round(sfx.revenueOnetime))} of it is one-time money paying for ongoing cost — not self-funding.\n\n`;
+        } else {
+            narrative += `**REVENUE OFFSET:** the request's own revenue covers ${Math.round(sfx.share * 100)}% of its cost; the rest draws on the fund(s) listed above.\n\n`;
+        }
+    }
+    const fpx = analysis.fundProfile;
+    if (fpx && fpx.gf > 0 && fpx.nonGf > 0 && !analysis.isReduction) {
+        narrative += `**MIXED FUNDING:** $${formatCurrency(Math.round(fpx.gf))} General Fund and $${formatCurrency(Math.round(fpx.nonGf))} other funds. Any General Fund share makes the request General Fund for the PBB grid — move the General Fund portion to a non-GF source, or split it into its own request, to be judged on the non-GF rail.\n\n`;
+    }
+
     const impacts = (analysis.programImpacts || []).filter(i => i.currentCost != null);
     if (impacts.length > 0) {
         narrative += `**PROGRAM IMPACT:**\n\n`;
@@ -2534,20 +2891,52 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
         narrative += `\n`;
     }
 
+    const wl = analysis.weakestLink;
+    if (wl && !wl.isReduction && (wl.mandateDrag || wl.quartileDrag)) {
+        narrative += `**REALLOCATION OPPORTUNITY:** added dollars are judged by their weakest program, so a low-mandate or low-quartile slice pulls the whole request down.\n\n`;
+        const money = v => `$${formatCurrency(Math.round(v))}`;
+        const describe = d => d.slices.map(sl => `${sl.program} (${money(sl.amount)})`).join(', ');
+        if (wl.mandateDrag) {
+            const d = wl.mandateDrag;
+            const lvl = { Mandated: 'highly mandated', Compliance: 'low mandate', None: 'no mandate' };
+            narrative += `- **Mandate:** ${money(d.amount)}${d.share != null ? ` (${Math.round(d.share * 100)}%)` : ''} goes to ${describe(d)}, rated ${lvl[d.from]}. Fund it separately or reallocate it, and the remaining ${money(d.restAmount)} rates ${lvl[d.to]}.\n`;
+        }
+        if (wl.quartileDrag) {
+            const d = wl.quartileDrag;
+            narrative += `- **Quartile:** ${money(d.amount)}${d.share != null ? ` (${Math.round(d.share * 100)}%)` : ''} goes to ${describe(d)} (${d.from}). Without it, the remaining ${money(d.restAmount)} is ${d.to}.\n`;
+        }
+        narrative += `\n`;
+    }
+    if (wl && wl.isReduction) {
+        narrative += `**REDUCTION CHECK:** this request reduces spending, so the PBB check runs in reverse — cuts should come from lower-quartile, low-mandate programs.\n\n`;
+        for (const sl of wl.cuts) {
+            const parts = [];
+            if (sl.quartile) parts.push(normalizeQuartile(sl.quartile) || sl.quartile);
+            if (sl.mandateScore !== null) parts.push(`mandate ${sl.mandateScore}`);
+            const flagged = wl.reductionFlags.includes(sl);
+            narrative += `- ${flagged ? '⚠️ ' : ''}**${sl.program}** — cut $${formatCurrency(Math.abs(Math.round(sl.amount)))}${parts.length ? ` (${parts.join(', ')})` : ''}\n`;
+        }
+        narrative += `\n`;
+    }
+
     if (analysis.programFinalScore != null) {
         narrative += `**PROGRAM PBB SCORE:** ${analysis.programFinalScore} — used to rank this request against others carrying the same recommendation.\n\n`;
     }
 
     narrative += `---\n\n`;
 
-    // Context flags
-    if (analysis.mandateLevel === 'Mandated') {
+    // Context flags (ask-oriented; a reduction's reverse check is explained above)
+    if (analysis.isReduction) {
+        // no ask-oriented flags
+    } else if (analysis.mandateLevel === 'Mandated') {
         narrative += `⚖️ **MANDATED**: This request is legally mandated or tied to a Board Motion/consent decree.\n\n`;
     } else if (analysis.mandateLevel === 'Compliance') {
         narrative += `**COMPLIANCE/RISK**: This request addresses compliance obligations or risk mitigation.\n\n`;
     }
     
-    if (analysis.hasOutsideFunding) {
+    if (analysis.isReduction) {
+        // funding source is not at issue for a cut
+    } else if (analysis.hasOutsideFunding) {
         narrative += `**NON-GF FUNDING**: Includes non-General Fund sources (grants, fees, or partnerships).\n\n`;
     } else if (analysis.quartileBand === 'Low') {
         narrative += `🚨 **FUNDING CONCERN**: 100% General Fund requested for a lower-relevance (Q3/Q4) program.\n\n`;
@@ -2562,15 +2951,19 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     narrative += `---\n\n`;
     
     // Add decision tree explanation
-    narrative += explainDecisionLogic(analysis);
-    narrative += `\n---\n\n`;
+    if (!analysis.isReduction) {
+        narrative += explainDecisionLogic(analysis);
+        narrative += `\n---\n\n`;
+    }
     
     // Disposition and recommendation with PBB suggests language
     narrative += `**PBB FRAMEWORK SUGGESTS: ${analysis.disposition}** (Score: ${analysis.totalScore}/${includeAccessEquity ? 12 : 10})\n\n`;
     narrative += `*Note: This is an advisory recommendation based on textbook PBB methodology, not a final decision.*\n\n`;
     
     // Main recommendation based on disposition
-    if (analysis.disposition === 'APPROVE') {
+    if (analysis.isReduction) {
+        narrative += `**PBB Framework Advisory:** ${analysis.keyConsideration}.\n\n`;
+    } else if (analysis.disposition === 'APPROVE') {
         narrative += `*PBB suggests APPROVE means this request meets the framework's funding criteria — it does NOT mean "fund regardless of cost." Even strong cases compete for finite General Fund resources, so all approvals are subject to overall budget capacity.*\n\n`;
         if (analysis.mandateLevel === 'Mandated') {
             narrative += `**PBB Framework Advisory:** PBB suggests APPROVE. This is a mandated program with ${analysis.outcomesStrength.toLowerCase()} outcomes evidence. `;
@@ -2611,7 +3004,7 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
         narrative += `This low-relevance, GF-only request with weak outcomes does not meet PBB funding criteria. PBB recommends fundamental changes before reconsideration.\n\n`;
     } else if (analysis.disposition === 'REVIEW') {
         narrative += `**PBB Framework Advisory:** PBB suggests MANUAL REVIEW. `;
-        narrative += `This request is missing the quartile alignment data required to apply the PBB framework. Add a Quartile value to the line items, or upload a Summary Report that includes a Quartile column, then re-run the analysis. Until then, no APPROVE/VERIFY/MODIFY/DEFER/REJECT recommendation should be inferred.\n\n`;
+        narrative += `${analysis.keyConsideration}. Resolve this, then re-run the analysis. Until then, no APPROVE/VERIFY/MODIFY/DEFER/REJECT recommendation should be inferred.\n\n`;
     }
     
     // Verification requirements
@@ -2969,6 +3362,36 @@ function renderDataCoveragePanel() {
         html += `<div style="margin-top: 10px; padding: 9px 13px; background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 5px; font-size: 0.85rem; color: #92400e;">
             No Mandate / Cost Recovery columns found on the Details or Programs sheet — mandate and cost-recovery scoring will rely on request narrative text alone.
         </div>`;
+    }
+
+    const fundNames = Object.keys(c.fundLines).sort();
+    if (fundNames.length > 0) {
+        window.coverageFundList = fundNames;
+        const needsLook = fundNames.filter(f => {
+            const t = classifyFundType(f);
+            return t && (t.type === 'InternalService' || t.type === 'Custodial' || t.basis === 'default');
+        }).length;
+        const rows = fundNames.map((f, i) => {
+            const t = classifyFundType(f);
+            const autoType = classifyFundType(f, false);
+            const opts = [`<option value="">Auto: ${FUND_TYPES[autoType.type].label}</option>`]
+                .concat(Object.keys(FUND_TYPES).map(k =>
+                    `<option value="${k}" ${t.basis === 'override' && t.type === k ? 'selected' : ''}>${FUND_TYPES[k].label}</option>`));
+            const counts = FUND_TYPES[t.type].countsAs;
+            const countsLabel = counts === 'GF' ? 'counts as General Fund' : counts === 'Review' ? 'flagged for review' : 'counts as non-GF';
+            const esc = String(f).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+            return `<div style="display: flex; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px solid #f1f5f9;">
+                <div style="flex: 1; min-width: 0;">${esc} <span style="color: #94a3b8;">· ${c.fundLines[f]} line${c.fundLines[f] === 1 ? '' : 's'}</span></div>
+                <select onchange="setFundOverride(${i}, this.value)" style="font-size: 0.8rem; padding: 2px 4px;">${opts.join('')}</select>
+                <div style="width: 150px; font-size: 0.75rem; color: ${counts === 'GF' ? '#dc2626' : counts === 'Review' ? '#b45309' : '#059669'};">${countsLabel}${t.basis === 'default' ? ' (unrecognized name)' : ''}</div>
+            </div>`;
+        }).join('');
+        html += `
+            <details style="margin-top: 10px; font-size: 0.83rem; color: #475569;">
+                <summary style="cursor: pointer; font-weight: 600;">Fund classification — ${fundNames.length} fund${fundNames.length === 1 ? '' : 's'}${needsLook ? ` (${needsLook} worth a look)` : ''}</summary>
+                <div style="margin-top: 6px; color: #64748b;">Classified by fund name. Internal service funds count as General Fund; custodial funds are flagged. Correct any wrong call here — it is remembered in this browser. Regenerate any open report after changing.</div>
+                <div style="margin-top: 6px;">${rows}</div>
+            </details>`;
     }
 
     if (c.unmatchedPrograms.length > 0) {

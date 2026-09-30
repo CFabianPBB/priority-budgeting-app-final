@@ -2055,6 +2055,31 @@ function getRequestProgramInfo(lineItems) {
     };
 }
 
+function requestHeaderParts(request, lineItems) {
+    const amounts = getRequestAmount(request);
+    const programInfo = getRequestProgramInfo(lineItems);
+    const quartile = getRequestQuartile(lineItems);
+    const dept = getPrimaryValue(lineItems, 'department') || 'Unknown department';
+    const funds = getFundProfile(lineItems).funds;
+    return {
+        amounts, programInfo, quartile, dept, funds,
+        amountPill: `<span class="request-amount${amounts.total < 0 ? ' neg' : ''}">${amounts.total < 0 ? money(amounts.total) : '+' + money(amounts.total)}</span>`,
+        quartileBadge: quartile ? `<span class="quartile-badge quartile-${quartile.toLowerCase().replace(/ /g, '-')}">${quartile}</span>` : '',
+        meta: `${dept} · ${programInfo.label} · ${lineItems.length} line item${lineItems.length === 1 ? '' : 's'}${amounts.total < 0 ? ' · Reduction' : ''}`
+    };
+}
+
+function amountTileHtml(amounts) {
+    const parts = [];
+    if (amounts.ongoing) parts.push(`${money(amounts.ongoing)} ongoing`);
+    if (amounts.onetime) parts.push(`${money(amounts.onetime)} one-time`);
+    return `<div class="summary-item">
+        <div class="summary-label">Total Amount</div>
+        <div class="summary-value" style="color: ${amounts.total < 0 ? '#dc2626' : '#166534'};">${amounts.total < 0 ? money(amounts.total) : '+' + money(amounts.total)}</div>
+        ${parts.length ? `<div class="summary-sub">${parts.join(' · ')}</div>` : ''}
+    </div>`;
+}
+
 function quartileNoteHtml(note, size) {
     return note ? `<div style="font-size: ${size || '0.72rem'}; color: #64748b; margin-top: 3px;">${note}</div>` : '';
 }
@@ -3420,16 +3445,23 @@ function generateFundingPriorityOrder() {
     const ranked = lastRankedAnalyses;
     if (!ranked || ranked.length === 0) return '';
 
-    const totalAsk = ranked.reduce((t, r) => t + (r.analysis.requestTotal || 0), 0);
-    const totalGf  = ranked.reduce((t, r) => t + (r.analysis.gfExposure ? r.analysis.gfExposure.gf : 0), 0);
+    const totals = splitRequestTotals(ranked.map(r => r.request));
+    let gfIncreases = 0;
+    ranked.forEach(r => {
+        for (const item of getLineItemsForRequest(r.requestId)) {
+            const amt = getLineItemAmount(item).total || 0;
+            if (amt > 0 && classifyFundName(resolveFund(item)) === 'GF') gfIncreases += amt;
+        }
+    });
 
     let html = `
         <div class="section-header" id="funding-priority">Funding Priority Order</div>
         <p>Requests are ordered by the framework's recommendation first, then — within each recommendation —
         by program alignment quartile, the program's own PBB score, and General Fund exposure. The ordering
         <strong>never overrides the disposition</strong>; it sequences requests that share one.
-        Total requested: <strong class="amount">${money(Math.round(totalAsk))}</strong>,
-        of which <strong class="amount">${money(Math.round(totalGf))}</strong> would come from the General Fund.</p>
+        Increases requested: <strong class="amount">${money(totals.increases)}</strong>, of which
+        <strong class="amount">${money(gfIncreases)}</strong> would come from the General Fund; reductions offered:
+        <strong style="color: #dc2626;">${money(totals.reductions)}</strong>.</p>
 
         <div style="margin: 15px 0; padding: 12px 15px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
             <label style="font-weight: 600; color: #334155; margin-right: 10px;">Available General Fund for new requests:</label>
@@ -3482,13 +3514,14 @@ function generateFundingPriorityOrder() {
                     <span style="background: ${a.dispositionColor}; color: white; padding: 3px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600;">${a.disposition}</span>
                 </td>
                 <td style="padding: 8px 6px; text-align: right;">${money(Math.round(a.requestTotal || 0))}</td>
-                <td style="padding: 8px 6px; text-align: right; color: ${gf > 0 ? '#dc2626' : '#059669'}; font-weight: 600;">${gf > 0 ? '$' + formatCurrency(Math.round(gf)) : '—'}</td>
+                <td style="padding: 8px 6px; text-align: right; color: ${gf > 0 ? '#dc2626' : '#059669'}; font-weight: 600;">${gf ? money(gf) : '—'}</td>
                 <td style="padding: 8px 6px; text-align: right; color: #475569;">${money(Math.round(row.cumulativeGf))}</td>
             </tr>
         `;
     });
 
-    html += `</tbody></table>`;
+    html += `</tbody></table>
+        <p style="font-size: 0.8rem; color: #64748b; margin-top: 6px;">GF Exposure is the request's General Fund dollars. A reduction to a General Fund program shows as a negative amount (green) and lowers the cumulative total, freeing capacity for the requests after it.</p>`;
     return html;
 }
 
@@ -3532,19 +3565,28 @@ function generatePortfolioAnalysis() {
     const ranked = lastRankedAnalyses;
     if (!ranked || ranked.length === 0) return '';
 
+    // Follow each dollar to the quartile of the program it actually funds (line level).
+    // A request's own weakest-link quartile decides its recommendation, but filing all of
+    // its dollars under that one quartile would misstate where the money goes. Increases
+    // and reductions are kept apart so a cut never hides an ask.
     const buckets = {};
     const ORDER = ['Most Aligned', 'More Aligned', 'Less Aligned', 'Least Aligned', 'Unclassified'];
-    ORDER.forEach(q => { buckets[q] = { requested: 0, gf: 0, nonGf: 0, requests: 0, currentCost: 0, fte: 0 }; });
+    ORDER.forEach(q => { buckets[q] = { requested: 0, gf: 0, nonGf: 0, reductions: 0, requestIds: new Set(), currentCost: 0 }; });
 
     ranked.forEach(row => {
-        const a = row.analysis;
-        const q = a.bestQuartile && buckets[a.bestQuartile] ? a.bestQuartile : 'Unclassified';
-        const b = buckets[q];
-        b.requests++;
-        b.requested += a.requestTotal || 0;
-        if (a.gfExposure) { b.gf += a.gfExposure.gf; b.nonGf += a.gfExposure.nonGf + a.gfExposure.unclassified; }
-        (a.programImpacts || []).forEach(i => { b.fte += i.requestFte || 0; });
+        for (const item of getLineItemsForRequest(row.requestId)) {
+            if (isRevenueLineItem(item)) continue;
+            const amt = getLineItemAmount(item).total || 0;
+            if (!amt) continue;
+            const q = getQuartileForLineItem(item) || 'Unclassified';
+            const b = buckets[q] || buckets.Unclassified;
+            b.requestIds.add(row.requestId);
+            if (amt < 0) { b.reductions += amt; continue; }
+            b.requested += amt;
+            if (classifyFundName(resolveFund(item)) === 'GF') b.gf += amt; else b.nonGf += amt;
+        }
     });
+    ORDER.forEach(q => { buckets[q].requests = buckets[q].requestIds.size; });
 
     // Current spend by quartile, straight from the allocated base budget.
     let inventoryTotal = 0;
@@ -3557,6 +3599,7 @@ function generatePortfolioAnalysis() {
 
     const totalRequested = ORDER.reduce((t, q) => t + buckets[q].requested, 0);
     const totalGf = ORDER.reduce((t, q) => t + buckets[q].gf, 0);
+    const totalReductions = ORDER.reduce((t, q) => t + buckets[q].reductions, 0);
 
     const COLORS = {
         'Most Aligned': '#059669', 'More Aligned': '#10b981',
@@ -3565,9 +3608,10 @@ function generatePortfolioAnalysis() {
 
     let html = `
         <div class="section-header" id="portfolio-analysis">Portfolio Analysis — Where the New Money Goes</div>
-        <p>New requests distributed across the alignment quartiles of the programs they fund. The question this
-        answers is the central one in Priority Based Budgeting: <strong>is incremental spending flowing toward the
-        results we said matter most?</strong></p>
+        <p>Every requested dollar, followed to the alignment quartile of the program it funds. A request that spans
+        several programs is split across them. The question this answers is the central one in Priority Based
+        Budgeting: <strong>is incremental spending flowing toward the results we said matter most?</strong>
+        Bars show increases; reductions are listed separately in the table.</p>
     `;
 
     // Share-of-new-money bars
@@ -3581,7 +3625,7 @@ function generatePortfolioAnalysis() {
             <div style="margin-bottom: 14px;">
                 <div style="display: flex; justify-content: space-between; font-size: 0.88rem; margin-bottom: 4px;">
                     <span style="font-weight: 600; color: #1f2937;">${q}</span>
-                    <span style="color: #475569;">${money(Math.round(b.requested))} · ${pct.toFixed(1)}% of new money · ${Math.round(gfPct)}% General Fund</span>
+                    <span style="color: #475569;">${money(b.requested)} · ${pct.toFixed(0)}% of increases · ${Math.round(gfPct)}% General Fund</span>
                 </div>
                 <div style="background: #f1f5f9; border-radius: 5px; height: 22px; overflow: hidden; display: flex;">
                     <div style="width: ${pct}%; background: ${COLORS[q]}; height: 100%;"></div>
@@ -3598,9 +3642,9 @@ function generatePortfolioAnalysis() {
                     <th style="padding: 10px 8px; text-align: left;">Alignment Quartile</th>
                     <th style="padding: 10px 8px; text-align: center; width: 80px;">Requests</th>
                     <th style="padding: 10px 8px; text-align: right; width: 130px;">Current Spend</th>
-                    <th style="padding: 10px 8px; text-align: right; width: 120px;">Requested</th>
-                    <th style="padding: 10px 8px; text-align: right; width: 120px;">GF Portion</th>
-                    <th style="padding: 10px 8px; text-align: right; width: 120px;">Non-GF Portion</th>
+                    <th style="padding: 10px 8px; text-align: right; width: 120px;">Increases</th>
+                    <th style="padding: 10px 8px; text-align: right; width: 120px;">of which GF</th>
+                    <th style="padding: 10px 8px; text-align: right; width: 120px;">Reductions</th>
                     <th style="padding: 10px 8px; text-align: right; width: 120px;">Proposed Total</th>
                 </tr>
             </thead>
@@ -3608,16 +3652,17 @@ function generatePortfolioAnalysis() {
     `;
     ORDER.forEach(q => {
         const b = buckets[q];
-        if (b.requested <= 0 && b.currentCost <= 0) return;
+        if (b.requested <= 0 && b.reductions >= 0 && b.currentCost <= 0) return;
+        const proposed = b.currentCost + b.requested + b.reductions;
         html += `
             <tr style="border-bottom: 1px solid #e5e7eb;">
                 <td style="padding: 9px 8px;"><span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: ${COLORS[q]}; margin-right: 8px;"></span><strong>${q}</strong></td>
                 <td style="padding: 9px 8px; text-align: center;">${b.requests || '—'}</td>
-                <td style="padding: 9px 8px; text-align: right; color: #475569;">${b.currentCost > 0 ? '$' + formatCurrency(Math.round(b.currentCost)) : '—'}</td>
-                <td style="padding: 9px 8px; text-align: right; font-weight: 600; color: #b45309;">${b.requested > 0 ? '$' + formatCurrency(Math.round(b.requested)) : '—'}</td>
-                <td style="padding: 9px 8px; text-align: right; color: ${b.gf > 0 ? '#dc2626' : '#9ca3af'};">${b.gf > 0 ? '$' + formatCurrency(Math.round(b.gf)) : '—'}</td>
-                <td style="padding: 9px 8px; text-align: right; color: ${b.nonGf > 0 ? '#059669' : '#9ca3af'};">${b.nonGf > 0 ? '$' + formatCurrency(Math.round(b.nonGf)) : '—'}</td>
-                <td style="padding: 9px 8px; text-align: right; font-weight: 600; color: #047857;">${(b.currentCost + b.requested) > 0 ? '$' + formatCurrency(Math.round(b.currentCost + b.requested)) : '—'}</td>
+                <td style="padding: 9px 8px; text-align: right; color: #475569;">${b.currentCost > 0 ? money(b.currentCost) : '—'}</td>
+                <td style="padding: 9px 8px; text-align: right; font-weight: 600; color: #b45309;">${b.requested > 0 ? money(b.requested) : '—'}</td>
+                <td style="padding: 9px 8px; text-align: right; color: ${b.gf > 0 ? '#dc2626' : '#9ca3af'};">${b.gf > 0 ? money(b.gf) : '—'}</td>
+                <td style="padding: 9px 8px; text-align: right; color: ${b.reductions < 0 ? '#dc2626' : '#9ca3af'};">${b.reductions < 0 ? money(b.reductions) : '—'}</td>
+                <td style="padding: 9px 8px; text-align: right; font-weight: 600; color: #047857;">${b.currentCost > 0 ? money(proposed) : '—'}</td>
             </tr>
         `;
     });
@@ -3625,11 +3670,11 @@ function generatePortfolioAnalysis() {
             <tr style="background: #f8fafc; border-top: 2px solid #667eea; font-weight: 700;">
                 <td style="padding: 11px 8px;">Total</td>
                 <td style="padding: 11px 8px; text-align: center;">${ranked.length}</td>
-                <td style="padding: 11px 8px; text-align: right;">${inventoryTotal > 0 ? '$' + formatCurrency(Math.round(inventoryTotal)) : '—'}</td>
-                <td style="padding: 11px 8px; text-align: right; color: #b45309;">${money(Math.round(totalRequested))}</td>
-                <td style="padding: 11px 8px; text-align: right; color: #dc2626;">${money(Math.round(totalGf))}</td>
-                <td style="padding: 11px 8px; text-align: right; color: #059669;">${money(Math.round(totalRequested - totalGf))}</td>
-                <td style="padding: 11px 8px; text-align: right; color: #047857;">${inventoryTotal > 0 ? '$' + formatCurrency(Math.round(inventoryTotal + totalRequested)) : '—'}</td>
+                <td style="padding: 11px 8px; text-align: right;">${inventoryTotal > 0 ? money(inventoryTotal) : '—'}</td>
+                <td style="padding: 11px 8px; text-align: right; color: #b45309;">${money(totalRequested)}</td>
+                <td style="padding: 11px 8px; text-align: right; color: #dc2626;">${money(totalGf)}</td>
+                <td style="padding: 11px 8px; text-align: right; color: #dc2626;">${totalReductions < 0 ? money(totalReductions) : '—'}</td>
+                <td style="padding: 11px 8px; text-align: right; color: #047857;">${inventoryTotal > 0 ? money(inventoryTotal + totalRequested + totalReductions) : '—'}</td>
             </tr>
             </tbody>
         </table>
@@ -3642,8 +3687,8 @@ function generatePortfolioAnalysis() {
         html += `
             <div style="padding: 14px 18px; background: ${lowPct >= 25 ? '#fef2f2' : '#f0fdf4'}; border-left: 5px solid ${lowPct >= 25 ? '#dc2626' : '#059669'}; border-radius: 6px; margin: 15px 0;">
                 <strong style="color: ${lowPct >= 25 ? '#991b1b' : '#065f46'};">General Fund going to lower-alignment programs:</strong>
-                ${money(Math.round(lowAlign))} of ${money(Math.round(totalGf))} (<strong>${lowPct}%</strong>)
-                is requested for Less or Least Aligned programs.
+                ${money(lowAlign)} of ${money(totalGf)} (<strong>${lowPct}%</strong>) in new General Fund
+                requests goes to Less or Least Aligned programs.
                 ${lowPct >= 25
                     ? 'A quarter or more of new General Fund spending is going to the programs furthest from the priorities. This is the conversation the framework exists to start.'
                     : 'The majority of new General Fund spending is directed at higher-alignment programs.'}
@@ -4222,62 +4267,42 @@ function generateDetailedRequestReportStandard() {
         const amounts = getRequestAmount(request);
         
         const uniqueId = `standard-request-accordion-${requestId}`;
-        const primaryDept = getPrimaryValue(lineItems, 'department') || 'N/A';
-        const programInfo = getRequestProgramInfo(lineItems);
-        const primaryProgram = programInfo.label;
-        const primaryQuartile = getRequestQuartile(lineItems) || 'N/A';
+        const h = requestHeaderParts(request, lineItems);
 
         html += `
             <!-- Request Accordion -->
             <div class="request-accordion" id="request-${requestId}">
                 <div class="request-accordion-header" onclick="toggleRequestAccordion('${uniqueId}')">
+                    <span class="request-accordion-id">#${requestId}</span>
                     <div class="request-accordion-title">
-                        <strong>Request ${requestId}:</strong> ${description}
+                        <div class="request-accordion-desc">${description || 'No description'}</div>
+                        <div class="request-accordion-meta">${h.meta}</div>
                     </div>
-                    <span class="request-accordion-badge" style="background: #28a745;">
-                        ${money(amounts.total)}
-                    </span>
-                    ${primaryQuartile !== 'N/A' ? 
-                        `<span class="quartile-badge quartile-${primaryQuartile.toLowerCase().replace(' ', '-')}" style="margin: 0 10px;">${primaryQuartile}</span>` 
-                        : ''}
+                    <div class="request-accordion-badges">${h.amountPill}${h.quartileBadge}</div>
                     <span class="request-accordion-arrow" id="${uniqueId}-arrow">▼</span>
                 </div>
                 
                 <div class="request-accordion-content" id="${uniqueId}">
                     <div class="request-accordion-body">
-                        
-                        <!-- Quick Summary Card -->
                         <div class="summary-card-compact">
-                            <h4 style="color: #667eea; margin-bottom: 10px;">📊 Request Summary</h4>
                             <div class="summary-grid">
-                                <div class="summary-item">
-                                    <div class="summary-label">Request ID</div>
-                                    <div class="summary-value">${requestId}</div>
-                                </div>
-                                <div class="summary-item">
-                                    <div class="summary-label">Total Amount</div>
-                                    <div class="summary-value" style="color: #28a745;">${money(amounts.total)}</div>
-                                </div>
+                                ${amountTileHtml(h.amounts)}
                                 <div class="summary-item">
                                     <div class="summary-label">Department</div>
-                                    <div class="summary-value" style="font-size: 1rem;">${primaryDept}</div>
+                                    <div class="summary-value">${h.dept}</div>
                                 </div>
                                 <div class="summary-item">
-                                    <div class="summary-label">Program</div>
-                                    <div class="summary-value" style="font-size: 1rem;">${primaryProgram}</div>
+                                    <div class="summary-label">Program${h.programInfo.more ? 's' : ''}</div>
+                                    <div class="summary-value">${h.programInfo.label}</div>
                                 </div>
                                 <div class="summary-item">
                                     <div class="summary-label">Quartile</div>
-                                    <div class="summary-value">
-                                        ${primaryQuartile !== 'N/A' ? 
-                                            `<span class="quartile-badge quartile-${primaryQuartile.toLowerCase().replace(' ', '-')}">${primaryQuartile}</span>` 
-                                            : 'N/A'}
-                                        ${quartileNoteHtml(programInfo.quartileNote)}
-                                    </div>
+                                    <div class="summary-value">${h.quartileBadge || 'N/A'}</div>
+                                    ${quartileNoteHtml(h.programInfo.quartileNote)}
                                 </div>
                                 <div class="summary-item">
-                                    <div class="summary-label">Line Items</div>
-                                    <div class="summary-value">${lineItems.length}</div>
+                                    <div class="summary-label">Fund</div>
+                                    <div class="summary-value">${h.funds.length ? h.funds.join(', ') : '—'}</div>
                                 </div>
                             </div>
                         </div>
@@ -4338,58 +4363,46 @@ function generateDetailedRequestReportAnalytical() {
         const analysis = scoreRequest(request);
         
         const uniqueId = `request-accordion-${requestId}`;
+        const h = requestHeaderParts(request, lineItems);
 
         html += `
             <!-- Request Accordion -->
             <div class="request-accordion" id="analytical-request-${requestId}">
                 <div class="request-accordion-header" onclick="toggleRequestAccordion('${uniqueId}')">
+                    <span class="request-accordion-id">#${requestId}</span>
                     <div class="request-accordion-title">
-                        <strong>Request ${requestId}:</strong> ${description}
+                        <div class="request-accordion-desc">${description || 'No description'}</div>
+                        <div class="request-accordion-meta">${h.meta} · ${analysis.isReduction ? 'Reduction check' : `Archetype ${archetypeLabel(analysis)}`}</div>
                     </div>
-                    <span class="request-accordion-badge" style="background: ${analysis.dispositionColor};">
-                        ${analysis.disposition}
-                    </span>
-                    <span class="request-accordion-badge" style="background: #667eea;">
-                        Archetype ${archetypeLabel(analysis)}
-                    </span>
+                    <div class="request-accordion-badges">
+                        ${h.amountPill}${h.quartileBadge}
+                        <span class="request-accordion-badge" style="background: ${analysis.dispositionColor};">${analysis.disposition}</span>
+                    </div>
                     <span class="request-accordion-arrow" id="${uniqueId}-arrow">▼</span>
                 </div>
                 
                 <div class="request-accordion-content" id="${uniqueId}">
                     <div class="request-accordion-body">
-                        
-                        <!-- Quick Summary Card (Always Visible When Expanded) -->
                         <div class="summary-card-compact">
-                            <h4 style="color: #667eea; margin-bottom: 10px;">📊 Quick Summary</h4>
                             <div class="summary-grid">
-                                <div class="summary-item">
-                                    <div class="summary-label">Request ID</div>
-                                    <div class="summary-value">${requestId}</div>
-                                </div>
-                                <div class="summary-item">
-                                    <div class="summary-label">Total Amount</div>
-                                    <div class="summary-value" style="color: #28a745;">${money(amounts.total)}</div>
-                                </div>
-                                <div class="summary-item">
-                                    <div class="summary-label">Department</div>
-                                    <div class="summary-value" style="font-size: 1rem;">${getPrimaryValue(lineItems, 'department') || 'N/A'}</div>
-                                </div>
-                                <div class="summary-item">
-                                    <div class="summary-label">Program</div>
-                                    <div class="summary-value" style="font-size: 1rem;">${getRequestProgramInfo(lineItems).label}</div>
-                                </div>
-                                <div class="summary-item">
-                                    <div class="summary-label">Quartile</div>
-                                    <div class="summary-value">
-                                        ${analysis.bestQuartile
-                                            ? `<span class="quartile-badge quartile-${analysis.bestQuartile.toString().toLowerCase().replace(/ /g, '-')}">${analysis.bestQuartile}</span>`
-                                            : `<span class="quartile-badge">N/A</span>`}
-                                        ${quartileNoteHtml(getRequestProgramInfo(lineItems).quartileNote)}
-                                    </div>
-                                </div>
                                 <div class="summary-item">
                                     <div class="summary-label">PBB Recommendation</div>
                                     <div class="summary-value" style="color: ${analysis.dispositionColor};">${analysis.disposition}</div>
+                                    <div class="summary-sub">${analysis.isReduction ? 'Reduction check' : `Archetype ${archetypeLabel(analysis)}`}</div>
+                                </div>
+                                ${amountTileHtml(h.amounts)}
+                                <div class="summary-item">
+                                    <div class="summary-label">Department</div>
+                                    <div class="summary-value">${h.dept}</div>
+                                </div>
+                                <div class="summary-item">
+                                    <div class="summary-label">Program${h.programInfo.more ? 's' : ''}</div>
+                                    <div class="summary-value">${h.programInfo.label}</div>
+                                </div>
+                                <div class="summary-item">
+                                    <div class="summary-label">Quartile</div>
+                                    <div class="summary-value">${h.quartileBadge || 'N/A'}</div>
+                                    ${quartileNoteHtml(h.programInfo.quartileNote)}
                                 </div>
                             </div>
                         </div>
@@ -5337,15 +5350,22 @@ function renderCharts() {
                 datasets: [{
                     label: 'Net Change',
                     data: Object.values(departments),
-                    backgroundColor: ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe']
+                    // Increases blue, net reductions red; one series, so no legend.
+                    backgroundColor: Object.values(departments).map(v => v < 0 ? '#dc2626' : '#667eea')
                 }]
             },
             options: {
                 responsive: true,
                 plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => signedMoney(ctx.parsed.y) } },
                     title: {
                         display: true,
                         text: 'Net Change by Department'
+                    },
+                    subtitle: {
+                        display: true,
+                        text: 'Increases minus reductions requested'
                     }
                 },
                 scales: {
@@ -5353,7 +5373,7 @@ function renderCharts() {
                         beginAtZero: true,
                         ticks: {
                             callback: function(value) {
-                                return '$' + value.toLocaleString();
+                                return money(value);
                             }
                         }
                     }
@@ -5399,9 +5419,15 @@ function renderCharts() {
             options: {
                 responsive: true,
                 plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => money(ctx.parsed.y) } },
                     title: {
                         display: true,
                         text: 'Requested Increases by Quartile'
+                    },
+                    subtitle: {
+                        display: true,
+                        text: 'Each dollar counted in the quartile of the program it funds'
                     }
                 },
                 scales: {
@@ -5409,7 +5435,7 @@ function renderCharts() {
                         beginAtZero: true,
                         ticks: {
                             callback: function(value) {
-                                return '$' + value.toLocaleString();
+                                return money(value);
                             }
                         }
                     }

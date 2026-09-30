@@ -1674,26 +1674,50 @@ tr:hover {
 }
 
 .decision-amount-banner {
-    background: rgba(255,255,255,0.1);
+    background: rgba(255, 255, 255, 0.1);
     border-radius: 12px;
-    padding: 20px 24px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.decision-amount-stat {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px 16px;
+    flex-direction: column;
+    gap: 2px;
+    padding: 18px 24px;
+    border-right: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.decision-amount-stat:last-child {
+    border-right: none;
 }
 
 .decision-amount-label {
-    font-size: 0.9rem;
-    opacity: 0.85;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.8;
 }
 
 .decision-amount-value {
-    font-size: 1.6rem;
+    font-size: 1.75rem;
     font-weight: 700;
-    color: #10b981;
-    text-align: right;
+    line-height: 1.2;
+    color: white;
+}
+
+.decision-amount-value.inc { color: #86efac; }
+.decision-amount-value.red { color: #fca5a5; }
+
+.decision-amount-sub {
+    font-size: 0.8rem;
+    opacity: 0.75;
+}
+
+@media (max-width: 700px) {
+    .decision-amount-banner { grid-template-columns: 1fr; }
+    .decision-amount-stat { border-right: none; border-bottom: 1px solid rgba(255, 255, 255, 0.15); }
 }
 
 .decision-cards-grid {
@@ -2152,4 +2176,110 @@ tr:hover {
         flex-direction: column;
         gap: 16px;
     }
+}
+/* ========== FUNDING PRIORITY ORDER ========== */
+.priority-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 6px;
+    font-size: 0.85rem;
+}
+
+.priority-table > thead th {
+    background: #667eea;
+    color: white;
+    padding: 10px 8px;
+    text-align: left;
+    font-weight: 600;
+}
+
+.priority-table > tbody > tr.priority-row,
+.priority-table > tbody > tr.reduction-row {
+    border-bottom: 1px solid var(--slate-200);
+    cursor: pointer;
+}
+
+.priority-table > tbody > tr.priority-row:hover,
+.priority-table > tbody > tr.reduction-row:hover {
+    background: var(--slate-50);
+}
+
+.priority-table > tbody > tr > td {
+    padding: 9px 8px;
+    vertical-align: middle;
+}
+
+.priority-caret {
+    color: var(--slate-400);
+    font-size: 0.75rem;
+}
+
+.priority-fund {
+    font-size: 0.72rem;
+    color: var(--slate-500);
+    margin-top: 2px;
+}
+
+.priority-detail > td {
+    background: var(--slate-50);
+    border-bottom: 1px solid var(--slate-200);
+    padding: 4px 8px 14px !important;
+}
+
+.priority-breakdown {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    background: white;
+    border: 1px solid var(--slate-200);
+    border-radius: 8px;
+}
+
+.priority-breakdown th {
+    text-align: left;
+    color: var(--slate-500);
+    font-weight: 600;
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--slate-200);
+}
+
+.priority-breakdown td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--slate-100);
+}
+
+.priority-breakdown tr.governs td {
+    background: #fff7ed;
+}
+
+.priority-governs {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #9a3412;
+    background: #ffedd5;
+    padding: 1px 6px;
+    border-radius: 9999px;
+    margin-left: 4px;
+}
+
+.priority-why {
+    font-size: 0.78rem;
+    color: var(--slate-500);
+    margin-top: 6px;
+}
+
+.priority-note {
+    font-size: 0.8rem;
+    color: var(--slate-500);
+    margin: 4px 0 18px;
+}
+
+.priority-subhead {
+    font-size: 1rem;
+    color: var(--slate-800, #1e293b);
+    margin: 22px 0 4px;
+}
+
+@media print {
+    .priority-detail { display: table-row !important; }
 }

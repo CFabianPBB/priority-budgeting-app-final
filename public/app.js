@@ -1942,9 +1942,17 @@ function getRequestSlices(lineItems) {
         if (isRevenueLineItem(item)) continue;
         const program = (item.Program || '').toString().trim() || 'Unknown Program';
         const key = getProgramIdForItem(item) || program.toUpperCase();
-        if (!byKey[key]) byKey[key] = { program, amount: 0, mandateScore: null, quartile: null, recoveryScore: null };
+        if (!byKey[key]) byKey[key] = { program, amount: 0, gf: 0, funds: new Set(), mandateScore: null, quartile: null, recoveryScore: null, finalScore: null };
         const e = byKey[key];
-        e.amount += getLineItemAmount(item).total || 0;
+        const lineAmt = getLineItemAmount(item).total || 0;
+        e.amount += lineAmt;
+        const fund = resolveFund(item);
+        if (classifyFundName(fund)) e.funds.add(fund.toString().trim());
+        if (classifyFundName(fund) === 'GF') e.gf += lineAmt;
+        if (e.finalScore === null) {
+            const attrs = lookupProgramAttributes(item);
+            if (attrs && attrs.finalScore != null) e.finalScore = attrs.finalScore;
+        }
         if (e.mandateScore === null) e.mandateScore = getMandateScoreForLineItem(item);
         if (!e.quartile) e.quartile = getQuartileForLineItem(item);
         if (e.recoveryScore === null) e.recoveryScore = getCostRecoveryScoreForLineItem(item);
@@ -2082,6 +2090,17 @@ function amountTileHtml(amounts) {
 
 function quartileNoteHtml(note, size) {
     return note ? `<div style="font-size: ${size || '0.72rem'}; color: #64748b; margin-top: 3px;">${note}</div>` : '';
+}
+
+// Dollar-weighted PBB score of the programs a request's dollars go to (added dollars
+// for an increase, reduced dollars for a reduction), so the score describes the whole
+// request rather than its best slice.
+function getWeightedFinalScore(profile) {
+    const pool = (profile.isReduction ? profile.cuts : profile.added).filter(sl => sl.finalScore != null);
+    const weight = pool.reduce((t, sl) => t + Math.abs(sl.amount), 0);
+    if (!pool.length) return null;
+    if (!weight) return Math.round(pool.reduce((t, sl) => t + sl.finalScore, 0) / pool.length * 100) / 100;
+    return Math.round(pool.reduce((t, sl) => t + sl.finalScore * Math.abs(sl.amount), 0) / weight * 100) / 100;
 }
 
 function getMandateScore(profile) {
@@ -2482,13 +2501,16 @@ function buildRankedAnalyses() {
         analysis: scoreRequest(request)
     }));
     scored.sort(comparePriority);
-    let cumTotal = 0, cumGf = 0;
-    scored.forEach((row, i) => {
-        const amt = row.analysis.requestTotal || 0;
-        const gf  = row.analysis.gfExposure ? row.analysis.gfExposure.gf : 0;
-        cumTotal += amt;
-        cumGf    += gf;
-        row.rank = i + 1;
+    // Increases are ranked for funding with a running General Fund total. Reductions are
+    // not something to fund, so they are numbered separately (R1, R2, ...) and never
+    // move the running total.
+    let cumTotal = 0, cumGf = 0, inc = 0, red = 0;
+    scored.forEach(row => {
+        row.isReduction = (row.analysis.requestTotal || 0) < 0;
+        if (row.isReduction) { row.rank = `R${++red}`; return; }
+        cumTotal += row.analysis.requestTotal || 0;
+        cumGf    += row.analysis.gfExposure ? row.analysis.gfExposure.gf : 0;
+        row.rank = ++inc;
         row.cumulativeTotal = cumTotal;
         row.cumulativeGf = cumGf;
     });
@@ -2709,7 +2731,8 @@ function scoreRequest(request) {
     analysis.programImpacts = getProgramImpacts(lineItems);
     analysis.impactSummary = summarizeProgramImpacts(analysis.programImpacts);
     analysis.lineItemBaselines = getLineItemBaselines(lineItems);
-    analysis.programFinalScore = progAttrs ? progAttrs.finalScore : null;
+    analysis.programFinalScore = getWeightedFinalScore(profile);
+    if (analysis.programFinalScore == null && progAttrs) analysis.programFinalScore = progAttrs.finalScore;
     analysis.quartileRank = quartileRank(bestQuartile);
 
     // Apply the decision grid
@@ -3288,7 +3311,7 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     }
 
     if (analysis.programFinalScore != null) {
-        narrative += `**PROGRAM PBB SCORE:** ${analysis.programFinalScore} — used to rank this request against others carrying the same recommendation.\n\n`;
+        narrative += `**PROGRAM PBB SCORE:** ${analysis.programFinalScore}${(analysis.weakestLink && analysis.weakestLink.slices.length > 1) ? ' (dollar-weighted across its programs)' : ''} — used to rank this request against others carrying the same recommendation.\n\n`;
     }
 
     narrative += `---\n\n`;
@@ -3460,8 +3483,8 @@ function generateFundingPriorityOrder() {
         by program alignment quartile, the program's own PBB score, and General Fund exposure. The ordering
         <strong>never overrides the disposition</strong>; it sequences requests that share one.
         Increases requested: <strong class="amount">${money(totals.increases)}</strong>, of which
-        <strong class="amount">${money(gfIncreases)}</strong> would come from the General Fund; reductions offered:
-        <strong style="color: #dc2626;">${money(totals.reductions)}</strong>.</p>
+        <strong class="amount">${money(gfIncreases)}</strong> would come from the General Fund. Reductions offered
+        (<strong style="color: #dc2626;">${money(totals.reductions)}</strong>) are listed separately below the ranking.</p>
 
         <div style="margin: 15px 0; padding: 12px 15px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
             <label style="font-weight: 600; color: #334155; margin-right: 10px;">Available General Fund for new requests:</label>
@@ -3473,56 +3496,125 @@ function generateFundingPriorityOrder() {
             </span>
         </div>
 
-        <table style="width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 0.85rem;">
+        <table class="priority-table">
             <thead>
-                <tr style="background: #667eea; color: white;">
-                    <th style="padding: 10px 6px; text-align: center; width: 40px;">#</th>
-                    <th style="padding: 10px 6px; text-align: left;">Request / Program</th>
-                    <th style="padding: 10px 6px; text-align: center; width: 90px;">Quartile</th>
-                    <th style="padding: 10px 6px; text-align: center; width: 70px;">PBB Score</th>
-                    <th style="padding: 10px 6px; text-align: center; width: 85px;">Guidance</th>
-                    <th style="padding: 10px 6px; text-align: right; width: 100px;">Amount</th>
-                    <th style="padding: 10px 6px; text-align: right; width: 100px;">GF Exposure</th>
-                    <th style="padding: 10px 6px; text-align: right; width: 110px;">Cumulative GF</th>
+                <tr>
+                    <th style="width: 44px; text-align: center;">#</th>
+                    <th>Request / Program</th>
+                    <th style="width: 90px; text-align: center;">Quartile</th>
+                    <th style="width: 70px; text-align: center;">PBB Score</th>
+                    <th style="width: 85px; text-align: center;">Guidance</th>
+                    <th style="width: 105px; text-align: right;">Amount</th>
+                    <th style="width: 115px; text-align: right;">GF Exposure</th>
+                    <th style="width: 115px; text-align: right;">Cumulative GF</th>
                 </tr>
             </thead>
             <tbody id="priorityOrderBody">
     `;
-
-    ranked.forEach(row => {
-        const a = row.analysis;
-        const lineItems = getLineItemsForRequest(row.requestId);
-        const programInfo = getRequestProgramInfo(lineItems);
-        const program = programInfo.label !== 'N/A' ? programInfo.label : 'Unknown Program';
-        const dept = getPrimaryValue(lineItems, 'department') || '';
-        const gf = a.gfExposure ? a.gfExposure.gf : 0;
-        const q = a.bestQuartile || 'N/A';
-        const qBadge = q !== 'N/A'
-            ? `<span class="quartile-badge quartile-${q.toLowerCase().replace(' ', '-')}" style="font-size: 0.7rem; padding: 3px 7px;">${q.replace(' Aligned', '')}</span>`
-            : '<span style="color: #999;">—</span>';
-
-        html += `
-            <tr class="priority-row" data-cumgf="${Math.round(row.cumulativeGf)}" style="border-bottom: 1px solid #e5e7eb;">
-                <td style="padding: 8px 6px; text-align: center; font-weight: 600; color: #64748b;">${row.rank}</td>
-                <td style="padding: 8px 6px;">
-                    <div style="font-weight: 600; color: #1f2937;">${program}</div>
-                    <div style="font-size: 0.78rem; color: #6b7280;">${dept}${dept ? ' · ' : ''}${row.requestId}</div>
-                </td>
-                <td style="padding: 8px 6px; text-align: center;">${qBadge}${quartileNoteHtml(programInfo.quartileNote, '0.68rem')}</td>
-                <td style="padding: 8px 6px; text-align: center; color: #475569;">${a.programFinalScore != null ? a.programFinalScore : '—'}</td>
-                <td style="padding: 8px 6px; text-align: center;">
-                    <span style="background: ${a.dispositionColor}; color: white; padding: 3px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600;">${a.disposition}</span>
-                </td>
-                <td style="padding: 8px 6px; text-align: right;">${money(Math.round(a.requestTotal || 0))}</td>
-                <td style="padding: 8px 6px; text-align: right; color: ${gf > 0 ? '#dc2626' : '#059669'}; font-weight: 600;">${gf ? money(gf) : '—'}</td>
-                <td style="padding: 8px 6px; text-align: right; color: #475569;">${money(Math.round(row.cumulativeGf))}</td>
-            </tr>
-        `;
-    });
-
+    const increases = ranked.filter(r => !r.isReduction);
+    const reductions = ranked.filter(r => r.isReduction);
+    increases.forEach(row => { html += priorityRowHtml(row, false); });
     html += `</tbody></table>
-        <p style="font-size: 0.8rem; color: #64748b; margin-top: 6px;">GF Exposure is the request's General Fund dollars. A reduction to a General Fund program shows as a negative amount (green) and lowers the cumulative total, freeing capacity for the requests after it.</p>`;
+        <p class="priority-note">Click a request to see how its dollars split across programs. PBB Score is the dollar-weighted
+        score of the programs receiving the added dollars; the quartile is set by the least-aligned of them (weakest link).</p>`;
+
+    if (reductions.length > 0) {
+        const gfFreed = reductions.reduce((t, r) => t + (r.analysis.gfExposure ? r.analysis.gfExposure.gf : 0), 0);
+        const gfFreedApproved = reductions.filter(r => r.analysis.disposition === 'APPROVE')
+            .reduce((t, r) => t + (r.analysis.gfExposure ? r.analysis.gfExposure.gf : 0), 0);
+        html += `
+        <h4 class="priority-subhead">Reductions offered</h4>
+        <p style="font-size: 0.88rem; color: #475569; margin: 0 0 8px;">Checked in reverse: reductions to unmandated, lower-quartile programs are
+        consistent with PBB; reductions to mandated or top-quartile programs need verification.
+        ${gfFreed < 0 ? `Together they would free <strong>${money(Math.abs(gfFreed))}</strong> of General Fund capacity${gfFreedApproved < 0 && gfFreedApproved !== gfFreed ? `, <strong>${money(Math.abs(gfFreedApproved))}</strong> of it from reductions PBB suggests approving` : ''}.` : 'None of them are General Fund dollars.'}</p>
+        <table class="priority-table">
+            <thead>
+                <tr>
+                    <th style="width: 44px; text-align: center;">#</th>
+                    <th>Request / Program</th>
+                    <th style="width: 90px; text-align: center;">Quartile</th>
+                    <th style="width: 70px; text-align: center;">PBB Score</th>
+                    <th style="width: 85px; text-align: center;">Guidance</th>
+                    <th style="width: 105px; text-align: right;">Amount</th>
+                    <th style="width: 115px; text-align: right;">GF Freed</th>
+                    <th style="width: 115px;"></th>
+                </tr>
+            </thead>
+            <tbody>`;
+        reductions.forEach(row => { html += priorityRowHtml(row, true); });
+        html += `</tbody></table>`;
+    }
     return html;
+}
+
+// One ranked request plus its hidden program breakdown row.
+function priorityRowHtml(row, isReduction) {
+    const a = row.analysis;
+    const lineItems = getLineItemsForRequest(row.requestId);
+    const programInfo = getRequestProgramInfo(lineItems);
+    const program = programInfo.label !== 'N/A' ? programInfo.label : 'Unknown Program';
+    const dept = getPrimaryValue(lineItems, 'department') || '';
+    const gf = a.gfExposure ? a.gfExposure.gf : 0;
+    const q = a.bestQuartile || 'N/A';
+    const badge = qq => qq && qq !== 'N/A'
+        ? `<span class="quartile-badge quartile-${qq.toLowerCase().replace(/ /g, '-')}" style="font-size: 0.68rem; padding: 3px 8px;">${qq.replace(' Aligned', '')}</span>`
+        : '<span style="color: #94a3b8;">—</span>';
+    const nonGfFunds = (a.fundProfile && a.fundProfile.funds || []).filter(f => classifyFundName(f) !== 'GF');
+    const gfCell = gf
+        ? `<span style="color: ${gf > 0 ? '#dc2626' : '#059669'}; font-weight: 600;">${money(gf)}</span>`
+        : `<span style="color: #94a3b8;">—</span>${nonGfFunds.length ? `<div class="priority-fund">${nonGfFunds.join(', ')}</div>` : ''}`;
+    const detailId = `priority-detail-${row.requestId}`;
+
+    const wl = a.weakestLink || { slices: [] };
+    const sliceRows = wl.slices.slice().sort((x, y) => Math.abs(y.amount) - Math.abs(x.amount)).map(sl => {
+        const governs = sl.program === wl.quartileProgram && wl.slices.length > 1;
+        return `<tr${governs ? ' class="governs"' : ''}>
+            <td>${sl.program}${governs ? ' <span class="priority-governs">sets quartile</span>' : ''}</td>
+            <td style="text-align: center;">${badge(normalizeQuartile(sl.quartile))}</td>
+            <td style="text-align: center;">${sl.mandateScore != null ? sl.mandateScore : '—'}</td>
+            <td style="text-align: center;">${sl.finalScore != null ? sl.finalScore : '—'}</td>
+            <td>${[...sl.funds].join(', ') || '—'}</td>
+            <td style="text-align: right;">${money(sl.amount)}</td>
+            <td style="text-align: right;">${sl.gf ? money(sl.gf) : '—'}</td>
+        </tr>`;
+    }).join('');
+    const why = isReduction
+        ? 'For a reduction, the quartile shown is the most-aligned program being reduced.'
+        : (wl.slices.length > 1 ? `The quartile comes from ${wl.quartileProgram || 'the least-aligned program'}, the least-aligned program receiving added dollars.` : '');
+
+    return `
+        <tr class="${isReduction ? 'reduction-row' : 'priority-row'}" data-cumgf="${Math.round(row.cumulativeGf || 0)}" onclick="togglePriorityDetail('${detailId}', this)">
+            <td style="text-align: center; font-weight: 600; color: #64748b;"><span class="priority-caret">▸</span> ${row.rank}</td>
+            <td>
+                <div style="font-weight: 600; color: #1f2937;">${program}</div>
+                <div style="font-size: 0.78rem; color: #6b7280;">${dept}${dept ? ' · ' : ''}Request ${row.requestId}</div>
+            </td>
+            <td style="text-align: center;">${badge(q)}</td>
+            <td style="text-align: center; color: #475569;">${a.programFinalScore != null ? a.programFinalScore : '—'}</td>
+            <td style="text-align: center;"><span style="background: ${a.dispositionColor}; color: white; padding: 3px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600;">${a.disposition}</span></td>
+            <td style="text-align: right;${a.requestTotal < 0 ? ' color: #dc2626;' : ''}">${money(a.requestTotal || 0)}</td>
+            <td style="text-align: right;">${gfCell}</td>
+            <td style="text-align: right; color: #475569;">${isReduction ? '' : money(row.cumulativeGf)}</td>
+        </tr>
+        <tr class="priority-detail" id="${detailId}" style="display: none;">
+            <td></td>
+            <td colspan="7">
+                <table class="priority-breakdown">
+                    <thead><tr><th>Program</th><th style="text-align: center;">Quartile</th><th style="text-align: center;">Mandate</th><th style="text-align: center;">PBB Score</th><th>Fund</th><th style="text-align: right;">Amount</th><th style="text-align: right;">General Fund</th></tr></thead>
+                    <tbody>${sliceRows}</tbody>
+                </table>
+                ${why ? `<div class="priority-why">${why}</div>` : ''}
+            </td>
+        </tr>`;
+}
+
+function togglePriorityDetail(id, rowEl) {
+    const detail = document.getElementById(id);
+    if (!detail) return;
+    const open = detail.style.display === 'none';
+    detail.style.display = open ? 'table-row' : 'none';
+    const caret = rowEl && rowEl.querySelector('.priority-caret');
+    if (caret) caret.textContent = open ? '▾' : '▸';
 }
 
 // Draw the affordability line: everything at or under the entered General Fund amount is

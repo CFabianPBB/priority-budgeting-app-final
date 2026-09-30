@@ -979,7 +979,7 @@ function buildArchetypeGuideHtml(options) {
     <div class="ag-band">
         <div class="ag-band-title">Rules that apply before the grid</div>
         <div class="ag-cols" style="--cols: 3;">
-            ${cell('One item or a bundle', 'A position or contract split across programs is judged on its main use; slices supporting lower-priority, unmandated programs become <b>conditions</b>. Separate items bundled into one request use the <b>weakest link</b>, so nothing rides along. An analyst can override the program a request is ranked on, with a reason that shows in every report.')}
+            ${cell('One item or a bundle', 'A position or contract split across programs is judged on its main use; slices supporting lower-priority, unmandated programs become <b>conditions</b>; when the item is deferred or rejected, a higher-alignment slice (25%+) is named as a <b>partial funding option</b>. Separate items bundled into one request use the <b>weakest link</b>, so nothing rides along. An analyst can override the program a request is ranked on, with a reason that shows in every report.')}
             ${cell('Reductions run in reverse', 'Requests that reduce spending skip the grid. Reducing unmandated, lower-quartile programs → <b>APPROVE</b>. Reducing a highly mandated (3–4) or Most/More Aligned program → <b>VERIFY</b>: confirm mandate minimums and service levels still hold.')}
             ${cell('No guessing', 'If quartile data or the funding source is missing, or a request is charged to a custodial or fiduciary fund, the framework returns <b>REVIEW</b> and infers no recommendation.')}
         </div>
@@ -2041,19 +2041,27 @@ function getWeakestLinkProfile(lineItems, qa) {
 
     // --- quartile
     const ranked = governing.filter(sl => normalizeQuartile(sl.quartile));
-    let quartile = null, quartileProgram = null, quartileShare = null;
+    let quartile = null, quartileProgram = null, quartileShare = null, bandShare = null, quartileGroup = [];
     if (mode === 'override' && normalizeQuartile(ovSlice.quartile)) {
         quartile = normalizeQuartile(ovSlice.quartile);
         quartileProgram = ovSlice.program;
     } else if (mode === 'allocated' && ranked.length > 0) {
-        // Where most of the dollars go; ties go to the lower-aligned quartile.
+        // Where most of the dollars go. The grid only distinguishes High (Q1–Q2) from
+        // Low (Q3–Q4), so the band holding the majority of dollars is chosen first
+        // (a tie goes Low), then the quartile holding the most dollars within it (a tie
+        // goes to the lower-aligned quartile).
+        const dollars = sl => Math.abs(sl.amount);
+        const highDollars = ranked.filter(sl => quartileRank(sl.quartile) <= 2).reduce((t, sl) => t + dollars(sl), 0);
+        const lowDollars = ranked.filter(sl => quartileRank(sl.quartile) > 2).reduce((t, sl) => t + dollars(sl), 0);
+        const inBand = ranked.filter(sl => (highDollars > lowDollars) === (quartileRank(sl.quartile) <= 2));
         const byQ = {};
-        ranked.forEach(sl => { const q = normalizeQuartile(sl.quartile); byQ[q] = (byQ[q] || 0) + Math.abs(sl.amount); });
+        inBand.forEach(sl => { const q = normalizeQuartile(sl.quartile); byQ[q] = (byQ[q] || 0) + dollars(sl); });
         const best = Object.entries(byQ).sort((x, y) => (y[1] - x[1]) || (quartileRank(y[0]) - quartileRank(x[0])))[0];
         quartile = best[0];
         quartileShare = poolTotal > 0 ? best[1] / poolTotal : null;
-        quartileProgram = ranked.filter(sl => normalizeQuartile(sl.quartile) === quartile)
-            .reduce((x, y) => (Math.abs(y.amount) > Math.abs(x.amount) ? y : x)).program;
+        bandShare = poolTotal > 0 ? Math.max(highDollars, lowDollars) / poolTotal : null;
+        quartileGroup = ranked.filter(sl => normalizeQuartile(sl.quartile) === quartile).map(sl => sl.program);
+        quartileProgram = quartileGroup.length === 1 ? quartileGroup[0] : null;
     } else if (ranked.length > 0) {
         const pick = ranked.reduce((a, b) => {
             const ra = quartileRank(a.quartile), rb = quartileRank(b.quartile);
@@ -2105,7 +2113,7 @@ function getWeakestLinkProfile(lineItems, qa) {
 
     return { slices, added, cuts, isReduction, mode, requestId,
              override: mode === 'override' ? ov : null,
-             mandateScore, mandateSource, quartile, quartileProgram, quartileShare,
+             mandateScore, mandateSource, quartile, quartileProgram, quartileShare, bandShare, quartileGroup,
              conditions, mandateDrag, quartileDrag, reductionFlags };
 }
 
@@ -2141,7 +2149,7 @@ function getRequestProgramInfo(lineItems) {
         more,
         label: more > 0 ? `${largest.program} +${more} more` : largest.program,
         quartileNote: profile.mode === 'override' ? `analyst override: ${profile.quartileProgram}`
-            : more > 0 && profile.mode === 'allocated' && profile.quartileShare != null ? `${Math.round(profile.quartileShare * 100)}% of dollars`
+            : more > 0 && profile.mode === 'allocated' && profile.quartileShare != null ? `${Math.round(profile.quartileShare * 100)}% of dollars${(profile.quartileGroup || []).length === 1 ? ` (${profile.quartileGroup[0]})` : ''}`
             : more > 0 && profile.quartileProgram ? `set by ${profile.quartileProgram}` : ''
     };
 }
@@ -2380,6 +2388,10 @@ function getFundingDisplay(analysis) {
 // stays a pure function of the four axes.
 
 const QUARTILE_RANK = { 'Most Aligned': 1, 'More Aligned': 2, 'Less Aligned': 3, 'Least Aligned': 4 };
+
+// Share of an allocated item's dollars a higher-alignment program must receive before a
+// deferred or rejected item gets a "partial funding option" note.
+const PARTIAL_OPTION_MIN_SHARE = 0.25;
 
 // Tunable review thresholds. These raise a verification prompt — they never change a
 // disposition, so moving them cannot silently re-route a request.
@@ -2848,6 +2860,20 @@ function scoreRequest(request) {
     analysis.override = profile.override;
     if (analysis.conditions.length > 0 && (analysis.disposition === 'MODIFY' || analysis.disposition === 'VERIFY')) {
         analysis.conditions.forEach(sl => analysis.verifyNow.push(conditionText(sl)));
+    }
+
+    // Partial funding option: the mirror image of a condition. An allocated item that is
+    // deferred or rejected as a whole, but puts a meaningful share of its dollars (25%+)
+    // into a higher-alignment program, gets that slice named for a second look. It never
+    // changes the recommendation.
+    analysis.partialOptions = [];
+    if (profile.mode === 'allocated' && (analysis.disposition === 'DEFER' || analysis.disposition === 'REJECT')) {
+        const pool = profile.added.reduce((t, sl) => t + sl.amount, 0);
+        analysis.partialOptions = profile.added
+            .filter(sl => normalizeQuartile(sl.quartile) && quartileRank(sl.quartile) <= 2 &&
+                quartileRank(sl.quartile) < quartileRank(analysis.bestQuartile) &&
+                pool > 0 && sl.amount / pool >= PARTIAL_OPTION_MIN_SHARE)
+            .map(sl => Object.assign({}, sl, { share: sl.amount / pool }));
     }
     const bigExpansion = (analysis.programImpacts || []).filter(
         i => i.expansionShare != null && i.expansionShare >= PROGRAM_EXPANSION_FLAG
@@ -3409,6 +3435,14 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
         }
         narrative += `\n`;
     }
+    if ((analysis.partialOptions || []).length > 0) {
+        const lowShare = wl && wl.bandShare != null ? Math.round(wl.bandShare * 100) : null;
+        narrative += `**PARTIAL FUNDING OPTION:** as a whole, this request is${lowShare != null ? ` ${lowShare}%` : ' mostly'} lower-alignment work, so the recommendation stands. One part may deserve a second look on its own:\n\n`;
+        for (const sl of analysis.partialOptions) {
+            narrative += `- **${sl.program}** (${normalizeQuartile(sl.quartile)}${sl.mandateScore != null ? `, mandate ${sl.mandateScore}` : ''}): ${money(sl.amount)} (${Math.round(sl.share * 100)}%). It could be considered separately, for example as a smaller request scoped to that program.\n`;
+        }
+        narrative += `\n`;
+    }
     if (wl && wl.isReduction) {
         narrative += `**REDUCTION CHECK:** this request reduces spending, so the PBB check runs in reverse — reductions should come from lower-quartile, low-mandate programs.\n\n`;
         for (const sl of wl.cuts) {
@@ -3687,18 +3721,23 @@ function priorityRowHtml(row, isReduction) {
     const canOverride = !isReduction && wl.slices.length > 1;
     const rid = String(row.requestId).replace(/'/g, "\\'");
     const sliceRows = wl.slices.slice().sort((x, y) => Math.abs(y.amount) - Math.abs(x.amount)).map(sl => {
-        const governs = sl.program === wl.quartileProgram && wl.slices.length > 1;
+        const governs = wl.slices.length > 1 && (wl.mode === 'allocated'
+            ? (wl.quartileGroup || []).includes(sl.program)
+            : sl.program === wl.quartileProgram);
         const conditional = condNames.includes(sl.program);
+        const partial = (a.partialOptions || []).some(o => o.program === sl.program);
         const tag = governs
-            ? (wl.mode === 'override' ? 'analyst choice' : wl.mode === 'allocated' ? 'largest share' : 'sets quartile')
-            : conditional ? 'conditional' : '';
+            ? (wl.mode === 'override' ? 'analyst choice'
+                : wl.mode === 'allocated' ? ((wl.quartileGroup || []).length > 1 ? 'largest group' : 'largest share')
+                : 'sets quartile')
+            : conditional ? 'conditional' : partial ? 'partial option' : '';
         const prog = sl.program.replace(/'/g, "\\'").replace(/"/g, '&quot;');
         const action = !canOverride ? ''
             : (wl.mode === 'override' && governs)
                 ? `<button class="priority-override-btn" onclick="event.stopPropagation(); clearRankOverride('${rid}')">Clear override</button>`
                 : `<button class="priority-override-btn" onclick="event.stopPropagation(); setRankOverride('${rid}', '${prog}')">Rank on this</button>`;
-        return `<tr class="${governs ? 'governs' : ''}${conditional ? ' conditional' : ''}">
-            <td>${sl.program}${tag ? ` <span class="priority-governs${conditional ? ' cond' : ''}">${tag}</span>` : ''}</td>
+        return `<tr class="${governs ? 'governs' : ''}${conditional ? ' conditional' : ''}${partial ? ' partial' : ''}">
+            <td>${sl.program}${tag ? ` <span class="priority-governs${conditional ? ' cond' : partial ? ' partial' : ''}">${tag}</span>` : ''}</td>
             <td style="text-align: center;">${badge(normalizeQuartile(sl.quartile))}</td>
             <td style="text-align: center;">${sl.mandateScore != null ? sl.mandateScore : '—'}</td>
             <td style="text-align: center;">${sl.finalScore != null ? sl.finalScore : '—'}</td>
@@ -3713,7 +3752,7 @@ function priorityRowHtml(row, isReduction) {
         : wl.mode === 'override'
             ? `Analyst override: ranked on ${wl.quartileProgram}. Reason: "${String(wl.override.reason).replace(/</g, '&lt;')}"${wl.override.date ? ` (${wl.override.date})` : ''}.`
         : wl.mode === 'allocated'
-            ? `One item allocated across programs, so it is ranked on where most of its dollars go (${wl.quartile}${wl.quartileShare != null ? `, ${Math.round(wl.quartileShare * 100)}%` : ''}).${condNames.length ? ` Lower-priority slices marked "conditional" are approved only if the time is reallocated, covered by companion revenue, or absorbed through an efficiency.` : ''}`
+            ? `One item allocated across programs, so it is ranked on where most of its dollars go: ${wl.bandShare != null ? `${Math.round(wl.bandShare * 100)}% support ${quartileRank(wl.quartile) <= 2 ? 'higher-alignment (Q1–Q2)' : 'lower-alignment (Q3–Q4)'} programs, ` : ''}the largest part ${wl.quartile}${wl.quartileShare != null ? ` (${Math.round(wl.quartileShare * 100)}%${(wl.quartileGroup || []).length > 1 ? `, ${wl.quartileGroup.join(' + ')}` : ''})` : ''}.${condNames.length ? ` Lower-priority slices marked "conditional" are approved only if the time is reallocated, covered by companion revenue, or absorbed through an efficiency.` : ''}${(a.partialOptions || []).length ? ` The slice marked "partial option" is higher-alignment work that could be considered on its own.` : ''}`
         : wl.slices.length > 1
             ? `Separate items bundled in one request, so the least-aligned program receiving added dollars sets the quartile (${wl.quartileProgram}).`
             : '';
@@ -3722,7 +3761,7 @@ function priorityRowHtml(row, isReduction) {
         <tr class="${isReduction ? 'reduction-row' : 'priority-row'}" data-cumgf="${Math.round(row.cumulativeGf || 0)}" onclick="togglePriorityDetail('${detailId}', this)">
             <td style="text-align: center; font-weight: 600; color: #64748b;"><span class="priority-caret">▸</span> ${row.rank}</td>
             <td>
-                <div style="font-weight: 600; color: #1f2937;">${program}${overrideBadgeHtml(a)}</div>
+                <div style="font-weight: 600; color: #1f2937;">${program}${overrideBadgeHtml(a)}${(a.partialOptions || []).length ? ' <span class="priority-partial-badge">Partial option</span>' : ''}</div>
                 <div style="font-size: 0.78rem; color: #6b7280;">${dept}${dept ? ' · ' : ''}Request ${row.requestId}</div>
             </td>
             <td style="text-align: center;">${badge(q)}</td>
@@ -7729,6 +7768,7 @@ function exportPBBAnalysisToExcel() {
         '5. Efficiency/ROI Notes',
         ...(includeAccessEquity ? ['6. Access Score (0-2)', '6. Access Notes'] : []),
         'Conditions',
+        'Partial Funding Option',
         'Analyst Override',
         'Overall Rationale'
     ]];
@@ -7788,6 +7828,7 @@ function exportPBBAnalysisToExcel() {
             analysis.efficiencyReason,
             ...(includeAccessEquity ? [analysis.accessScore, analysis.accessReason] : []),
             (analysis.conditions || []).map(conditionText).join(' | '),
+            (analysis.partialOptions || []).map(sl => `${sl.program} (${normalizeQuartile(sl.quartile)}): ${money(sl.amount)}, ${Math.round(sl.share * 100)}% could be considered separately`).join(' | '),
             analysis.override ? `Ranked on ${analysis.override.program}: ${analysis.override.reason}` : '',
             narrativeToText(analysis.narrative)
         ]);
@@ -7830,6 +7871,7 @@ function exportPBBAnalysisToExcel() {
         { wch: 60 },  // Efficiency/ROI Notes
         ...(includeAccessEquity ? [{ wch: 10 }, { wch: 60 }] : []),
         { wch: 60 },  // Conditions
+        { wch: 50 },  // Partial Funding Option
         { wch: 40 },  // Analyst Override
         { wch: 80 }   // Overall Rationale
     ];

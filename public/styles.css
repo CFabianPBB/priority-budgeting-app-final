@@ -2271,6 +2271,28 @@ tr:hover {
     background: #fef08a;
 }
 
+.priority-breakdown tr.partial td {
+    background: #ecfdf5;
+}
+
+.priority-governs.partial {
+    color: #065f46;
+    background: #a7f3d0;
+}
+
+.priority-partial-badge {
+    display: inline-block;
+    margin-left: 6px;
+    background: #ecfdf5;
+    color: #065f46;
+    border: 1px solid #6ee7b7;
+    padding: 1px 7px;
+    border-radius: 9999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
 .priority-override-btn {
     font-size: 0.72rem;
     font-weight: 600;

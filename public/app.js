@@ -833,7 +833,7 @@ const REPORTS = {
     recommendations: {
         title: 'PBB Recommendations',
         subtitle: 'Priority Based Budgeting framework scoring and recommendations',
-        about: 'This report scores each request against the Priority Based Budgeting framework (24 archetypes) and suggests a recommendation, with its reasoning and any reallocation opportunities. Recommendations are advisory; final decisions rest with leadership and governing bodies. For full request details, see the companion Request Overview report.',
+        about: 'This report scores each request against the Priority Based Budgeting framework (24 archetypes) and suggests a recommendation, with its reasoning and any reallocation opportunities. Recommendations are advisory; final decisions rest with leadership and governing bodies. Archetype numbers are explained in the PBB 24 Archetypes guide, available on the PBB Recommendations page. For full request details, see the companion Request Overview report.',
         file: 'PBB_Recommendations'
     }
 };
@@ -844,6 +844,183 @@ function reportFileStem(key, suffix) {
 
 function aboutReportHtml(key) {
     return `<div style="margin: 16px 0 22px; padding: 12px 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #1e3a5f; border-radius: 6px; font-size: 0.92em; color: #334155; line-height: 1.5;"><strong>About this report.</strong> ${REPORTS[key].about}</div>`;
+}
+
+// ===== THE 24 ARCHETYPES GUIDE =====
+// One builder for the in-app guide and the printable one-page PDF. The grid tables
+// are generated from ARCHETYPE_GRID, so the guide cannot drift from the scoring.
+const DISPOSITION_STYLE = {
+    APPROVE: { fg: '#166534', bg: '#dcfce7' },
+    MODIFY:  { fg: '#92400e', bg: '#fef3c7' },
+    VERIFY:  { fg: '#3730a3', bg: '#e0e7ff' },
+    DEFER:   { fg: '#9a3412', bg: '#ffedd5' },
+    REJECT:  { fg: '#991b1b', bg: '#fee2e2' },
+    REVIEW:  { fg: '#334155', bg: '#e2e8f0' }
+};
+
+const ARCHETYPE_GUIDE_CSS = `
+.ag { font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif; color: #1e293b; font-size: 14px; line-height: 1.4; }
+.ag * { box-sizing: border-box; }
+.ag h4 { margin: 0; }
+#archetypeGuide .ag-hero { display: none; }
+.ag-hero { background: #1e3a5f; color: #fff; padding: 1em 1.3em; border-radius: 0.5em; }
+.ag-hero h3 { margin: 0; font-size: 1.6em; font-weight: 700; }
+.ag-hero h3 span { color: #93c5fd; font-weight: 600; }
+.ag-hero p { margin: 0.25em 0 0; font-style: italic; opacity: 0.9; font-size: 0.95em; }
+.ag-band { margin-top: 1em; border: 1px solid #cbd5e1; border-radius: 0.45em; overflow: hidden; break-inside: avoid; }
+.ag-band-title { background: #334155; color: #fff; font-weight: 700; font-size: 0.85em; letter-spacing: 0.04em; text-transform: uppercase; padding: 0.45em 0.8em; }
+.ag-band-title small { display: block; font-weight: 400; text-transform: none; letter-spacing: 0; font-style: italic; opacity: 0.9; }
+.ag-cols { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); }
+.ag-cell { padding: 0.6em 0.8em; border-right: 1px solid #e2e8f0; }
+.ag-cell:last-child { border-right: none; }
+.ag-cell b { color: #1e3a5f; }
+.ag-cell p { margin: 0.2em 0 0; color: #475569; font-size: 0.9em; }
+.ag-q { font-weight: 700; color: #1d4ed8; font-size: 0.85em; letter-spacing: 0.03em; }
+.ag-ask { font-weight: 600; margin-top: 0.15em; }
+.ag-answers { margin-top: 0.3em; font-size: 0.85em; font-weight: 700; }
+.ag-answers .hi { color: #15803d; } .ag-answers .lo { color: #b91c1c; }
+.ag-read { margin-top: 0.4em; padding: 0.4em 0.55em; background: #f1f5f9; border-radius: 0.35em; font-size: 0.85em; color: #334155; }
+.ag-read i { color: #64748b; font-style: normal; font-weight: 600; }
+.ag-grids { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 1em; }
+.ag-grids .ag-band { margin-top: 1em; }
+.ag table { width: 100%; border-collapse: collapse; font-size: 0.88em; }
+.ag th { text-align: left; font-weight: 600; color: #475569; background: #f8fafc; padding: 0.35em 0.5em; border-bottom: 1px solid #cbd5e1; }
+.ag td { padding: 0.3em 0.5em; border-bottom: 1px solid #eef2f7; vertical-align: top; }
+.ag td.num { color: #64748b; width: 2em; }
+.ag .gf { color: #b91c1c; font-weight: 600; } .ag .ngf { color: #15803d; font-weight: 600; }
+.ag .disp { display: inline-block; min-width: 5.2em; text-align: center; font-weight: 700; font-size: 0.85em; padding: 0.1em 0.4em; border-radius: 0.3em; }
+.ag-high .ag-band-title { background: #166534; } .ag-low .ag-band-title { background: #9a3412; }
+.ag-meaning { padding: 0.6em 0.8em; border-right: 1px solid #e2e8f0; }
+.ag-meaning:last-child { border-right: none; }
+.ag-meaning h4 { font-size: 1em; }
+.ag-meaning h4 span { font-weight: 400; color: #64748b; margin-left: 0.3em; }
+.ag-meaning p { margin: 0.2em 0 0; font-size: 0.85em; color: #334155; }
+.ag-foot { margin-top: 0.8em; font-size: 0.8em; color: #64748b; font-style: italic; }
+/* One-page landscape print */
+.ag.ag-print { font-size: 8.2px; }
+.ag.ag-print .ag-grids { grid-template-columns: 1fr 1fr; gap: 0.8em; }
+.ag.ag-print .ag-band, .ag.ag-print .ag-grids .ag-band { margin-top: 0.7em; }
+.ag.ag-print .ag-hero { padding: 0.7em 1em; }
+.ag.ag-print td, .ag.ag-print th { padding: 0.2em 0.45em; }
+.ag.ag-print .ag-cell, .ag.ag-print .ag-meaning { padding: 0.45em 0.65em; }
+@media print { .ag { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+`;
+
+function buildArchetypeGuideHtml(options) {
+    const opts = options || {};
+    const rows = Object.entries(ARCHETYPE_GRID)
+        .map(([key, v]) => { const [band, mandate, funding, evidence] = key.split('-'); return { band, mandate, funding, evidence, ...v }; })
+        .sort((a, b) => a.archetypeNumber - b.archetypeNumber);
+    const counts = {};
+    rows.forEach(r => { counts[r.disposition] = (counts[r.disposition] || 0) + 1; });
+    const disp = d => { const st = DISPOSITION_STYLE[d] || DISPOSITION_STYLE.REVIEW; return `<span class="disp" style="color: ${st.fg}; background: ${st.bg};">${d}</span>`; };
+    const table = band => `
+        <table><thead><tr><th>#</th><th>Obligation</th><th>Funding</th><th>Evidence</th><th>Guidance</th><th>What it means</th></tr></thead><tbody>
+        ${rows.filter(r => r.band === band).map(r => `<tr>
+            <td class="num">${r.archetypeNumber}</td><td>${r.mandate}</td>
+            <td class="${r.funding === 'GFonly' ? 'gf' : 'ngf'}">${r.funding === 'GFonly' ? 'GF only' : 'Non-GF'}</td>
+            <td>${r.evidence}</td><td>${disp(r.disposition)}</td><td>${ARCHETYPE_SUMMARY[r.archetypeNumber] || r.keyConsideration}</td>
+        </tr>`).join('')}
+        </tbody></table>`;
+    const cell = (title, text) => `<div class="ag-cell"><b>${title}</b><p>${text}</p></div>`;
+    const question = (n, name, ask, answers, read) => `<div class="ag-cell">
+        <div class="ag-q">${n} · ${name}</div><div class="ag-ask">${ask}</div>
+        <div class="ag-answers">${answers}</div>
+        <div class="ag-read"><i>How we read it:</i> ${read}</div></div>`;
+    const meaning = (d, text) => { const st = DISPOSITION_STYLE[d]; return `<div class="ag-meaning" style="background: ${st.bg};"><h4 style="color: ${st.fg};">${d}<span>${counts[d] ? counts[d] + ' archetype' + (counts[d] === 1 ? '' : 's') : ''}</span></h4><p>${text}</p></div>`; };
+
+    return `<div class="ag${opts.print ? ' ag-print' : ''}">
+    <div class="ag-hero">
+        <h3>Priority Based Budgeting · <span>The 24 Archetypes</span></h3>
+        <p>How a budget request becomes an advisory recommendation: the four questions, how each is answered from your data, and the full decision grid.</p>
+    </div>
+
+    <div class="ag-band">
+        <div class="ag-band-title">The PBB lens</div>
+        <div class="ag-cols" style="--cols: 6;">
+            ${cell('1. Start with results, not last year.', 'The budget starts from the outcomes the community wants, not last year plus an increment.')}
+            ${cell('2. Score programs, not departments.', 'Every program is scored on how well it advances those results, then ranked into quartiles.')}
+            ${cell('3. Fund the highest alignment first.', 'Q1/Q2 programs have first claim on scarce resources. Q3/Q4 must justify why they compete at all.')}
+            ${cell('4. Protect the General Fund.', 'The GF is the scarcest dollar. If a fee, grant, rate, or partner can pay, it should.')}
+            ${cell('5. A mandate is a floor, not a blank check.', 'A mandate compels a minimum. It does not justify the scope, timing, or funding source.')}
+            ${cell('6. Evidence earns continued investment.', 'Baselines, targets and a measurement plan earn investment. Assertion does not.')}
+        </div>
+    </div>
+
+    <div class="ag-band">
+        <div class="ag-band-title">The four questions that decide it<small>Every request is reduced to one answer per question: 2 × 3 × 2 × 2 = 24 combinations, the 24 archetypes.</small></div>
+        <div class="ag-cols" style="--cols: 4;">
+            ${question(1, 'Alignment', 'How well does the program advance our results?',
+                '<span class="hi">HIGH: Q1–Q2</span> · <span class="lo">LOW: Q3–Q4</span>',
+                'The quartile of each program the request funds, from the line items or the Summary Report. Added dollars are judged by the <b>least-aligned</b> program they go to.')}
+            ${question(2, 'Obligation', 'Are we required to do this?',
+                '<span class="hi">MANDATED: score 3–4</span> · COMPLIANCE: 1–2 · <span class="lo">NONE: 0</span>',
+                'The program\'s mandate score, from the line items and then the Summary Report. Added dollars take the <b>least-mandated</b> program. The Q&A mandate answer is used only when no score exists.')}
+            ${question(3, 'Funding', 'Whose money pays for it?',
+                '<span class="hi">NON-GF</span> · <span class="lo">GF ONLY</span>',
+                'The Fund on each line item. <b>Any General Fund dollars make it GF.</b> Internal service funds count as GF. A request whose own ongoing revenue covers its cost counts as self-funding; one-time revenue for ongoing cost does not.')}
+            ${question(4, 'Evidence', 'Can we prove it will work?',
+                '<span class="hi">STRONG</span> · <span class="lo">WEAK</span>',
+                'The request\'s Q&A <b>answers</b> name KPIs or targets <b>and</b> baseline data or trends.')}
+        </div>
+    </div>
+
+    <div class="ag-grids">
+        <div class="ag-band ag-high">
+            <div class="ag-band-title">High alignment · Q1–Q2 · Archetypes 1–12<small>Programs that advance the results the community asked for. The question is how to fund them well.</small></div>
+            ${table('High')}
+        </div>
+        <div class="ag-band ag-low">
+            <div class="ag-band-title">Low alignment · Q3–Q4 · Archetypes 13–24<small>Programs further from the results. The question is whether scarce General Fund should go here at all.</small></div>
+            ${table('Low')}
+        </div>
+    </div>
+
+    <div class="ag-band">
+        <div class="ag-band-title">Rules that apply before the grid</div>
+        <div class="ag-cols" style="--cols: 3;">
+            ${cell('Weakest link', 'A request is only as strong as its least-justified dollar. When a slice goes to a lower-quartile or less-mandated program, the report names it and shows what the rest would rate without it, so it can be funded separately or reallocated.')}
+            ${cell('Reductions run in reverse', 'Requests that reduce spending skip the grid. Reducing unmandated, lower-quartile programs → <b>APPROVE</b>. Reducing a highly mandated (3–4) or Most/More Aligned program → <b>VERIFY</b>: confirm mandate minimums and service levels still hold.')}
+            ${cell('No guessing', 'If quartile data or the funding source is missing, or a request is charged to a custodial or fiduciary fund, the framework returns <b>REVIEW</b> and infers no recommendation.')}
+        </div>
+    </div>
+
+    <div class="ag-band">
+        <div class="ag-band-title">What each recommendation means</div>
+        <div class="ag-cols" style="--cols: 6;">
+            ${meaning('APPROVE', 'Meets the criteria. Not "fund regardless of cost": approvals still compete for capacity.')}
+            ${meaning('MODIFY', 'Real merit; attach conditions such as cost recovery, narrower scope, stage gates or an evidence plan.')}
+            ${meaning('VERIFY', 'Low priority on 100% GF where a mandate alone prevents REJECT: document it first. Also used for reductions to mandated or top-quartile programs.')}
+            ${meaning('DEFER', 'Not fundable this cycle. Strengthening actions are listed and the request can come back.')}
+            ${meaning('REJECT', 'Least aligned, GF only, no evidence. Reframe, fund externally, consolidate or sunset.')}
+            ${meaning('REVIEW', 'Missing or conflicting data. The framework refuses to guess.')}
+        </div>
+    </div>
+    <div class="ag-foot">Recommendations are advisory, based on textbook Priority Based Budgeting. Each request also gets six criterion scores (0–2, each with a written reason) for context; the recommendation itself comes from the four questions.</div>
+</div>`;
+}
+
+function openArchetypeGuide() {
+    const target = document.getElementById('archetypeGuide');
+    if (target) target.innerHTML = `<style>${ARCHETYPE_GUIDE_CSS}</style>${buildArchetypeGuideHtml()}`;
+    const modal = document.getElementById('decisionTreeModal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function downloadArchetypeGuidePdf() {
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PBB_24_Archetypes_Guide</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+@page { size: letter landscape; margin: 0.35in; @top-left { content: ""; } @top-center { content: ""; } @top-right { content: ""; } @bottom-left { content: ""; } @bottom-right { content: ""; } }
+body { margin: 0; background: white; }
+${ARCHETYPE_GUIDE_CSS}
+</style></head><body>${buildArchetypeGuideHtml({ print: true })}
+<script>window.onload = () => setTimeout(() => window.print(), 400);<\/script>
+</body></html>`;
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+    w.focus();
 }
 
 // Whole-dollar currency with a real minus sign: -11800 -> "−$11,800".
@@ -2580,6 +2757,234 @@ function scoreRequest(request) {
 }
 
 // ===== REVISED DECISION GRID BASED ON GF FUNDING PHILOSOPHY =====
+// The 24 archetypes: quartile band × mandate level × funding × evidence. Single source
+// for scoring, the in-app guide and the downloadable guide.
+const ARCHETYPE_GRID = {
+    // HIGH RELEVANCE (Q1-Q2) - Strategic Priority Programs (Archetypes 1-12)
+    'High-Mandated-NonGF-Strong': {
+        archetypeNumber: 1,
+        disposition: 'APPROVE',
+        color: '#28a745',
+        keyConsideration: 'Perfect alignment - strategic priority + mandate + no GF impact',
+        verifyNow: ['Statute/board reference', 'Allowability of non-GF sources'],
+        strengthenWith: ['Final KPI list', 'Compliance milestones', 'Data source & cadence']
+    },
+    'High-Mandated-GFonly-Strong': {
+        archetypeNumber: 2,
+        disposition: 'APPROVE',
+        color: '#28a745',
+        keyConsideration: 'Mission-critical with legal mandate backing strategic goals',
+        verifyNow: ['Confirm mandate scope & minimums'],
+        strengthenWith: ['Cost offsets (phase-down plan, reallocation)', 'Sunset/true-up triggers']
+    },
+    'High-Mandated-NonGF-Weak': {
+        archetypeNumber: 3,
+        disposition: 'APPROVE',
+        color: '#28a745',
+        keyConsideration: 'Mandate + external funding covers weak evidence',
+        verifyNow: ['That mandate truly requires this spend'],
+        strengthenWith: ['Baseline→target KPIs', '90-day evaluation plan', 'Interim check-in']
+    },
+    'High-Mandated-GFonly-Weak': {
+        archetypeNumber: 4,
+        disposition: 'APPROVE',
+        color: '#28a745',
+        keyConsideration: 'Mandate requires compliance regardless of evidence gaps',
+        verifyNow: ['Minimum-viable compliance level'],
+        strengthenWith: ['Add fee/grant search', 'Partner MOUs', 'Phased start', 'Sunset clause']
+    },
+    'High-Compliance-NonGF-Strong': {
+        archetypeNumber: 5,
+        disposition: 'APPROVE',
+        color: '#28a745',
+        keyConsideration: 'Strategic priority with strong case and low GF risk',
+        verifyNow: ['Risk register link', 'Risk reduction metric'],
+        strengthenWith: ['Cost avoidance calc', 'SLA updates', 'Internal control changes']
+    },
+    'High-Compliance-GFonly-Strong': {
+        archetypeNumber: 6,
+        disposition: 'MODIFY',
+        color: '#ffc107',
+        keyConsideration: 'Strong case but push for cost recovery',
+        verifyNow: ['Materiality of risk', 'Alternatives'],
+        strengthenWith: ['Add partial cost recovery', 'Internal reallocation', 'Pilot scope']
+    },
+    'High-Compliance-NonGF-Weak': {
+        archetypeNumber: 7,
+        disposition: 'MODIFY',
+        color: '#ffc107',
+        keyConsideration: 'Strengthen outcomes/evidence first',
+        verifyNow: ['That non-GF is real & timely'],
+        strengthenWith: ['KPIs', '6-mo pilot with go/no-go', 'Light-weight evaluation plan']
+    },
+    'High-Compliance-GFonly-Weak': {
+        archetypeNumber: 8,
+        disposition: 'MODIFY',
+        color: '#ffc107',
+        keyConsideration: 'Require evidence plan before approval',
+        verifyNow: ['Is this truly critical for safety/liability?'],
+        strengthenWith: ['Strengthen outcomes evidence', 'Identify cost recovery', 'Narrow scope significantly', 'Stage gates with evaluation']
+    },
+    'High-None-NonGF-Strong': {
+        archetypeNumber: 9,
+        disposition: 'APPROVE',
+        color: '#28a745',
+        keyConsideration: 'Strategic with self-sustaining funding',
+        verifyNow: ['No hidden GF backfill'],
+        strengthenWith: ['Pay-for-itself math', 'Fee elasticity/grant terms', 'Partner commitments']
+    },
+    'High-None-GFonly-Strong': {
+        archetypeNumber: 10,
+        disposition: 'MODIFY',
+        color: '#ffc107',
+        keyConsideration: 'Good case but seek fee/grant offset opportunities first',
+        verifyNow: ['Alignment with strategic plan goals', 'Expected impact on outcomes'],
+        strengthenWith: ['Explore cost recovery options', 'Unit-cost reduction opportunities', 'Potential partnerships']
+    },
+    'High-None-NonGF-Weak': {
+        archetypeNumber: 11,
+        disposition: 'MODIFY',
+        color: '#ffc107',
+        keyConsideration: 'Strengthen business case or run pilot to prove value',
+        verifyNow: ['Outcome plausibility'],
+        strengthenWith: ['KPIs & evaluation', 'Start as pilot', 'Tighten deliverables']
+    },
+    'High-None-GFonly-Weak': {
+        archetypeNumber: 12,
+        disposition: 'DEFER',
+        color: '#dc3545',
+        keyConsideration: 'Build evidence and outcomes data before using limited GF',
+        verifyNow: ['Why should GF be used for this lower-evidence request?'],
+        strengthenWith: ['Tie to priority KPIs with clear metrics', 'Find non-GF sources', 'Reduce scope or integrate with higher-priority work']
+    },
+    
+    // LOW RELEVANCE (Q3-Q4) - Lower Strategic Priority (Archetypes 13-24)
+    'Low-Mandated-NonGF-Strong': {
+        archetypeNumber: 13,
+        disposition: 'APPROVE',
+        color: '#28a745',
+        keyConsideration: 'Legal mandate with no GF impact - proceed with compliance',
+        verifyNow: ['Minimum compliance scope'],
+        strengthenWith: ['Keep GF minimal', 'Escrow/offsets', 'Time-bound sunset']
+    },
+    'Low-Mandated-GFonly-Strong': {
+        archetypeNumber: 14,
+        disposition: 'VERIFY',
+        color: '#6366f1',
+        keyConsideration: 'Low-priority program with 100% GF reliance — mandate is the only thing keeping this out of REJECT. Validate before funding.',
+        verifyNow: [
+            'What does the mandate actually require — operate the program at all, or this specific incremental spend?',
+            'Who is mandating it? (statute, regulation, court order, board motion) — get a citation',
+            'Is there pass-through funding from the mandating authority to comply?',
+            'Is the Q3/Q4 quartile mapping correct, or is this program being undervalued?',
+            'What is the absolute minimum compliance level, and can timing be deferred?'
+        ],
+        strengthenWith: ['Document mandate citation in writing', 'Pursue mandating-authority funding aggressively', 'Swap lower-impact spend', 'Phase to minimum viable scope', 'Sunset provision tied to mandate review']
+    },
+    'Low-Mandated-NonGF-Weak': {
+        archetypeNumber: 15,
+        disposition: 'APPROVE',
+        color: '#28a745',
+        keyConsideration: 'Mandate + non-GF justifies proceeding despite weak evidence',
+        verifyNow: ['That mandate truly applies to this program'],
+        strengthenWith: ['KPI baseline→target', '90-day review', 'Non-GF documentation']
+    },
+    'Low-Mandated-GFonly-Weak': {
+        archetypeNumber: 16,
+        disposition: 'VERIFY',
+        color: '#6366f1',
+        keyConsideration: 'Low-priority + 100% GF + weak outcomes evidence — mandate is the sole basis to fund. The bar for verification is highest here.',
+        verifyNow: [
+            'What does the mandate actually require — operate the program at all, or this specific incremental spend?',
+            'Who is mandating it? (statute, regulation, court order, board motion) — get a citation',
+            'Is there pass-through funding from the mandating authority to comply?',
+            'Without strong outcomes evidence, can we afford the lowest-impact compliance path?',
+            'Can the spend be delayed to a future cycle without violating the mandate?'
+        ],
+        strengthenWith: ['Document mandate citation in writing', 'Pursue mandating-authority funding aggressively', 'Tight scope — minimum viable compliance only', 'Hard sunset / mandate-review trigger', 'Required path to add non-GF funding within 6–12 months']
+    },
+    'Low-Compliance-NonGF-Strong': {
+        archetypeNumber: 17,
+        disposition: 'MODIFY',
+        color: '#ffc107',
+        keyConsideration: 'Risk mitigation but ensure no GF creep',
+        verifyNow: ['Non-GF terms & durability'],
+        strengthenWith: ['No-GF pledge', 'Measurable risk reduction', 'Pilot + review']
+    },
+    'Low-Compliance-GFonly-Strong': {
+        archetypeNumber: 18,
+        disposition: 'MODIFY',
+        color: '#ffc107',
+        keyConsideration: 'Compliance need but require cost offsets for low-priority program',
+        verifyNow: ['Why is this low-priority program requiring GF for compliance?'],
+        strengthenWith: ['Require cost recovery mechanism', 'Internal reallocation from Q3/Q4 programs', 'Consider program redesign or elimination']
+    },
+    'Low-Compliance-NonGF-Weak': {
+        archetypeNumber: 19,
+        disposition: 'DEFER',
+        color: '#dc3545',
+        keyConsideration: 'Weak case even with non-GF - prove value first',
+        verifyNow: ['Realism of benefits'],
+        strengthenWith: ['Basic KPI set', 'Partner LOIs', 'Phase to prove value']
+    },
+    'Low-Compliance-GFonly-Weak': {
+        archetypeNumber: 20,
+        disposition: 'DEFER',
+        color: '#dc3545',
+        keyConsideration: 'Low priority + GF only + weak evidence = defer',
+        verifyNow: ['If imminent risk, treat as mandate'],
+        strengthenWith: ['Pilot w/ non-GF', 'Quantify liability avoided', 'Combine with Q1/Q2 work or eliminate']
+    },
+    'Low-None-NonGF-Strong': {
+        archetypeNumber: 21,
+        disposition: 'APPROVE',
+        color: '#28a745',
+        keyConsideration: 'Self-sustaining with strong outcomes - proceed if no GF needed',
+        verifyNow: ['No GF drift', 'Sustainability of non-GF sources'],
+        strengthenWith: ['Full cost recovery plan', 'Service redesign to increase relevance', 'Path to Q1/Q2 alignment']
+    },
+    'Low-None-GFonly-Strong': {
+        archetypeNumber: 22,
+        disposition: 'DEFER',
+        color: '#dc3545',
+        keyConsideration: 'Competes with higher-priority needs - phase behind Q1/Q2',
+        verifyNow: ['Why use limited GF on low-priority program?'],
+        strengthenWith: ['Add fee/grant/partner funding', 'ROI calculation showing strategic value', 'Phase behind Q1/Q2 priorities', 'Consider program elimination']
+    },
+    'Low-None-NonGF-Weak': {
+        archetypeNumber: 23,
+        disposition: 'DEFER',
+        color: '#dc3545',
+        keyConsideration: 'Prove demand and willingness-to-pay before proceeding',
+        verifyNow: ['Is there any compelling reason to continue this program?'],
+        strengthenWith: ['Strong KPIs showing strategic value', 'Tighten scope drastically', 'Prove demand/willingness-to-pay', 'Consider elimination']
+    },
+    'Low-None-GFonly-Weak': {
+        archetypeNumber: 24,
+        disposition: 'REJECT',
+        color: '#dc3545',
+        keyConsideration: 'No compelling case for limited GF resources - reframe or eliminate',
+        verifyNow: ['N/A - does not meet funding criteria'],
+        strengthenWith: ['Reframe to demonstrate higher-Q outcome alignment', 'Secure 100% non-GF funding', 'Consolidate with higher-priority programs', 'Recommend program elimination']
+    }
+};
+
+// One-line meaning of each archetype, for the guide tables.
+const ARCHETYPE_SUMMARY = {
+    1: 'Priority + mandate + no GF impact', 2: 'Mission-critical; mandate backs the goal',
+    3: 'Outside funding covers the evidence gap', 4: 'Compliance required despite thin evidence',
+    5: 'Strong case, real risk, low GF exposure', 6: 'Strong case — push for cost recovery',
+    7: 'Strengthen the outcomes evidence first', 8: 'Require an evidence plan before approval',
+    9: 'Strategic and self-sustaining', 10: 'Good case — seek a fee or grant offset',
+    11: 'Pilot it; prove value before scaling', 12: 'Build evidence before spending scarce GF',
+    13: 'Mandate with no GF impact — comply', 14: 'Mandate alone prevents REJECT — document it',
+    15: 'Mandate + outside funding carries it', 16: 'Highest verification bar in the grid',
+    17: 'Mitigate risk; guard against GF creep', 18: 'Require offsets — why GF for a Q3/Q4 need?',
+    19: 'Weak even with outside money', 20: 'Low priority, GF, no evidence',
+    21: 'Self-sustaining with real results', 22: 'Competes with Q1/Q2 — phase behind them',
+    23: 'Prove demand and willingness to pay', 24: 'No case for scarce GF — reframe or end it'
+};
+
 function applyDecisionGrid(analysis) {
     const { quartileBand, mandateLevel, fundingType, outcomesStrength } = analysis;
 
@@ -2661,218 +3066,9 @@ function applyDecisionGrid(analysis) {
         };
     }
 
-    // Decision grid mapping with archetype numbers matching the 24 Archetypes table
-    const grid = {
-        // HIGH RELEVANCE (Q1-Q2) - Strategic Priority Programs (Archetypes 1-12)
-        'High-Mandated-NonGF-Strong': {
-            archetypeNumber: 1,
-            disposition: 'APPROVE',
-            color: '#28a745',
-            keyConsideration: 'Perfect alignment - strategic priority + mandate + no GF impact',
-            verifyNow: ['Statute/board reference', 'Allowability of non-GF sources'],
-            strengthenWith: ['Final KPI list', 'Compliance milestones', 'Data source & cadence']
-        },
-        'High-Mandated-GFonly-Strong': {
-            archetypeNumber: 2,
-            disposition: 'APPROVE',
-            color: '#28a745',
-            keyConsideration: 'Mission-critical with legal mandate backing strategic goals',
-            verifyNow: ['Confirm mandate scope & minimums'],
-            strengthenWith: ['Cost offsets (phase-down plan, reallocation)', 'Sunset/true-up triggers']
-        },
-        'High-Mandated-NonGF-Weak': {
-            archetypeNumber: 3,
-            disposition: 'APPROVE',
-            color: '#28a745',
-            keyConsideration: 'Mandate + external funding covers weak evidence',
-            verifyNow: ['That mandate truly requires this spend'],
-            strengthenWith: ['Baseline→target KPIs', '90-day evaluation plan', 'Interim check-in']
-        },
-        'High-Mandated-GFonly-Weak': {
-            archetypeNumber: 4,
-            disposition: 'APPROVE',
-            color: '#28a745',
-            keyConsideration: 'Mandate requires compliance regardless of evidence gaps',
-            verifyNow: ['Minimum-viable compliance level'],
-            strengthenWith: ['Add fee/grant search', 'Partner MOUs', 'Phased start', 'Sunset clause']
-        },
-        'High-Compliance-NonGF-Strong': {
-            archetypeNumber: 5,
-            disposition: 'APPROVE',
-            color: '#28a745',
-            keyConsideration: 'Strategic priority with strong case and low GF risk',
-            verifyNow: ['Risk register link', 'Risk reduction metric'],
-            strengthenWith: ['Cost avoidance calc', 'SLA updates', 'Internal control changes']
-        },
-        'High-Compliance-GFonly-Strong': {
-            archetypeNumber: 6,
-            disposition: 'MODIFY',
-            color: '#ffc107',
-            keyConsideration: 'Strong case but push for cost recovery',
-            verifyNow: ['Materiality of risk', 'Alternatives'],
-            strengthenWith: ['Add partial cost recovery', 'Internal reallocation', 'Pilot scope']
-        },
-        'High-Compliance-NonGF-Weak': {
-            archetypeNumber: 7,
-            disposition: 'MODIFY',
-            color: '#ffc107',
-            keyConsideration: 'Strengthen outcomes/evidence first',
-            verifyNow: ['That non-GF is real & timely'],
-            strengthenWith: ['KPIs', '6-mo pilot with go/no-go', 'Light-weight evaluation plan']
-        },
-        'High-Compliance-GFonly-Weak': {
-            archetypeNumber: 8,
-            disposition: 'MODIFY',
-            color: '#ffc107',
-            keyConsideration: 'Require evidence plan before approval',
-            verifyNow: ['Is this truly critical for safety/liability?'],
-            strengthenWith: ['Strengthen outcomes evidence', 'Identify cost recovery', 'Narrow scope significantly', 'Stage gates with evaluation']
-        },
-        'High-None-NonGF-Strong': {
-            archetypeNumber: 9,
-            disposition: 'APPROVE',
-            color: '#28a745',
-            keyConsideration: 'Strategic with self-sustaining funding',
-            verifyNow: ['No hidden GF backfill'],
-            strengthenWith: ['Pay-for-itself math', 'Fee elasticity/grant terms', 'Partner commitments']
-        },
-        'High-None-GFonly-Strong': {
-            archetypeNumber: 10,
-            disposition: 'MODIFY',
-            color: '#ffc107',
-            keyConsideration: 'Good case but seek fee/grant offset opportunities first',
-            verifyNow: ['Alignment with strategic plan goals', 'Expected impact on outcomes'],
-            strengthenWith: ['Explore cost recovery options', 'Unit-cost reduction opportunities', 'Potential partnerships']
-        },
-        'High-None-NonGF-Weak': {
-            archetypeNumber: 11,
-            disposition: 'MODIFY',
-            color: '#ffc107',
-            keyConsideration: 'Strengthen business case or run pilot to prove value',
-            verifyNow: ['Outcome plausibility'],
-            strengthenWith: ['KPIs & evaluation', 'Start as pilot', 'Tighten deliverables']
-        },
-        'High-None-GFonly-Weak': {
-            archetypeNumber: 12,
-            disposition: 'DEFER',
-            color: '#dc3545',
-            keyConsideration: 'Build evidence and outcomes data before using limited GF',
-            verifyNow: ['Why should GF be used for this lower-evidence request?'],
-            strengthenWith: ['Tie to priority KPIs with clear metrics', 'Find non-GF sources', 'Reduce scope or integrate with higher-priority work']
-        },
-        
-        // LOW RELEVANCE (Q3-Q4) - Lower Strategic Priority (Archetypes 13-24)
-        'Low-Mandated-NonGF-Strong': {
-            archetypeNumber: 13,
-            disposition: 'APPROVE',
-            color: '#28a745',
-            keyConsideration: 'Legal mandate with no GF impact - proceed with compliance',
-            verifyNow: ['Minimum compliance scope'],
-            strengthenWith: ['Keep GF minimal', 'Escrow/offsets', 'Time-bound sunset']
-        },
-        'Low-Mandated-GFonly-Strong': {
-            archetypeNumber: 14,
-            disposition: 'VERIFY',
-            color: '#6366f1',
-            keyConsideration: 'Low-priority program with 100% GF reliance — mandate is the only thing keeping this out of REJECT. Validate before funding.',
-            verifyNow: [
-                'What does the mandate actually require — operate the program at all, or this specific incremental spend?',
-                'Who is mandating it? (statute, regulation, court order, board motion) — get a citation',
-                'Is there pass-through funding from the mandating authority to comply?',
-                'Is the Q3/Q4 quartile mapping correct, or is this program being undervalued?',
-                'What is the absolute minimum compliance level, and can timing be deferred?'
-            ],
-            strengthenWith: ['Document mandate citation in writing', 'Pursue mandating-authority funding aggressively', 'Swap lower-impact spend', 'Phase to minimum viable scope', 'Sunset provision tied to mandate review']
-        },
-        'Low-Mandated-NonGF-Weak': {
-            archetypeNumber: 15,
-            disposition: 'APPROVE',
-            color: '#28a745',
-            keyConsideration: 'Mandate + non-GF justifies proceeding despite weak evidence',
-            verifyNow: ['That mandate truly applies to this program'],
-            strengthenWith: ['KPI baseline→target', '90-day review', 'Non-GF documentation']
-        },
-        'Low-Mandated-GFonly-Weak': {
-            archetypeNumber: 16,
-            disposition: 'VERIFY',
-            color: '#6366f1',
-            keyConsideration: 'Low-priority + 100% GF + weak outcomes evidence — mandate is the sole basis to fund. The bar for verification is highest here.',
-            verifyNow: [
-                'What does the mandate actually require — operate the program at all, or this specific incremental spend?',
-                'Who is mandating it? (statute, regulation, court order, board motion) — get a citation',
-                'Is there pass-through funding from the mandating authority to comply?',
-                'Without strong outcomes evidence, can we afford the lowest-impact compliance path?',
-                'Can the spend be delayed to a future cycle without violating the mandate?'
-            ],
-            strengthenWith: ['Document mandate citation in writing', 'Pursue mandating-authority funding aggressively', 'Tight scope — minimum viable compliance only', 'Hard sunset / mandate-review trigger', 'Required path to add non-GF funding within 6–12 months']
-        },
-        'Low-Compliance-NonGF-Strong': {
-            archetypeNumber: 17,
-            disposition: 'MODIFY',
-            color: '#ffc107',
-            keyConsideration: 'Risk mitigation but ensure no GF creep',
-            verifyNow: ['Non-GF terms & durability'],
-            strengthenWith: ['No-GF pledge', 'Measurable risk reduction', 'Pilot + review']
-        },
-        'Low-Compliance-GFonly-Strong': {
-            archetypeNumber: 18,
-            disposition: 'MODIFY',
-            color: '#ffc107',
-            keyConsideration: 'Compliance need but require cost offsets for low-priority program',
-            verifyNow: ['Why is this low-priority program requiring GF for compliance?'],
-            strengthenWith: ['Require cost recovery mechanism', 'Internal reallocation from Q3/Q4 programs', 'Consider program redesign or elimination']
-        },
-        'Low-Compliance-NonGF-Weak': {
-            archetypeNumber: 19,
-            disposition: 'DEFER',
-            color: '#dc3545',
-            keyConsideration: 'Weak case even with non-GF - prove value first',
-            verifyNow: ['Realism of benefits'],
-            strengthenWith: ['Basic KPI set', 'Partner LOIs', 'Phase to prove value']
-        },
-        'Low-Compliance-GFonly-Weak': {
-            archetypeNumber: 20,
-            disposition: 'DEFER',
-            color: '#dc3545',
-            keyConsideration: 'Low priority + GF only + weak evidence = defer',
-            verifyNow: ['If imminent risk, treat as mandate'],
-            strengthenWith: ['Pilot w/ non-GF', 'Quantify liability avoided', 'Combine with Q1/Q2 work or eliminate']
-        },
-        'Low-None-NonGF-Strong': {
-            archetypeNumber: 21,
-            disposition: 'APPROVE',
-            color: '#28a745',
-            keyConsideration: 'Self-sustaining with strong outcomes - proceed if no GF needed',
-            verifyNow: ['No GF drift', 'Sustainability of non-GF sources'],
-            strengthenWith: ['Full cost recovery plan', 'Service redesign to increase relevance', 'Path to Q1/Q2 alignment']
-        },
-        'Low-None-GFonly-Strong': {
-            archetypeNumber: 22,
-            disposition: 'DEFER',
-            color: '#dc3545',
-            keyConsideration: 'Competes with higher-priority needs - phase behind Q1/Q2',
-            verifyNow: ['Why use limited GF on low-priority program?'],
-            strengthenWith: ['Add fee/grant/partner funding', 'ROI calculation showing strategic value', 'Phase behind Q1/Q2 priorities', 'Consider program elimination']
-        },
-        'Low-None-NonGF-Weak': {
-            archetypeNumber: 23,
-            disposition: 'DEFER',
-            color: '#dc3545',
-            keyConsideration: 'Prove demand and willingness-to-pay before proceeding',
-            verifyNow: ['Is there any compelling reason to continue this program?'],
-            strengthenWith: ['Strong KPIs showing strategic value', 'Tighten scope drastically', 'Prove demand/willingness-to-pay', 'Consider elimination']
-        },
-        'Low-None-GFonly-Weak': {
-            archetypeNumber: 24,
-            disposition: 'REJECT',
-            color: '#dc3545',
-            keyConsideration: 'No compelling case for limited GF resources - reframe or eliminate',
-            verifyNow: ['N/A - does not meet funding criteria'],
-            strengthenWith: ['Reframe to demonstrate higher-Q outcome alignment', 'Secure 100% non-GF funding', 'Consolidate with higher-priority programs', 'Recommend program elimination']
-        }
-    };
+    const grid = ARCHETYPE_GRID;
     
-    const decision = grid[gridKey] || {
+    const decision = grid[gridKey] ? Object.assign({}, grid[gridKey]) : {
         archetypeNumber: 0,
         disposition: 'MODIFY',
         color: '#ffc107',

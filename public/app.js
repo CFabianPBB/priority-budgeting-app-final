@@ -756,7 +756,7 @@ function updateStats() {
             if (quartile && quartileStats.hasOwnProperty(quartile)) {
                 // Use ACTUAL line item cost
                 const lineItemAmount = getLineItemAmount(item);
-                quartileStats[quartile] += lineItemAmount.total;
+                if (lineItemAmount.total > 0) quartileStats[quartile] += lineItemAmount.total;
             }
         });
     });
@@ -769,33 +769,34 @@ function updateStats() {
             <h3>${totalRequests}</h3>
             <p>Total Requests</p>
         </div>
+        ${(() => { const t = splitRequestTotals(filteredData); return `
         <div class="stat-card">
-            <h3>${money(totalOngoing)}</h3>
-            <p>Ongoing Requests</p>
+            <h3>${money(t.increases)}</h3>
+            <p>Increases (${t.increaseCount})</p>
         </div>
         <div class="stat-card">
-            <h3>${money(totalOnetime)}</h3>
-            <p>One-time Requests</p>
+            <h3>${money(t.reductions)}</h3>
+            <p>Reductions (${t.reductionCount})</p>
         </div>
         <div class="stat-card">
-            <h3>${money(totalAmount)}</h3>
-            <p>Total Amount</p>
-        </div>
+            <h3>${signedMoney(t.net)}</h3>
+            <p>Net Change</p>
+        </div>`; })()}
         <div class="stat-card quartile-most">
             <h3>${money(quartileStats['Most Aligned'])}</h3>
-            <p>Most Aligned</p>
+            <p>Most Aligned · increases</p>
         </div>
         <div class="stat-card quartile-more">
             <h3>${money(quartileStats['More Aligned'])}</h3>
-            <p>More Aligned</p>
+            <p>More Aligned · increases</p>
         </div>
         <div class="stat-card quartile-less">
             <h3>${money(quartileStats['Less Aligned'])}</h3>
-            <p>Less Aligned</p>
+            <p>Less Aligned · increases</p>
         </div>
         <div class="stat-card quartile-least">
             <h3>${money(quartileStats['Least Aligned'])}</h3>
-            <p>Least Aligned</p>
+            <p>Least Aligned · increases</p>
         </div>
     `;
     
@@ -817,6 +818,32 @@ function updateStats() {
 
 function formatCurrency(amount) {
     return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(amount);
+}
+
+// The two reports, named and described once so the screen, Word, PDF and Excel
+// versions always agree. "Request Summary" / "Summary Report" are avoided because
+// those are the names of the ResourceX input files.
+const REPORTS = {
+    overview: {
+        title: 'Request Overview',
+        subtitle: 'Budget requests by department, program and line item',
+        about: 'This report describes what departments are asking for: totals, the programs affected, and each request\'s answers and line items. It makes no recommendations. For those, see the companion PBB Recommendations report.',
+        file: 'Request_Overview'
+    },
+    recommendations: {
+        title: 'PBB Recommendations',
+        subtitle: 'Priority Based Budgeting framework scoring and recommendations',
+        about: 'This report scores each request against the Priority Based Budgeting framework (24 archetypes) and suggests a recommendation, with its reasoning and any reallocation opportunities. Recommendations are advisory; final decisions rest with leadership and governing bodies. For full request details, see the companion Request Overview report.',
+        file: 'PBB_Recommendations'
+    }
+};
+
+function reportFileStem(key, suffix) {
+    return `${REPORTS[key].file}${suffix || ''}_${new Date().toISOString().split('T')[0]}`;
+}
+
+function aboutReportHtml(key) {
+    return `<div style="margin: 16px 0 22px; padding: 12px 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #1e3a5f; border-radius: 6px; font-size: 0.92em; color: #334155; line-height: 1.5;"><strong>About this report.</strong> ${REPORTS[key].about}</div>`;
 }
 
 // Whole-dollar currency with a real minus sign: -11800 -> "−$11,800".
@@ -941,13 +968,14 @@ function displayReport() {
     // ===== GENERATE STANDARD REPORT (WITHOUT ANALYSIS) =====
     let standardHtml = `
         <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #333; margin-bottom: 10px;">Priority Based Budgeting Report</h1>
-            <p style="color: #666; font-size: 1.1rem;">Budget Request Analysis</p>
+            <h1 style="color: #333; margin-bottom: 10px;">${REPORTS.overview.title}</h1>
+            <p style="color: #666; font-size: 1.1rem;">${REPORTS.overview.subtitle}</p>
             <p style="color: #888;">Generated on ${reportDate}</p>
         </div>
+        ${aboutReportHtml('overview')}
 
         <div class="section-header">Executive Summary</div>
-        <p>This report analyzes ${totalsSentence(splitRequestTotals(filteredData))}. The requests span multiple departments and programs, with varying levels of alignment to organizational priorities.</p>
+        <p>This report analyzes ${totalsSentence(splitRequestTotals(filteredData))}. </p>
     `;
 
     standardHtml += generateFilterSummary();
@@ -965,17 +993,14 @@ function displayReport() {
     // ===== GENERATE ANALYTICAL REPORT (WITH SCORING AND RECOMMENDATIONS) =====
     let analyticalHtml = `
         <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #333; margin-bottom: 10px;">PBB Analysis & Recommendations</h1>
-            <p style="color: #666; font-size: 1.1rem;">Textbook PBB Framework - Advisory Analysis Only</p>
+            <h1 style="color: #333; margin-bottom: 10px;">${REPORTS.recommendations.title}</h1>
+            <p style="color: #666; font-size: 1.1rem;">${REPORTS.recommendations.subtitle}</p>
             <p style="color: #888;">Generated on ${reportDate}</p>
-            <p style="background: #fff3cd; border: 2px solid #ffc107; padding: 10px; border-radius: 8px; margin: 15px auto; max-width: 800px; font-size: 0.95rem; color: #856404;">
-                <strong>⚠️ Advisory Report:</strong> This analysis represents what a textbook Priority Based Budgeting framework would suggest. 
-                These are recommendations to inform decision-making, not actual funding decisions. Final decisions rest with leadership and governing bodies.
-            </p>
         </div>
 
-        <div class="section-header">Analysis Overview</div>
-        <p>This analytical report provides Priority Based Budgeting (PBB) framework scoring and advisory recommendations for ${totalsSentence(splitRequestTotals(filteredData))}. Each request is evaluated across six criteria following standard PBB methodology. <strong>These are suggested considerations, not binding decisions.</strong></p>
+        ${aboutReportHtml('recommendations')}
+        <div class="section-header">Overview</div>
+        <p>Recommendations for ${totalsSentence(splitRequestTotals(filteredData))}.</p>
     `;
 
     // Score and rank every filtered request ONCE; the sections below read the result.
@@ -1069,7 +1094,7 @@ function generateFilterSummary() {
             if (quartile && quartileStats.hasOwnProperty(quartile)) {
                 // Use ACTUAL line item cost
                 const lineItemAmount = getLineItemAmount(item);
-                quartileStats[quartile] += lineItemAmount.total;
+                if (lineItemAmount.total > 0) quartileStats[quartile] += lineItemAmount.total;
             }
         });
     });
@@ -1125,22 +1150,23 @@ function generateFilterSummary() {
                         <div class="detail-label">Total Requests</div>
                         <div class="detail-value">${filteredData.length}</div>
                     </div>
+                    ${(() => { const t = splitRequestTotals(filteredData); return `
                     <div class="detail-item">
-                        <div class="detail-label">Ongoing Requests</div>
-                        <div class="detail-value amount">${money(totalOngoing)}</div>
+                        <div class="detail-label">Increases (${t.increaseCount})</div>
+                        <div class="detail-value amount">${money(t.increases)}</div>
                     </div>
                     <div class="detail-item">
-                        <div class="detail-label">One-time Requests</div>
-                        <div class="detail-value amount">${money(totalOnetime)}</div>
+                        <div class="detail-label">Reductions (${t.reductionCount})</div>
+                        <div class="detail-value amount" style="color: #dc2626;">${money(t.reductions)}</div>
                     </div>
                     <div class="detail-item">
-                        <div class="detail-label">Total Amount</div>
-                        <div class="detail-value amount">${money(totalOngoing + totalOnetime)}</div>
-                    </div>
+                        <div class="detail-label">Net Change</div>
+                        <div class="detail-value amount">${signedMoney(t.net)}</div>
+                    </div>`; })()}
                 </div>
                 
                 <div style="margin-top: 20px;">
-                    <h4 style="color: #667eea; margin-bottom: 10px;">Quartile Distribution</h4>
+                    <h4 style="color: #667eea; margin-bottom: 10px;">Increases by Quartile</h4>
                     <div class="detail-grid">
                         <div class="detail-item">
                             <div class="detail-label">Most Aligned</div>
@@ -3810,7 +3836,7 @@ function generateDepartmentSummary() {
                 if (quartile && departments[dept].quartiles.hasOwnProperty(quartile)) {
                     // Use ACTUAL line item cost
                     const lineItemAmount = getLineItemAmount(item);
-                    departments[dept].quartiles[quartile] += lineItemAmount.total;
+                    if (lineItemAmount.total > 0) departments[dept].quartiles[quartile] += lineItemAmount.total;
                 }
             }
         });
@@ -3884,17 +3910,17 @@ function generateQuartileAnalysis() {
         
         lineItems.forEach(item => {
             const quartile = getPrimaryValue([item], 'quartile');
-            if (quartile && quartiles[quartile]) {
+            const lineItemAmount = getLineItemAmount(item);
+            // Increases only: a reduction netted in would understate a quartile's asks.
+            if (quartile && quartiles[quartile] && lineItemAmount.total > 0) {
                 quartiles[quartile].count++;
-                // Use ACTUAL line item cost
-                const lineItemAmount = getLineItemAmount(item);
                 quartiles[quartile].amount += lineItemAmount.total;
             }
         });
     });
 
     let html = `<div class="section-header" id="quartile-analysis">Program Alignment Analysis</div>
-               <p>Budget requests are categorized by their alignment to organizational priorities. Most Aligned programs receive the highest priority for funding consideration.</p>`;
+               <p>Requested increases by the alignment of the program they fund. Most Aligned programs receive the highest priority for funding consideration. Reductions are shown on each request.</p>`;
     
     Object.entries(quartiles).forEach(([quartile, data]) => {
         const badgeClass = quartile.toLowerCase().replace(' ', '-');
@@ -4565,17 +4591,15 @@ function downloadAnalyticalWordReport() {
     
     const wordHtml = `
         <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
-        <head><meta charset="UTF-8"><title>PBB Analysis Report</title></head>
+        <head><meta charset="UTF-8"><title>${REPORTS.recommendations.title}</title></head>
         <body style="font-family: Arial, sans-serif; margin: 40px; line-height: 1.5;">
             <div style="text-align: center; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 3px solid #10b981;">
-                <h1 style="color: #1e3a5f; font-size: 28px; margin-bottom: 10px;">🎯 PBB Analysis & Recommendations Report</h1>
-                <p style="color: #64748b; font-size: 14px;">Priority Based Budgeting Framework Analysis</p>
+                <h1 style="color: #1e3a5f; font-size: 28px; margin-bottom: 10px;">${REPORTS.recommendations.title}</h1>
+                <p style="color: #64748b; font-size: 14px;">${REPORTS.recommendations.subtitle}</p>
                 <p style="color: #64748b; font-size: 12px;">Generated on ${reportDate}</p>
             </div>
             
-            <div style="background: #fff7ed; border: 2px solid #f59e0b; padding: 15px; border-radius: 8px; margin-bottom: 30px;">
-                <p style="margin: 0; color: #92400e;"><strong>⚠️ Advisory Report:</strong> This analysis represents what a textbook PBB framework would suggest. These are recommendations to inform decision-making, not actual funding decisions.</p>
-            </div>
+            ${aboutReportHtml('recommendations')}
             
             <h2 style="color: #1e3a5f; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">Executive Summary</h2>
             <p>This report analyzes ${totalsSentence(splitRequestTotals(filteredData))}.</p>
@@ -4640,7 +4664,7 @@ function downloadAnalyticalWordReport() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `PBB_Analysis_Report_${new Date().toISOString().split('T')[0]}.doc`;
+    a.download = `${reportFileStem('recommendations')}.doc`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -4819,7 +4843,7 @@ function downloadAnalyticalPdfReport() {
         `;
     });
     
-    const pdfHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PBB Analysis Report</title>
+    const pdfHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${reportFileStem('recommendations')}</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @page { size: A4; margin: 0.5in; @top-left { content: ""; } @top-center { content: ""; } @top-right { content: ""; } @bottom-left { content: ""; } @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; color: #94a3b8; font-family: 'Inter', sans-serif; } }
@@ -4933,8 +4957,8 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
 <div class="cover-page">
     <div class="cover-header"><span class="cover-brand">🎯 PBB FRAMEWORK ANALYSIS • TYLER TECHNOLOGIES</span></div>
     <div class="cover-main">
-        <h1 class="cover-title">PBB Analysis &<br>Recommendations Report</h1>
-        <p class="cover-subtitle">Comprehensive Priority Based Budgeting Framework Scoring</p>
+        <h1 class="cover-title">${REPORTS.recommendations.title}</h1>
+        <p class="cover-subtitle">${REPORTS.recommendations.subtitle}</p>
         <div class="cover-stats">
             ${(() => { const t = splitRequestTotals(filteredData); return `
             <div class="cover-stat"><div class="cover-stat-value">${filteredData.length}</div><div class="cover-stat-label">Requests Analyzed</div></div>
@@ -4951,6 +4975,7 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
     <div class="page-header"><span class="page-title">Executive Summary</span></div>
     <h2 class="section-title">PBB Framework Recommendations</h2>
     <p class="section-subtitle">Analysis of ${totalsSentence(splitRequestTotals(filteredData))}</p>
+    ${aboutReportHtml('recommendations')}
     
     <div class="summary-cards">
         <div class="summary-card approve"><div class="summary-card-value">${dStats.approve}</div><div class="summary-card-label">✓ Approve</div><div class="summary-card-amount">${dispositionAmountText(dAmounts.approve - dCuts.approve, dCuts.approve)}</div></div>
@@ -4976,7 +5001,7 @@ ${detailedPagesHtml}
     newWindow.document.write(pdfHtml);
     newWindow.document.close();
     newWindow.focus();
-    setTimeout(() => alert('Comprehensive PBB Analysis Report opened!\\n\\nTo save as PDF:\\n1. Press Ctrl+P (Cmd+P on Mac)\\n2. Select "Save as PDF"\\n3. Click Save\\n\\nIf a date or "about:blank" prints at the top of each page, turn off "Headers and footers" under More settings.'), 500);
+    setTimeout(() => alert('PBB Recommendations report opened!\\n\\nTo save as PDF:\\n1. Press Ctrl+P (Cmd+P on Mac)\\n2. Select "Save as PDF"\\n3. Click Save\\n\\nIf a date or "about:blank" prints at the top of each page, turn off "Headers and footers" under More settings.'), 500);
 }
 
 function generateRequestQASection(qa) {
@@ -5114,7 +5139,7 @@ function renderCharts() {
             data: {
                 labels: Object.keys(departments),
                 datasets: [{
-                    label: 'Total Requested Amount',
+                    label: 'Net Change',
                     data: Object.values(departments),
                     backgroundColor: ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe']
                 }]
@@ -5124,7 +5149,7 @@ function renderCharts() {
                 plugins: {
                     title: {
                         display: true,
-                        text: 'Budget Requests by Department'
+                        text: 'Net Change by Department'
                     }
                 },
                 scales: {
@@ -5159,7 +5184,7 @@ function renderCharts() {
             if (quartile && quartiles.hasOwnProperty(quartile)) {
                 // Use ACTUAL line item cost
                 const lineItemAmount = getLineItemAmount(item);
-                quartiles[quartile] += lineItemAmount.total;
+                if (lineItemAmount.total > 0) quartiles[quartile] += lineItemAmount.total;
             }
         });
     });
@@ -5170,7 +5195,7 @@ function renderCharts() {
             data: {
                 labels: Object.keys(quartiles),
                 datasets: [{
-                    label: 'Total Budget Amount',
+                    label: 'Increases',
                     data: Object.values(quartiles),
                     backgroundColor: ['#28a745', '#17a2b8', '#ffc107', '#dc3545']
                 }]
@@ -5180,7 +5205,7 @@ function renderCharts() {
                 plugins: {
                     title: {
                         display: true,
-                        text: 'Budget Requests by Quartile Alignment'
+                        text: 'Requested Increases by Quartile'
                     }
                 },
                 scales: {
@@ -5346,7 +5371,7 @@ function downloadWordReport() {
         <html>
         <head>
             <meta charset="UTF-8">
-            <title>Priority Based Budgeting Report</title>
+            <title>${REPORTS.overview.title}</title>
             <style>
                 body { 
                     font-family: Arial, sans-serif; 
@@ -5561,16 +5586,17 @@ function downloadWordReport() {
         </head>
         <body>
             <div class="header">
-                <h1>Priority Based Budgeting Report</h1>
-                <p>Budget Request Analysis and Recommendations</p>
+                <h1>${REPORTS.overview.title}</h1>
+                <p>${REPORTS.overview.subtitle}</p>
                 <p>Generated on ${reportDate}</p>
             </div>
+            ${aboutReportHtml('overview')}
     `;
 
     // Executive Summary
     wordHtml += `
         <div class="section-header">Executive Summary</div>
-        <p>This comprehensive report analyzes ${totalsSentence(splitRequestTotals(filteredData))}. The requests span multiple departments and programs, with varying levels of alignment to organizational priorities.</p>
+        <p>This report covers ${totalsSentence(splitRequestTotals(filteredData))}.</p>
     `;
 
     // Filter Summary with page break
@@ -5609,7 +5635,7 @@ function downloadWordReport() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Priority_Based_Budgeting_Report_${new Date().toISOString().split('T')[0]}.doc`;
+    a.download = `${reportFileStem('overview')}.doc`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -5749,7 +5775,7 @@ function generateWordFilterSummary() {
             if (quartile && quartileStats.hasOwnProperty(quartile)) {
                 // Use ACTUAL line item cost
                 const lineItemAmount = getLineItemAmount(item);
-                quartileStats[quartile] += lineItemAmount.total;
+                if (lineItemAmount.total > 0) quartileStats[quartile] += lineItemAmount.total;
             }
         });
     });
@@ -5796,22 +5822,23 @@ function generateWordFilterSummary() {
                         <span class="stats-value">${filteredData.length}</span>
                         <span class="stats-label">Total Requests</span>
                     </div>
+                    ${(() => { const t = splitRequestTotals(filteredData); return `
                     <div class="stats-cell">
-                        <span class="stats-value amount">${formatCurrency(totalOngoing)}</span>
-                        <span class="stats-label">Ongoing</span>
+                        <span class="stats-value amount">${money(t.increases)}</span>
+                        <span class="stats-label">Increases (${t.increaseCount})</span>
                     </div>
                     <div class="stats-cell">
-                        <span class="stats-value amount">${formatCurrency(totalOnetime)}</span>
-                        <span class="stats-label">One-time</span>
+                        <span class="stats-value amount">${money(t.reductions)}</span>
+                        <span class="stats-label">Reductions (${t.reductionCount})</span>
                     </div>
                     <div class="stats-cell">
-                        <span class="stats-value amount">${formatCurrency(totalOngoing + totalOnetime)}</span>
-                        <span class="stats-label">Total Amount</span>
-                    </div>
+                        <span class="stats-value amount">${signedMoney(t.net)}</span>
+                        <span class="stats-label">Net Change</span>
+                    </div>`; })()}
                 </div>
             </div>
             
-            <h4 style="color: #667eea; margin: 20px 0 10px 0;">Quartile Distribution</h4>
+            <h4 style="color: #667eea; margin: 20px 0 10px 0;">Increases by Quartile</h4>
             <div class="stats-grid">
                 <div class="stats-row">
                     <div class="stats-cell">
@@ -5859,7 +5886,7 @@ function generateWordVisualAnalysis() {
             
             const quartile = getPrimaryValue([item], 'quartile');
             if (quartile && quartiles.hasOwnProperty(quartile)) {
-                quartiles[quartile] += lineItemAmount.total;
+                if (lineItemAmount.total > 0) quartiles[quartile] += lineItemAmount.total;
             }
 
             const dept = getPrimaryValue([item], 'department');
@@ -5870,7 +5897,8 @@ function generateWordVisualAnalysis() {
     });
 
     // Create ASCII bar charts for Word
-    const maxDeptAmount = Math.max(...Object.values(departments));
+    // Scale by magnitude: a department's net change can be negative.
+    const maxDeptAmount = Math.max(1, ...Object.values(departments).map(Math.abs));
     const maxQuartileAmount = Math.max(...Object.values(quartiles));
 
     let html = `
@@ -5878,7 +5906,7 @@ function generateWordVisualAnalysis() {
         <div class="section-header" id="visual-analysis">Visual Analysis</div>
         
         <div class="card">
-            <div class="card-header">Budget Requests by Department</div>
+            <div class="card-header">Net Change by Department</div>
             <div class="card-body">
                 <table style="width: 100%; margin: 20px 0;">
                     <thead>
@@ -5892,15 +5920,15 @@ function generateWordVisualAnalysis() {
     `;
     
     Object.entries(departments).forEach(([dept, amount]) => {
-        const percentage = (amount / maxDeptAmount) * 100;
-        const barLength = Math.round(percentage / 5); // Scale to reasonable length
+        const percentage = (Math.abs(amount) / maxDeptAmount) * 100;
+        const barLength = Math.min(20, Math.max(0, Math.round(percentage / 5))); // Scale to reasonable length
         const bar = '█'.repeat(barLength) + '░'.repeat(20 - barLength);
         
         html += `
             <tr>
                 <td>${dept}</td>
-                <td style="font-family: monospace; font-size: 14px; color: #667eea;">${bar} ${Math.round(percentage)}%</td>
-                <td style="text-align: right;" class="amount">${money(amount)}</td>
+                <td style="font-family: monospace; font-size: 14px; color: ${amount < 0 ? '#dc2626' : '#667eea'};">${bar}</td>
+                <td style="text-align: right;" class="amount">${signedMoney(amount)}</td>
             </tr>
         `;
     });
@@ -5912,7 +5940,7 @@ function generateWordVisualAnalysis() {
         </div>
 
         <div class="card">
-            <div class="card-header">Budget Requests by Quartile Alignment</div>
+            <div class="card-header">Requested Increases by Quartile</div>
             <div class="card-body">
                 <table style="width: 100%; margin: 20px 0;">
                     <thead>
@@ -5934,7 +5962,7 @@ function generateWordVisualAnalysis() {
 
     Object.entries(quartiles).forEach(([quartile, amount]) => {
         const percentage = maxQuartileAmount > 0 ? (amount / maxQuartileAmount) * 100 : 0;
-        const barLength = Math.round(percentage / 5);
+        const barLength = Math.min(20, Math.max(0, Math.round(percentage / 5)));
         const bar = '█'.repeat(barLength) + '░'.repeat(20 - barLength);
         const badgeClass = quartile.toLowerCase().replace(' ', '-');
         
@@ -6077,7 +6105,7 @@ function generateWordDepartmentSummary() {
                 if (quartile && departments[dept].quartiles.hasOwnProperty(quartile)) {
                     // Use ACTUAL line item cost
                     const lineItemAmount = getLineItemAmount(item);
-                    departments[dept].quartiles[quartile] += lineItemAmount.total;
+                    if (lineItemAmount.total > 0) departments[dept].quartiles[quartile] += lineItemAmount.total;
                 }
             }
         });
@@ -6108,7 +6136,7 @@ function generateWordDepartmentSummary() {
                         </div>
                     </div>
                     
-                    <h4 style="color: #667eea; margin: 15px 0 8px 0; font-size: 0.9rem;">Quartile Distribution</h4>
+                    <h4 style="color: #667eea; margin: 15px 0 8px 0; font-size: 0.9rem;">Increases by Quartile</h4>
                     <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; font-size: 0.8rem;">
                         <div style="display: flex; justify-content: space-between; padding: 4px 8px; background: #f0f8f0; border-radius: 3px;">
                             <span>Most Aligned:</span>
@@ -6551,7 +6579,7 @@ function downloadPdfReport() {
         `;
     });
     
-    const pdfHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Priority Based Budgeting Report</title>
+    const pdfHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${reportFileStem('overview')}</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @page { size: A4; margin: 0.5in; @top-left { content: ""; } @top-center { content: ""; } @top-right { content: ""; } @bottom-left { content: ""; } @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; color: #94a3b8; font-family: 'Inter', sans-serif; } }
@@ -6674,8 +6702,8 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
 <div class="cover-page">
     <div class="cover-header"><span class="cover-brand">TYLER TECHNOLOGIES • BUDGET INTELLIGENCE</span></div>
     <div class="cover-main">
-        <h1 class="cover-title">Priority Based Budgeting<br>Report</h1>
-        <p class="cover-subtitle">Comprehensive Budget Request Analysis</p>
+        <h1 class="cover-title">${REPORTS.overview.title}</h1>
+        <p class="cover-subtitle">${REPORTS.overview.subtitle}</p>
         <div class="cover-stats">
             <div class="cover-stat"><div class="cover-stat-value">${filteredData.length}</div><div class="cover-stat-label">Budget Requests</div></div>
             <div class="cover-stat"><div class="cover-stat-value">${money(totals.increases)}</div><div class="cover-stat-label">Increases</div></div>
@@ -6691,6 +6719,7 @@ body { font-family: 'Inter', sans-serif; line-height: 1.5; color: #1e293b; backg
     <div class="page-header"><span class="page-title">Executive Summary</span></div>
     <h2 class="section-title">Budget Request Overview</h2>
     <p class="section-subtitle">Analysis of ${totalsSentence(splitRequestTotals(filteredData))}</p>
+    ${aboutReportHtml('overview')}
     
     <div class="stats-grid">
         <div class="stat-card"><span class="stat-value">${filteredData.length}</span><div class="stat-label">Total Requests</div></div>
@@ -6755,7 +6784,7 @@ ${detailedRequestsHtml}
     newWindow.document.write(pdfHtml);
     newWindow.document.close();
     newWindow.focus();
-    setTimeout(() => alert('Comprehensive PDF Report opened!\\n\\nTo save as PDF:\\n1. Press Ctrl+P (Cmd+P on Mac)\\n2. Select "Save as PDF"\\n3. Click Save\\n\\nIf a date or "about:blank" prints at the top of each page, turn off "Headers and footers" under More settings.'), 500);
+    setTimeout(() => alert('Request Overview report opened!\\n\\nTo save as PDF:\\n1. Press Ctrl+P (Cmd+P on Mac)\\n2. Select "Save as PDF"\\n3. Click Save\\n\\nIf a date or "about:blank" prints at the top of each page, turn off "Headers and footers" under More settings.'), 500);
 }
 
 function captureChartAsImage(chartId) {
@@ -7319,16 +7348,26 @@ function exportPBBAnalysisToExcel() {
         { wch: 80 }   // Overall Rationale
     ];
     
-    // Add worksheet to workbook
-    XLSX.utils.book_append_sheet(wb, ws, 'PBB Analysis');
+    // Add worksheet to workbook, with a short About sheet in front
+    const aboutWs = XLSX.utils.aoa_to_sheet([
+        [`${REPORTS.recommendations.title} — Data`],
+        [REPORTS.recommendations.subtitle],
+        [`Generated ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`],
+        [],
+        ['One row per request: archetype, recommendation, priority rank, scores with the reason for each, General Fund exposure, program impact and the full rationale. Use it to sort, filter and pivot.'],
+        [REPORTS.recommendations.about],
+        [],
+        ['Requests', filteredData.length]
+    ]);
+    aboutWs['!cols'] = [{ wch: 120 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, aboutWs, 'About');
+    XLSX.utils.book_append_sheet(wb, ws, 'Recommendations');
     
-    // Generate filename with timestamp
-    const timestamp = new Date().toISOString().split('T')[0];
-    const filename = `PBB_Analysis_${timestamp}.xlsx`;
+    const filename = `${reportFileStem('recommendations', '_Data')}.xlsx`;
     
     // Download the file
     XLSX.writeFile(wb, filename);
     
     console.log('Excel export complete!');
-    alert(`PBB Analysis exported successfully!\n\nFile: ${filename}\n\nThe Excel file contains detailed scoring for all ${filteredData.length} requests with explicit explanations for each score.`);
+    alert(`PBB Recommendations data exported!\n\nFile: ${filename}\n\nThe Excel file contains detailed scoring for all ${filteredData.length} requests with explicit explanations for each score.`);
 }

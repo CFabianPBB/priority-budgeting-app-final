@@ -976,6 +976,54 @@ body {
     box-shadow: var(--shadow-md);
 }
 
+.report-header-desc {
+    max-width: 640px;
+    margin: 0 auto 6px;
+    font-size: 0.95rem !important;
+    line-height: 1.5;
+}
+
+.download-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 220px));
+    gap: 12px;
+    justify-content: center;
+    margin-top: 24px;
+}
+
+.download-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    transition: all var(--transition-fast);
+}
+
+.download-card:hover {
+    background: rgba(255, 255, 255, 0.24);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.download-card-format {
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.download-card-desc {
+    font-size: 0.78rem;
+    line-height: 1.4;
+    opacity: 0.9;
+}
+
 .decision-tree-section {
     margin-top: 20px;
 }
@@ -1613,6 +1661,8 @@ tr:hover {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 16px;
 }
 
 .decision-amount-label {
@@ -1621,9 +1671,10 @@ tr:hover {
 }
 
 .decision-amount-value {
-    font-size: 2rem;
+    font-size: 1.6rem;
     font-weight: 700;
     color: #10b981;
+    text-align: right;
 }
 
 .decision-cards-grid {
@@ -2110,6 +2161,7 @@ tr:hover {
     .sidebar,
     .app-footer,
     .download-buttons,
+    .download-options,
     .decision-tree-section,
     .collapse-controls,
     .generate-section {

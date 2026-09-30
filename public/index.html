@@ -90,14 +90,14 @@
                     <line x1="16" y1="13" x2="8" y2="13"/>
                     <line x1="16" y1="17" x2="8" y2="17"/>
                 </svg>
-                <span class="nav-label">Reports</span>
+                <span class="nav-label">Request Overview</span>
             </a>
             <a href="#" class="nav-item disabled" data-section="analysis" id="navAnalysis">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="10"/>
                     <path d="M12 6v6l4 2"/>
                 </svg>
-                <span class="nav-label">PBB Analysis</span>
+                <span class="nav-label">PBB Recommendations</span>
             </a>
         </nav>
 
@@ -145,7 +145,7 @@
                         </div>
                         <div class="hero-stat">
                             <div class="stat-value" id="heroTotalAmount">$0</div>
-                            <div class="stat-label">Total Amount Requested</div>
+                            <div class="stat-label">Net Change Requested</div>
                         </div>
                         <div class="hero-stat">
                             <div class="stat-value" id="heroDepartments">0</div>
@@ -315,7 +315,7 @@
                         </div>
                     </div>
                     <div class="decision-amount-banner">
-                        <span class="decision-amount-label">Total Amount Under Review</span>
+                        <span class="decision-amount-label">Requested increases · reductions · net change</span>
                         <span class="decision-amount-value" id="dashTotalAmount">$0</span>
                     </div>
                 </div>
@@ -330,19 +330,19 @@
                         <div class="decision-card-label">Approve</div>
                         <div class="decision-card-amount"><span id="dashApproveAmount">$0</span></div>
                         <div class="decision-card-bar"><div class="decision-card-bar-fill" id="dashApproveBar"></div></div>
-                        <div class="decision-card-desc">Strong alignment — subject to resource availability</div>
+                        <div class="decision-card-desc">Meets PBB criteria, or reduces lower-priority programs — subject to resources</div>
                     </div>
 
                     <div class="decision-card verify">
                         <div class="decision-card-header">
                             <div class="decision-card-icon">🔍</div>
-                            <span class="decision-card-badge">Verify Mandate</span>
+                            <span class="decision-card-badge">Needs Verification</span>
                         </div>
                         <div class="decision-card-value" id="dashVerifyCount">0</div>
                         <div class="decision-card-label">Verify</div>
                         <div class="decision-card-amount"><span id="dashVerifyAmount">$0</span></div>
                         <div class="decision-card-bar"><div class="decision-card-bar-fill" id="dashVerifyBar"></div></div>
-                        <div class="decision-card-desc">Low-priority GF spend — validate mandate first</div>
+                        <div class="decision-card-desc">Confirm the mandate, or the service impact of a reduction</div>
                     </div>
 
                     <div class="decision-card modify">
@@ -384,10 +384,10 @@
 
                 <div class="dashboard-actions">
                     <button class="btn-action primary" onclick="navigateToSection('report')">
-                        📊 View Full Report
+                        📊 View Request Overview
                     </button>
                     <button class="btn-action secondary" onclick="navigateToSection('analysis')">
-                        🎯 View PBB Analysis
+                        🎯 View PBB Recommendations
                     </button>
                 </div>
 
@@ -397,21 +397,22 @@
             <div class="report-section" id="reportSection" style="display: none;">
                 <div class="report-header">
                     <div class="report-header-content">
-                        <h2>Priority Based Budgeting Report</h2>
+                        <h2>Request Overview</h2>
+                        <p class="report-header-desc">What departments are asking for: totals, programs affected, and each request's answers and line items. No recommendations.</p>
                         <p id="reportDate"></p>
                     </div>
                     
-                    <div class="download-buttons">
-                        <button class="btn-download word" id="downloadWordBtn">📄 Word Document</button>
-                        <button class="btn-download pdf" id="downloadPdfBtn">📊 PDF Report</button>
-                        <button class="btn-download excel" id="exportPBBExcelBtn">📈 Excel Export</button>
-                    </div>
-                    
-                    <div class="decision-tree-section">
-                        <button class="btn-framework" id="showDecisionTreeBtn">
-                            ❓ View PBB Decision Framework (24 Archetypes)
+                    <div class="download-options">
+                        <button class="download-card" id="downloadPdfBtn">
+                            <span class="download-card-format">📊 PDF</span>
+                            <span class="download-card-desc">Share or print for leadership and council</span>
+                        </button>
+                        <button class="download-card" id="downloadWordBtn">
+                            <span class="download-card-format">📄 Word</span>
+                            <span class="download-card-desc">Edit and add commentary before distributing</span>
                         </button>
                     </div>
+                    
                 </div>
                 <div class="report-content" id="reportContent"></div>
             </div>
@@ -420,12 +421,28 @@
             <div class="report-section analytical" id="analyticalReportSection" style="display: none;">
                 <div class="report-header analytical">
                     <div class="report-header-content">
-                        <h2>PBB Analysis & Recommendations Report</h2>
+                        <h2>PBB Recommendations</h2>
+                        <p class="report-header-desc">How each request scores against the Priority Based Budgeting framework, what it suggests, and why. Advisory; final decisions rest with leadership.</p>
                         <p id="analyticalReportDate"></p>
                     </div>
-                    <div class="download-buttons">
-                        <button class="btn-download word" id="downloadAnalyticalWordBtn">📊 Analysis Report (Word)</button>
-                        <button class="btn-download pdf" id="downloadAnalyticalPdfBtn">📈 Analysis Report (PDF)</button>
+                    <div class="download-options">
+                        <button class="download-card" id="downloadAnalyticalPdfBtn">
+                            <span class="download-card-format">📊 PDF</span>
+                            <span class="download-card-desc">Budget team review, one page per request</span>
+                        </button>
+                        <button class="download-card" id="downloadAnalyticalWordBtn">
+                            <span class="download-card-format">📄 Word</span>
+                            <span class="download-card-desc">Edit recommendations before sharing</span>
+                        </button>
+                        <button class="download-card" id="exportPBBExcelBtn">
+                            <span class="download-card-format">📈 Excel</span>
+                            <span class="download-card-desc">Sort, filter and pivot: one row per request with scores, rank and rationale</span>
+                        </button>
+                    </div>
+                    <div class="decision-tree-section">
+                        <button class="btn-framework" id="showDecisionTreeBtn">
+                            ❓ View PBB Decision Framework (24 Archetypes)
+                        </button>
                     </div>
                 </div>
                 <div class="report-content" id="analyticalReportContent"></div>
@@ -564,8 +581,8 @@
         upload: { title: 'Data Upload', subtitle: 'Upload your budget request files to begin analysis', element: 'uploadSection' },
         filters: { title: 'Filter & Analyze', subtitle: 'Apply filters and generate reports', element: 'filtersSection' },
         dashboard: { title: 'Decision Dashboard', subtitle: 'PBB framework recommendations summary', element: 'dashboardSection' },
-        report: { title: 'Standard Report', subtitle: 'Detailed budget request documentation', element: 'reportSection' },
-        analysis: { title: 'PBB Analysis', subtitle: 'Scoring and recommendations for each request', element: 'analyticalReportSection' }
+        report: { title: 'Request Overview', subtitle: 'What departments are asking for: totals, programs affected and full request details', element: 'reportSection' },
+        analysis: { title: 'PBB Recommendations', subtitle: 'How each request scores against the PBB framework, what it suggests and why', element: 'analyticalReportSection' }
     };
 
     function navigateToSection(sectionKey) {
@@ -644,7 +661,7 @@
         if (heroStats) {
             heroStats.style.display = 'block';
             document.getElementById('heroTotalRequests').textContent = requestCount;
-            document.getElementById('heroTotalAmount').textContent = '$' + totalAmount.toLocaleString();
+            document.getElementById('heroTotalAmount').textContent = signedMoney(totalAmount);
             document.getElementById('heroDepartments').textContent = departmentCount;
         }
         
@@ -657,24 +674,26 @@
     function updateDecisionDashboard() {
         if (typeof filteredData === 'undefined' || !filteredData.length) return;
         
-        const stats = { approve: {count:0,amount:0}, verify: {count:0,amount:0}, modify: {count:0,amount:0}, defer: {count:0,amount:0}, reject: {count:0,amount:0} };
-        let totalAmount = 0;
+        const stats = { approve: {count:0,inc:0,red:0}, verify: {count:0,inc:0,red:0}, modify: {count:0,inc:0,red:0}, defer: {count:0,inc:0,red:0}, reject: {count:0,inc:0,red:0} };
 
         filteredData.forEach(request => {
             const amounts = getRequestAmount(request);
-            totalAmount += amounts.total;
             const analysis = scoreRequest(request);
             const disp = (analysis.disposition || '').toLowerCase();
-            if (stats[disp]) { stats[disp].count++; stats[disp].amount += amounts.total; }
+            if (stats[disp]) {
+                stats[disp].count++;
+                if (amounts.total < 0) stats[disp].red += amounts.total; else stats[disp].inc += amounts.total;
+            }
         });
 
         const total = filteredData.length;
+        const t = splitRequestTotals(filteredData);
         document.getElementById('dashTotalRequests').textContent = total;
-        document.getElementById('dashTotalAmount').textContent = '$' + totalAmount.toLocaleString();
+        document.getElementById('dashTotalAmount').textContent = `${money(t.increases)} · ${money(t.reductions)} · ${signedMoney(t.net)}`;
 
         ['approve','verify','modify','defer','reject'].forEach(d => {
             document.getElementById(`dash${d.charAt(0).toUpperCase()+d.slice(1)}Count`).textContent = stats[d].count;
-            document.getElementById(`dash${d.charAt(0).toUpperCase()+d.slice(1)}Amount`).textContent = '$' + stats[d].amount.toLocaleString();
+            document.getElementById(`dash${d.charAt(0).toUpperCase()+d.slice(1)}Amount`).textContent = dispositionAmountText(stats[d].inc, stats[d].red);
             document.getElementById(`dash${d.charAt(0).toUpperCase()+d.slice(1)}Bar`).style.width = (total > 0 ? (stats[d].count/total*100) : 0) + '%';
         });
         

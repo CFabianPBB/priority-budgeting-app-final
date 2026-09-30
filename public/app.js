@@ -198,8 +198,16 @@ function normalizeInventoryRow(row) {
     alias('User Group(prgs)', 'Cost Center(prgs)');
     alias('User Group(accts)', 'Cost Center(accts)');
     alias('Final Score', 'Final score');
-    alias('Description', 'Program description');
-    alias('ProgramID', 'ProgId', 'Program ID');
+    alias('Description', 'Program description', 'Program Description');
+    alias('ProgramID', 'ProgId', 'Program ID', 'program_id');
+    // Details-sheet columns under other exports' spellings (e.g. Collier County).
+    alias('ItemID', 'item_id', 'Item ID');
+    alias('AcctCode', 'AcctNumber');
+    alias('Account type', 'AcctType', 'Account Type');
+    alias('Total item cost', 'Total Item Cost');
+    alias('Total Program cost', 'Total Program Cost');
+    alias('Item category 1', 'Item Category 1');
+    alias('Item category 2', 'Item Category 2');
     // Programs sheet only: total expense = Personnel + NonPersonnel (matches the
     // sum of expense allocations on the Details sheet). Revenue stays separate.
     if ((row['Total Program Cost'] === undefined || row['Total Program Cost'] === '')
@@ -712,6 +720,57 @@ function getRequestAmount(request) {
 // Revenue, Ambulance Fees), not a cost. Summing them into cost totals double-counts the
 // request — expense PLUS the revenue that offsets it — which is why department/program
 // rollups were showing roughly 2x the true ask.
+// Revenue lines are only an offset when they are PROGRAM revenue the request brings in
+// (fees, charges for services, grants, reimbursements). GENERAL revenue budgeted to
+// balance a request (property tax, general/G&A revenue, transfers, fund balance) is
+// the General Fund itself and does not make a request self-funding. Classified by the
+// account description; users can correct any call from the Data Coverage panel.
+const REVENUE_TYPES = {
+    program: 'Program revenue (offsets cost)',
+    general: 'General revenue (does not offset)'
+};
+
+let revenueOverrides = (() => {
+    try { return JSON.parse(localStorage.getItem('pbbRevenueOverrides') || '{}') || {}; }
+    catch (e) { return {}; }
+})();
+
+function revenueSourceLabel(item) {
+    const code = String(item.AcctCode || '').trim();
+    const tail = (code.match(/-R_\d+_(.+)$/) || [])[1];
+    const desc = (tail || item['Account Category'] || item['Item category 1'] || item['Item Category 1'] || code || 'Revenue').toString().trim();
+    const fund = resolveFund(item);
+    return fund ? `${desc} (${fund.toString().trim()})` : desc;
+}
+
+function classifyRevenueLine(item, useOverride = true) {
+    const label = revenueSourceLabel(item);
+    const override = useOverride ? revenueOverrides[label.toLowerCase()] : null;
+    if (override && REVENUE_TYPES[override]) return { type: override, basis: 'override', label };
+    const text = `${label} ${item.AcctCode || ''} ${item['Account Category'] || ''}`.toLowerCase();
+    if (/ad valorem|property tax|general admin|\bg ?& ?a\b|general revenue|transfer|fund balance|carry ?forward|interfund|sales tax|half[- ]cent/.test(text)) {
+        return { type: 'general', basis: 'name', label };
+    }
+    if (/fee|charge|permit|licen|grant|reimburs|rent|lease|sale|service|fine|forfeit|donation|contribution|tuition|admission|ticket|billing|tourism|\btdc\b|ems|water|sewer|utility|recovery|assessment|impact/.test(text)) {
+        return { type: 'program', basis: 'name', label };
+    }
+    return { type: 'program', basis: 'default', label };
+}
+
+function isOffsetRevenueLine(item) {
+    return isRevenueLineItem(item) && classifyRevenueLine(item).type === 'program';
+}
+
+function setRevenueOverride(index, type) {
+    const label = (window.coverageRevenueList || [])[index];
+    if (!label) return;
+    const key = label.toLowerCase();
+    if (type) revenueOverrides[key] = type; else delete revenueOverrides[key];
+    try { localStorage.setItem('pbbRevenueOverrides', JSON.stringify(revenueOverrides)); } catch (e) { /* storage blocked */ }
+    renderDataCoveragePanel();
+    updateStats();
+}
+
 function isRevenueLineItem(item) {
     const t = item && (item.AcctType ?? item['Acct Type'] ?? item.AccountType ?? item['Account type'] ?? item['Account Type']);
     return t != null && t.toString().trim().toLowerCase() === 'revenue';
@@ -958,7 +1017,7 @@ function buildArchetypeGuideHtml(options) {
                 'The program\'s mandate score, from the line items and then the Summary Report. One item split across programs takes the <b>dollar-weighted</b> score; bundled items take the <b>least-mandated</b> program. The Q&A mandate answer is used only when no score exists.')}
             ${question(3, 'Funding', 'Whose money pays for it?',
                 '<span class="hi">NON-GF</span> · <span class="lo">GF ONLY</span>',
-                'The Fund on each line item. <b>Any General Fund dollars make it GF.</b> Internal service funds count as GF. A request whose own ongoing revenue covers its cost counts as self-funding; one-time revenue for ongoing cost does not.')}
+                'The Fund on each line item. <b>Any General Fund dollars make it GF.</b> Internal service funds count as GF. A request whose own ongoing <b>program</b> revenue (fees, charges, grants) covers its cost counts as self-funding; general revenue such as property tax, or one-time revenue for ongoing cost, does not.')}
             ${question(4, 'Evidence', 'Can we prove it will work?',
                 '<span class="hi">STRONG</span> · <span class="lo">WEAK</span>',
                 'The request\'s Q&A <b>answers</b> name KPIs or targets <b>and</b> baseline data or trends.')}
@@ -1848,7 +1907,7 @@ function getOutcomeScore(qa, qaText) {
 
 function getFundingScore(qa, qaText, progAttrs, fundProfile, selfFunding) {
     if (selfFunding && selfFunding.covers) {
-        return { score: 2, reason: `Request pays for itself: its own revenue (${money(Math.round(selfFunding.revenue))}) covers its cost (${money(Math.round(selfFunding.cost))})` };
+        return { score: 2, reason: `Request pays for itself: its own revenue${selfFunding.companionId ? ` (companion request ${selfFunding.companionId})` : ''} (${money(Math.round(selfFunding.revenue))}) covers its cost (${money(Math.round(selfFunding.cost))})` };
     }
     if (fundProfile && fundProfile.hasFundData && fundProfile.fundingClass === 'Review') {
         return { score: 0, reason: `Charged to a custodial / fiduciary fund (${fundProfile.reviewFunds.join(', ')}) — funding source needs review` };
@@ -1857,7 +1916,7 @@ function getFundingScore(qa, qaText, progAttrs, fundProfile, selfFunding) {
         if (selfFunding && selfFunding.revenue > 0) {
             return { score: 1, reason: `General Fund request; its own revenue offsets ${Math.round(selfFunding.share * 100)}% of the cost` };
         }
-        return { score: 0, reason: `General Fund dollars per the Fund column (${fundProfile.funds.join(', ')}) with no offsetting revenue in the request` };
+        return { score: 0, reason: `General Fund dollars per the Fund column (${fundProfile.funds.join(', ')}) with no offsetting program revenue${selfFunding && selfFunding.generalRevenue ? ` (${money(selfFunding.generalRevenue)} of general revenue balances it but does not offset the cost)` : ''}` };
     }
     // Authoritative: the structured Fund column already names a non-General-Fund source.
     if (fundProfile && fundProfile.hasFundData && fundProfile.fundingClass === 'NonGF') {
@@ -1909,19 +1968,38 @@ function getCostRecoveryScoreForLineItem(item) {
     return attrs ? parseParenScore(attrs.rawCostRecovery) : null;
 }
 
+// Companion revenue requests: some exports put a request's offsetting revenue in a
+// request of its own, with the same ID plus "R" (765 ↔ 765R) and no line items. The
+// revenue belongs to the expense request it accompanies.
+function getCompanionRevenueRequest(requestId) {
+    if (requestId === null || requestId === undefined) return null;
+    const target = `${String(requestId).trim()}R`.toUpperCase();
+    return budgetData.requestSummary.find(r => String(getRequestId(r) || '').trim().toUpperCase() === target) || null;
+}
+
+function isCompanionRevenueRequest(request) {
+    const id = String(getRequestId(request) || '').trim();
+    if (!/R$/i.test(id)) return false;
+    const base = id.slice(0, -1).toUpperCase();
+    return budgetData.requestSummary.some(r => String(getRequestId(r) || '').trim().toUpperCase() === base);
+}
+
 // Does the request pay for itself? Only its own revenue lines count, and ongoing
 // revenue must cover ongoing cost — one-time money (a grant) paying for ongoing cost
 // leaves the General Fund holding it later.
-function getSelfFundingCheck(lineItems) {
+function getSelfFundingCheck(lineItems, requestId) {
+    // Net cost: a request's own negative expense lines (internal offsets, rounding)
+    // reduce what the revenue has to cover.
     let costOngoing = 0, costOnetime = 0;
     for (const item of lineItems) {
         if (isRevenueLineItem(item)) continue;
         const a = getLineItemAmount(item);
-        if ((a.total || 0) <= 0) continue;
-        costOngoing += Math.max(0, a.ongoing || 0);
-        costOnetime += Math.max(0, a.onetime || 0);
+        costOngoing += a.ongoing || 0;
+        costOnetime += a.onetime || 0;
     }
-    const rev = getRequestRevenue(lineItems);
+    costOngoing = Math.max(0, costOngoing);
+    costOnetime = Math.max(0, costOnetime);
+    const rev = getRequestRevenue(lineItems, requestId);
     const revOngoing = Math.abs(rev.ongoing || 0), revOnetime = Math.abs(rev.onetime || 0);
     const revTotal = revOngoing + revOnetime, costTotal = costOngoing + costOnetime;
     const tol = 0.5;
@@ -1931,7 +2009,10 @@ function getSelfFundingCheck(lineItems) {
         cost: costTotal, costOngoing, costOnetime,
         covers,
         cliff: !covers && revOnetime > 0 && revTotal >= costTotal - tol && costOngoing > revOngoing + tol,
-        share: costTotal > 0 ? Math.min(1, revTotal / costTotal) : null
+        share: costTotal > 0 ? Math.min(1, revTotal / costTotal) : null,
+        companionId: rev.companionId || null,
+        generalRevenue: rev.general || 0,
+        generalSources: rev.generalSources || []
     };
 }
 
@@ -2424,15 +2505,31 @@ function getGfExposure(lineItems) {
 
 // Revenue line items are the request's own funding offset. getLineItemAmount() zeroes
 // them so they never inflate a cost total; this reads them back as what they are.
-function getRequestRevenue(lineItems) {
-    let ongoing = 0, onetime = 0;
+function getRequestRevenue(lineItems, requestId) {
+    let ongoing = 0, onetime = 0, general = 0;
+    const generalSources = new Set();
     for (const item of lineItems) {
         if (!isRevenueLineItem(item)) continue;
         const picked = pickAmountFields(item, true);
+        if (classifyRevenueLine(item).type !== 'program') {
+            general += Math.abs(picked.ongoing) + Math.abs(picked.onetime);
+            generalSources.add(revenueSourceLabel(item));
+            continue;
+        }
         ongoing += picked.ongoing;
         onetime += picked.onetime;
     }
-    return { ongoing, onetime, total: ongoing + onetime };
+    // Only when the request carries no revenue lines of its own: some exports repeat
+    // the same revenue as both a line and a companion request.
+    const hasOwnRevenue = lineItems.some(isRevenueLineItem);
+    const companion = hasOwnRevenue ? null : getCompanionRevenueRequest(requestId);
+    if (companion) {
+        const c = getRequestAmount(companion);
+        ongoing += Math.abs(c.ongoing || 0);
+        onetime += Math.abs(c.onetime || 0);
+    }
+    return { ongoing, onetime, total: ongoing + onetime, companionId: companion ? getRequestId(companion) : null,
+             general, generalSources: [...generalSources] };
 }
 
 // Allocate a request's cost and revenue to the program(s) its line items touch, and pull
@@ -2464,6 +2561,7 @@ function getProgramImpacts(lineItems) {
         const e = byKey[key];
         if (!e.quartile) e.quartile = getQuartileForLineItem(item) || null;
         if (isRevenueLineItem(item)) {
+            if (!isOffsetRevenueLine(item)) continue;
             const picked = pickAmountFields(item, true);
             e.requestRevenue += picked.ongoing + picked.onetime;
         } else {
@@ -2621,13 +2719,15 @@ function buildRankedAnalyses() {
 // program, and today those failures only reach the browser console. Surface them.
 function computeDataCoverage() {
     const cov = {
-        requests: budgetData.requestSummary.length,
+        requests: budgetData.requestSummary.filter(r => !isCompanionRevenueRequest(r)).length,
+        companionRevenueRequests: budgetData.requestSummary.filter(isCompanionRevenueRequest).length,
         requestsWithLineItems: 0,
         lineItems: 0,
         withProgramName: 0,
         matchedToInventory: 0,
         linkedByProgramId: 0,
         fundLines: {},
+        revenueSources: {},
         itemsLinkedById: 0,
         withQuartile: 0,
         withFund: 0,
@@ -2646,7 +2746,14 @@ function computeDataCoverage() {
         if (lineItems.length > 0) cov.requestsWithLineItems++;
         for (const item of lineItems) {
             cov.lineItems++;
-            if (isRevenueLineItem(item)) cov.revenueLineItems++;
+            if (isRevenueLineItem(item)) {
+                cov.revenueLineItems++;
+                const label = revenueSourceLabel(item);
+                const picked = pickAmountFields(item, true);
+                if (!cov.revenueSources[label]) cov.revenueSources[label] = { lines: 0, amount: 0, item };
+                cov.revenueSources[label].lines++;
+                cov.revenueSources[label].amount += Math.abs(picked.ongoing) + Math.abs(picked.onetime);
+            }
             const program = (item.Program || '').toString().trim();
             const dept = (item.Department || item['Cost Center'] || item['User Group'] || '').toString().trim();
             if (program) {
@@ -2683,7 +2790,7 @@ function scoreRequest(request) {
     const qa = getRequestQA(requestId);
     const amounts = getRequestAmount(request);
     const fundProfile = getFundProfile(lineItems);
-    const selfFunding = getSelfFundingCheck(lineItems);
+    const selfFunding = getSelfFundingCheck(lineItems, requestId);
     
     const profile = getWeakestLinkProfile(lineItems, qa);
     // Governing quartile: the least-aligned program receiving added dollars (or, for a
@@ -2826,7 +2933,7 @@ function scoreRequest(request) {
     analysis.requestOngoing = amounts.ongoing;
     analysis.requestOnetime = amounts.onetime;
     analysis.gfExposure = getGfExposure(lineItems);
-    analysis.requestRevenue = getRequestRevenue(lineItems);
+    analysis.requestRevenue = getRequestRevenue(lineItems, requestId);
     analysis.programImpacts = getProgramImpacts(lineItems);
     analysis.impactSummary = summarizeProgramImpacts(analysis.programImpacts);
     analysis.lineItemBaselines = getLineItemBaselines(lineItems);
@@ -3352,12 +3459,15 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     const sfx = analysis.selfFunding;
     if (sfx && sfx.revenue > 0 && !analysis.isReduction) {
         if (sfx.covers) {
-            narrative += `**PAYS FOR ITSELF:** ${money(Math.round(sfx.revenue))} of the request's own revenue covers its ${money(Math.round(sfx.cost))} cost, so it is treated as self-funding.\n\n`;
+            narrative += `**PAYS FOR ITSELF:** ${money(sfx.revenue)} of the request's own revenue${sfx.companionId ? ` (companion revenue request ${sfx.companionId})` : ''} covers its ${money(sfx.cost)} cost, so it is treated as self-funding.\n\n`;
         } else if (sfx.cliff) {
             narrative += `**REVENUE OFFSET:** the request's revenue covers its cost in total, but ${money(Math.round(sfx.revenueOnetime))} of it is one-time money paying for ongoing cost — not self-funding.\n\n`;
         } else {
             narrative += `**REVENUE OFFSET:** the request's own revenue covers ${Math.round(sfx.share * 100)}% of its cost; the rest draws on the fund(s) listed above.\n\n`;
         }
+    }
+    if (sfx && sfx.generalRevenue > 0 && !analysis.isReduction) {
+        narrative += `**GENERAL REVENUE:** ${money(sfx.generalRevenue)} of general revenue (${sfx.generalSources.join(', ')}) balances this request. It is the General Fund's own revenue, not money the request brings in, so it does not make the request self-funding.\n\n`;
     }
     const fpx = analysis.fundProfile;
     if (fpx && fpx.gf > 0 && fpx.nonGf > 0 && !analysis.isReduction) {
@@ -3667,7 +3777,9 @@ function generateFundingPriorityOrder() {
     increases.forEach(row => { html += priorityRowHtml(row, false); });
     html += `</tbody></table>
         <p class="priority-note">Click a request to see how its dollars split across programs. PBB Score is the dollar-weighted
-        score of the programs receiving the added dollars; the quartile is set by the least-aligned of them (weakest link).</p>`;
+        score of the programs receiving the added dollars. A position or contract split across programs is ranked on where most
+        of its dollars go; separate items bundled together are ranked on the least-aligned program (weakest link).
+        <b>Conditional</b> and <b>Partial option</b> tags mark slices approved only on condition, or worth considering on their own.</p>`;
 
     if (reductions.length > 0) {
         const gfFreed = reductions.reduce((t, r) => t + (r.analysis.gfExposure ? r.analysis.gfExposure.gf : 0), 0);
@@ -4035,7 +4147,7 @@ function renderDataCoveragePanel() {
                 ${stat('Have an identified fund', c.withFund, c.lineItems)}
             </div>
             <div style="margin-top: 12px; font-size: 0.83rem; color: #475569;">
-                ${formatCurrency(c.requestsWithLineItems)} of ${formatCurrency(c.requests)} requests have line items
+                ${formatCurrency(c.requestsWithLineItems)} of ${formatCurrency(c.requests)} requests have line items${c.companionRevenueRequests ? ` · ${formatCurrency(c.companionRevenueRequests)} companion revenue requests matched to their expense requests` : ''}
                 · ${formatCurrency(c.revenueLineItems)} revenue line items identified as offsets
                 · mandate data found for ${formatCurrency(c.programsWithMandate)} program${c.programsWithMandate === 1 ? '' : 's'}
                 ${c.inventoryLoaded ? `· ${formatCurrency(c.linkedByProgramId)} of ${formatCurrency(c.withProgramName)} line items linked by Program ID, ${formatCurrency(c.itemsLinkedById)} by Item ID` : ''}
@@ -4078,6 +4190,31 @@ function renderDataCoveragePanel() {
             <details style="margin-top: 10px; font-size: 0.83rem; color: #475569;">
                 <summary style="cursor: pointer; font-weight: 600;">Fund classification — ${fundNames.length} fund${fundNames.length === 1 ? '' : 's'}${needsLook ? ` (${needsLook} worth a look)` : ''}</summary>
                 <div style="margin-top: 6px; color: #64748b;">Classified by fund name. Internal service funds count as General Fund; custodial funds are flagged. Correct any wrong call here — it is remembered in this browser. Regenerate any open report after changing.</div>
+                <div style="margin-top: 6px;">${rows}</div>
+            </details>`;
+    }
+
+    const revenueLabels = Object.keys(c.revenueSources).sort((a, b) => c.revenueSources[b].amount - c.revenueSources[a].amount);
+    if (revenueLabels.length > 0) {
+        window.coverageRevenueList = revenueLabels;
+        const generalCount = revenueLabels.filter(l => classifyRevenueLine(c.revenueSources[l].item).type === 'general').length;
+        const rows = revenueLabels.map((label, i) => {
+            const src = c.revenueSources[label];
+            const t = classifyRevenueLine(src.item);
+            const auto = classifyRevenueLine(src.item, false);
+            const opts = [`<option value="">Auto: ${REVENUE_TYPES[auto.type]}</option>`]
+                .concat(Object.keys(REVENUE_TYPES).map(k => `<option value="${k}" ${t.basis === 'override' && t.type === k ? 'selected' : ''}>${REVENUE_TYPES[k]}</option>`));
+            const esc = String(label).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+            return `<div style="display: flex; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px solid #f1f5f9;">
+                <div style="flex: 1; min-width: 0;">${esc} <span style="color: #94a3b8;">· ${money(src.amount)} · ${src.lines} line${src.lines === 1 ? '' : 's'}</span></div>
+                <select onchange="setRevenueOverride(${i}, this.value)" style="font-size: 0.8rem; padding: 2px 4px;">${opts.join('')}</select>
+                <div style="width: 150px; font-size: 0.75rem; color: ${t.type === 'general' ? '#dc2626' : '#059669'};">${t.type === 'general' ? 'does not offset cost' : 'offsets cost'}${t.basis === 'default' ? ' (unrecognized name)' : ''}</div>
+            </div>`;
+        }).join('');
+        html += `
+            <details style="margin-top: 10px; font-size: 0.83rem; color: #475569;">
+                <summary style="cursor: pointer; font-weight: 600;">Revenue classification — ${revenueLabels.length} source${revenueLabels.length === 1 ? '' : 's'}${generalCount ? ` (${generalCount} general revenue)` : ''}</summary>
+                <div style="margin-top: 6px; color: #64748b;">Only program revenue a request brings in (fees, charges, grants, reimbursements) can make it self-funding. General revenue budgeted to balance a request, such as property tax or general/G&A revenue, is the General Fund itself. Correct any call here — it is remembered in this browser. Regenerate any open report after changing.</div>
                 <div style="margin-top: 6px;">${rows}</div>
             </details>`;
     }
@@ -4985,7 +5122,7 @@ function downloadAnalyticalWordReport() {
                 <td style="padding: 8px; border: 1px solid #e2e8f0;">${primaryQuartile}</td>
                 <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: right;">${money(amounts.total)}</td>
                 <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: center; font-weight: bold;">${archetypeLabel(analysis)}</td>
-                <td style="padding: 8px; border: 1px solid #e2e8f0; background: ${dispColor}; color: white; font-weight: bold; text-align: center;">${dispositionLabel(analysis)}</td>
+                <td bgcolor="${dispColor}" style="padding: 8px; border: 1px solid #e2e8f0; background: ${dispColor}; color: white; font-weight: bold; text-align: center;">${dispositionLabel(analysis)}</td>
             </tr>
         `;
     });
@@ -5020,86 +5157,66 @@ function downloadAnalyticalWordReport() {
                     if (lowerKey.includes('answer') && qItem[key]) answer = qItem[key];
                 });
                 if (question && answer && answer.trim()) {
-                    qaHtml += `<div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 10px; margin: 8px 0;"><strong style="color: #1e3a5f;">${question}</strong><br/>${answer}</div>`;
+                    qaHtml += `<p style="margin: 6pt 0 0; font-size: 9.5pt; font-weight: bold; color: #1e3a5f;">${question}</p><p style="margin: 1pt 0 0; font-size: 9.5pt; color: #334155;">${answer}</p>`;
                 }
             });
         }
         
+        const cell = (label, value, extra, onColor) => `<td width="16%"${onColor ? ` bgcolor="${onColor}"` : ''} style="padding: 6pt; border: 1px solid #e2e8f0; text-align: center; vertical-align: top;${extra || ''}"><p style="margin: 0; font-size: 8pt; color: ${onColor ? 'white' : '#64748b'};">${label}</p><p style="margin: 2pt 0 0; font-size: 10.5pt; font-weight: bold;${onColor ? ' color: white;' : ''}">${value}</p></td>`;
+        const factor = (name, value, color, reason, shade) => `<tr${shade ? ' style="background: #f8fafc;"' : ''}>
+                <td width="18%" style="padding: 5pt; border-bottom: 1px solid #e2e8f0; font-size: 9.5pt;"><b>${name}</b></td>
+                <td width="17%" style="padding: 5pt; border-bottom: 1px solid #e2e8f0; font-size: 9.5pt; font-weight: bold; text-align: center; color: ${color};">${value}</td>
+                <td style="padding: 5pt; border-bottom: 1px solid #e2e8f0; font-size: 9pt;">${reason}</td></tr>`;
         detailedAnalysis += `
-            <div style="page-break-inside: avoid; margin-bottom: 30px; border: 2px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-                <div style="background: linear-gradient(135deg, #1e3a5f, #2a4a73); color: white; padding: 15px;">
-                    <strong style="font-size: 16px;">Request ${requestId}: ${description || 'No Description'}</strong>
-                </div>
-                <div style="padding: 15px;">
-                    <table style="width: 100%; margin-bottom: 15px;">
-                        <tr>
-                            <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">Department</div><div style="font-weight: 600;">${primaryDept}</div></td>
-                            <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">Quartile</div><div style="font-weight: 600;">${primaryQuartile}</div></td>
-                            <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">Total Amount</div><div style="font-weight: 600; color: #10b981;">${money(amounts.total)}</div></td>
-                            <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">Ongoing</div><div style="font-weight: 600;">${money(amounts.ongoing)}</div></td>
-                            <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">One-time</div><div style="font-weight: 600;">${money(amounts.onetime)}</div></td>
-                            <td style="width: 16%; padding: 8px; background: ${dispColor}; border-radius: 4px; text-align: center; color: white;"><div style="font-size: 10px;">Recommendation</div><div style="font-weight: 700;">${dispositionLabel(analysis)}</div></td>
-                        </tr>
-                    </table>
-                    
-                    <h4 style="color: #1e3a5f; margin: 15px 0 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">🎯 ${analysis.isReduction ? 'Reduction' : `Archetype ${archetypeLabel(analysis)}`}: ${analysis.disposition}</h4>
-                    <p style="font-style: italic; color: #555; margin-bottom: 15px;">"${analysis.keyConsideration}"</p>
-                    
-                    <h4 style="color: #64748b; margin: 15px 0 10px;">Decision Factors (4 inputs)</h4>
-                    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-                        <tr style="background: #f8fafc;">
-                            <td style="padding: 8px; width: 25%;"><strong>Quartile</strong></td>
-                            <td style="padding: 8px; width: 15%; text-align: center; font-weight: 700; color: ${analysis.quartileBand === 'High' ? '#059669' : '#dc2626'};">${analysis.quartileBand === 'High' ? '🟢 High' : '🔴 Low'}</td>
-                            <td style="padding: 8px;">${analysis.quartileReason}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px;"><strong>Mandate</strong></td>
-                            <td style="padding: 8px; text-align: center; font-weight: 700;">${analysis.mandateLevel === 'Mandated' ? '⚖️ Mandated' : analysis.mandateLevel === 'Compliance' ? '⚠️ Compliance' : '➖ None'}</td>
-                            <td style="padding: 8px;">${analysis.mandateReason}</td>
-                        </tr>
-                        <tr style="background: #f8fafc;">
-                            <td style="padding: 8px;"><strong>Funding</strong></td>
-                            <td style="padding: 8px; text-align: center; font-weight: 700; color: ${getFundingDisplay(analysis).text};">${getFundingDisplay(analysis).label}</td>
-                            <td style="padding: 8px;">${analysis.fundingReason}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px;"><strong>Evidence</strong></td>
-                            <td style="padding: 8px; text-align: center; font-weight: 700; color: ${analysis.outcomesStrength === 'Strong' ? '#059669' : '#dc2626'};">${analysis.outcomesStrength === 'Strong' ? '📊 Strong' : '📋 Weak'}</td>
-                            <td style="padding: 8px;">${analysis.outcomeReason}</td>
-                        </tr>
-                    </table>
-                    
-                    <h4 style="color: #64748b; margin: 15px 0 10px;">Additional Considerations (informational)</h4>
-                    <table style="width: 100%; border-collapse: collapse; font-size: 11px; opacity: 0.85;">
-                        <tr style="background: #f8fafc;">
-                            <td style="padding: 8px; width: 25%;"><strong>Efficiency/ROI</strong></td>
-                            <td style="padding: 8px; width: 15%; text-align: center;">${analysis.efficiencyScore}/2</td>
-                            <td style="padding: 8px;">${analysis.efficiencyReason}</td>
-                        </tr>
-                        ${includeAccessEquity ? `<tr>
-                            <td style="padding: 8px;"><strong>Access/Equity</strong></td>
-                            <td style="padding: 8px; text-align: center;">${analysis.accessScore}/2</td>
-                            <td style="padding: 8px;">${analysis.accessReason}</td>
-                        </tr>` : ''}
-                    </table>
-                    
-                    <div style="margin-top: 15px; padding: 12px; background: #f0f9ff; border-radius: 6px; border-left: 4px solid #0ea5e9;">
-                        <strong style="color: #0369a1;">Overall Rationale:</strong><br/>
-                        ${narrativeToHtml(analysis.narrative)}
-                    </div>
-                    
-                    ${qaHtml ? `<h4 style="color: #1e3a5f; margin: 20px 0 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">Request Context & Details</h4>${qaHtml}` : ''}
-                </div>
-            </div>
+            ${index > 0 ? '<br clear="all" style="page-break-before: always;">' : ''}
+            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 0 0 8pt;">
+                <tr><td bgcolor="${dispColor}" style="background: ${dispColor}; padding: 8pt 10pt; color: white;">
+                    <p style="margin: 0; font-size: 13pt; font-weight: bold; color: white;">Request ${requestId}: ${description || 'No Description'}</p>
+                    <p style="margin: 3pt 0 0; font-size: 10pt; color: white;">${dispositionLabel(analysis)} · ${analysis.isReduction ? 'Reduction' : `Archetype ${archetypeLabel(analysis)}`}${analysis.override ? ' · Analyst override' : ''}</p>
+                </td></tr>
+            </table>
+            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 0 0 10pt;">
+                <tr>
+                    ${cell('Department', primaryDept)}
+                    ${cell('Quartile', primaryQuartile)}
+                    ${cell('Total Amount', money(amounts.total), amounts.total < 0 ? ' color: #dc2626;' : ' color: #059669;')}
+                    ${cell('Ongoing', money(amounts.ongoing))}
+                    ${cell('One-time', money(amounts.onetime))}
+                    ${cell('Recommendation', dispositionLabel(analysis), ` background: ${dispColor}; color: white;`, dispColor)}
+                </tr>
+            </table>
+            <p style="margin: 0 0 8pt; font-size: 10pt; font-style: italic; color: #475569;">"${analysis.keyConsideration}"</p>
+
+            <h3 style="font-size: 11.5pt; color: #1e3a5f; margin: 10pt 0 4pt;">Decision factors</h3>
+            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
+                ${factor('Quartile', analysis.quartileBand === 'High' ? 'High' : analysis.quartileBand === 'Low' ? 'Low' : 'Unknown', analysis.quartileBand === 'High' ? '#059669' : '#dc2626', analysis.quartileReason, true)}
+                ${factor('Mandate', analysis.mandateLevel, '#1e3a5f', analysis.mandateReason, false)}
+                ${factor('Funding', getFundingDisplay(analysis).label.replace(/^[^A-Za-z]+/, ''), getFundingDisplay(analysis).text, analysis.fundingReason, true)}
+                ${factor('Evidence', analysis.outcomesStrength, analysis.outcomesStrength === 'Strong' ? '#059669' : '#dc2626', analysis.outcomeReason, false)}
+                ${factor('Efficiency / ROI', `${analysis.efficiencyScore}/2`, '#475569', analysis.efficiencyReason, true)}
+                ${includeAccessEquity ? factor('Access / Equity', `${analysis.accessScore}/2`, '#475569', analysis.accessReason, false) : ''}
+            </table>
+
+            <h3 style="font-size: 11.5pt; color: #1e3a5f; margin: 12pt 0 4pt;">Rationale</h3>
+            <div style="font-size: 10pt;">${narrativeToHtml(analysis.narrative)}</div>
+
+            ${qaHtml ? `<h3 style="font-size: 11.5pt; color: #1e3a5f; margin: 12pt 0 4pt;">Request context and details</h3>${qaHtml}` : ''}
         `;
     });
     
     const wordHtml = `
         <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
-        <head><meta charset="UTF-8"><title>${REPORTS.recommendations.title}</title></head>
-        <body style="font-family: Arial, sans-serif; margin: 40px; line-height: 1.5;">
+        <head><meta charset="UTF-8"><title>${REPORTS.recommendations.title}</title>
+        <style>
+            body, p, div, td, th, li { font-family: Arial, sans-serif; font-size: 10pt; }
+            h1 { font-family: Arial, sans-serif; font-size: 20pt; }
+            h2 { font-family: Arial, sans-serif; font-size: 14pt; color: #1e3a5f; }
+            h3 { font-family: Arial, sans-serif; }
+            table { border-collapse: collapse; }
+        </style></head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.4;">
             <div style="text-align: center; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 3px solid #10b981;">
-                <h1 style="color: #1e3a5f; font-size: 28px; margin-bottom: 10px;">${REPORTS.recommendations.title}</h1>
+                <h1 style="color: #1e3a5f; font-size: 20pt; margin-bottom: 6pt;">${REPORTS.recommendations.title}</h1>
                 <p style="color: #64748b; font-size: 14px;">${REPORTS.recommendations.subtitle}</p>
                 <p style="color: #64748b; font-size: 12px;">Generated on ${reportDate}</p>
             </div>
@@ -5109,30 +5226,30 @@ function downloadAnalyticalWordReport() {
             <h2 style="color: #1e3a5f; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px;">Executive Summary</h2>
             <p>This report analyzes ${totalsSentence(splitRequestTotals(filteredData))}.</p>
             
-            <table style="width: 100%; border-collapse: separate; border-spacing: 8px; margin: 20px 0;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 12pt 0;">
                 <tr>
-                    <td style="width: 20%; padding: 18px; text-align: center; background: linear-gradient(135deg, #d1fae5, #a7f3d0); border-radius: 8px;">
-                        <div style="font-size: 30px; font-weight: bold; color: #059669;">${dStats.approve}</div>
-                        <div style="color: #065f46; font-weight: 600;">✓ APPROVE</div>
+                    <td width="20%" bgcolor="#d1fae5" style="padding: 10pt; text-align: center; background: #d1fae5; border: 3px solid white;">
+                        <div style="font-size: 20pt; font-weight: bold; color: #059669;">${dStats.approve}</div>
+                        <div style="color: #065f46; font-weight: 600;">✓ APPROVE</div>${(() => { const c = filteredData.filter(r => scoreRequest(r).conditional).length; return c ? `<div style="font-size: 8pt; color: #065f46;">${c} conditional</div>` : ''; })()}
                         <div style="font-size: 12px; color: #065f46;">${dispositionAmountText(dAmounts.approve - dCuts.approve, dCuts.approve)}</div>
                     </td>
-                    <td style="width: 20%; padding: 18px; text-align: center; background: linear-gradient(135deg, #e0e7ff, #c7d2fe); border-radius: 8px;">
-                        <div style="font-size: 30px; font-weight: bold; color: #4f46e5;">${dStats.verify}</div>
+                    <td width="20%" bgcolor="#e0e7ff" style="padding: 10pt; text-align: center; background: #e0e7ff; border: 3px solid white;">
+                        <div style="font-size: 20pt; font-weight: bold; color: #4f46e5;">${dStats.verify}</div>
                         <div style="color: #3730a3; font-weight: 600;">🔍 VERIFY</div>
                         <div style="font-size: 12px; color: #3730a3;">${dispositionAmountText(dAmounts.verify - dCuts.verify, dCuts.verify)}</div>
                     </td>
-                    <td style="width: 20%; padding: 18px; text-align: center; background: linear-gradient(135deg, #fef3c7, #fde68a); border-radius: 8px;">
-                        <div style="font-size: 30px; font-weight: bold; color: #d97706;">${dStats.modify}</div>
+                    <td width="20%" bgcolor="#fef3c7" style="padding: 10pt; text-align: center; background: #fef3c7; border: 3px solid white;">
+                        <div style="font-size: 20pt; font-weight: bold; color: #d97706;">${dStats.modify}</div>
                         <div style="color: #92400e; font-weight: 600;">⚠ MODIFY</div>
                         <div style="font-size: 12px; color: #92400e;">${dispositionAmountText(dAmounts.modify - dCuts.modify, dCuts.modify)}</div>
                     </td>
-                    <td style="width: 20%; padding: 18px; text-align: center; background: linear-gradient(135deg, #e2e8f0, #cbd5e1); border-radius: 8px;">
-                        <div style="font-size: 30px; font-weight: bold; color: #475569;">${dStats.defer}</div>
+                    <td width="20%" bgcolor="#e2e8f0" style="padding: 10pt; text-align: center; background: #e2e8f0; border: 3px solid white;">
+                        <div style="font-size: 20pt; font-weight: bold; color: #475569;">${dStats.defer}</div>
                         <div style="color: #334155; font-weight: 600;">⏸ DEFER</div>
                         <div style="font-size: 12px; color: #334155;">${dispositionAmountText(dAmounts.defer - dCuts.defer, dCuts.defer)}</div>
                     </td>
-                    <td style="width: 20%; padding: 18px; text-align: center; background: linear-gradient(135deg, #fee2e2, #fecaca); border-radius: 8px;">
-                        <div style="font-size: 30px; font-weight: bold; color: #dc2626;">${dStats.reject}</div>
+                    <td width="20%" bgcolor="#fee2e2" style="padding: 10pt; text-align: center; background: #fee2e2; border: 3px solid white;">
+                        <div style="font-size: 20pt; font-weight: bold; color: #dc2626;">${dStats.reject}</div>
                         <div style="color: #991b1b; font-weight: 600;">✗ REJECT</div>
                         <div style="font-size: 12px; color: #991b1b;">${dispositionAmountText(dAmounts.reject - dCuts.reject, dCuts.reject)}</div>
                     </td>
@@ -5142,14 +5259,14 @@ function downloadAnalyticalWordReport() {
             <h2 style="color: #1e3a5f; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-top: 40px;">Summary Table</h2>
             <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
                 <thead>
-                    <tr style="background: #1e3a5f; color: white;">
-                        <th style="padding: 10px; text-align: left;">ID</th>
-                        <th style="padding: 10px; text-align: left;">Description</th>
-                        <th style="padding: 10px; text-align: left;">Department</th>
-                        <th style="padding: 10px; text-align: left;">Quartile</th>
-                        <th style="padding: 10px; text-align: right;">Amount</th>
-                        <th style="padding: 10px; text-align: center;">Archetype</th>
-                        <th style="padding: 10px; text-align: center;">Recommendation</th>
+                    <tr>
+                        <th bgcolor="#1e3a5f" style="padding: 6pt; text-align: left; background: #1e3a5f; color: white; font-size: 9pt;">ID</th>
+                        <th bgcolor="#1e3a5f" style="padding: 6pt; text-align: left; background: #1e3a5f; color: white; font-size: 9pt;">Description</th>
+                        <th bgcolor="#1e3a5f" style="padding: 6pt; text-align: left; background: #1e3a5f; color: white; font-size: 9pt;">Department</th>
+                        <th bgcolor="#1e3a5f" style="padding: 6pt; text-align: left; background: #1e3a5f; color: white; font-size: 9pt;">Quartile</th>
+                        <th bgcolor="#1e3a5f" style="padding: 6pt; text-align: right; background: #1e3a5f; color: white; font-size: 9pt;">Amount</th>
+                        <th bgcolor="#1e3a5f" style="padding: 6pt; text-align: center; background: #1e3a5f; color: white; font-size: 9pt;">Archetype</th>
+                        <th bgcolor="#1e3a5f" style="padding: 6pt; text-align: center; background: #1e3a5f; color: white; font-size: 9pt;">Recommendation</th>
                     </tr>
                 </thead>
                 <tbody>${summaryRows}</tbody>
@@ -5892,6 +6009,7 @@ function downloadWordReport() {
             <meta charset="UTF-8">
             <title>${REPORTS.overview.title}</title>
             <style>
+                body, p, div, td, th, li, span { font-family: Arial, sans-serif; }
                 body { 
                     font-family: Arial, sans-serif; 
                     margin: 40px; 
@@ -5906,17 +6024,17 @@ function downloadWordReport() {
                 }
                 .header h1 { 
                     color: #667eea; 
-                    font-size: 2.5rem; 
+                    font-size: 27.5pt; 
                     margin-bottom: 10px; 
                 }
                 .header p { 
                     color: #666; 
-                    font-size: 1.1rem; 
+                    font-size: 12.1pt; 
                     margin: 5px 0;
                 }
                 .section-header { 
                     color: #667eea; 
-                    font-size: 1.3rem; 
+                    font-size: 14.3pt; 
                     font-weight: 600; 
                     margin: 40px 0 20px 0; 
                     border-bottom: 2px solid #e0e0e0; 
@@ -5934,7 +6052,7 @@ function downloadWordReport() {
                     background: #667eea; 
                     color: white; 
                     padding: 15px 20px; 
-                    font-size: 1.3rem; 
+                    font-size: 14.3pt; 
                     font-weight: 600; 
                 }
                 .card-body { 
@@ -5965,13 +6083,13 @@ function downloadWordReport() {
                 .amount { 
                     font-weight: 600; 
                     color: #28a745; 
-                    font-size: 1.1rem;
+                    font-size: 12.1pt;
                 }
                 .quartile-badge { 
                     display: inline-block; 
                     padding: 6px 16px; 
                     border-radius: 20px; 
-                    font-size: 0.9rem; 
+                    font-size: 9.9pt; 
                     font-weight: 600; 
                     color: white;
                     margin: 2px;
@@ -5984,7 +6102,7 @@ function downloadWordReport() {
                     width: 100%; 
                     border-collapse: collapse; 
                     margin: 20px 0; 
-                    font-size: 0.95rem;
+                    font-size: 10.4pt;
                 }
                 th { 
                     background: #667eea; 
@@ -6009,7 +6127,7 @@ function downloadWordReport() {
                 }
                 .toc ol { 
                     line-height: 1.8; 
-                    font-size: 1.1rem; 
+                    font-size: 12.1pt; 
                 }
                 .toc li { 
                     margin: 8px 0; 
@@ -6031,7 +6149,7 @@ function downloadWordReport() {
                 .qa-question {
                     font-weight: 600;
                     color: #667eea;
-                    font-size: 1.1rem;
+                    font-size: 12.1pt;
                     margin-bottom: 8px;
                 }
                 .qa-answer {
@@ -6080,14 +6198,14 @@ function downloadWordReport() {
                     border-right: none;
                 }
                 .stats-value {
-                    font-size: 1.5rem;
+                    font-size: 16.5pt;
                     font-weight: bold;
                     color: #667eea;
                     display: block;
                 }
                 .stats-label {
                     color: #666;
-                    font-size: 0.9rem;
+                    font-size: 9.9pt;
                     margin-top: 5px;
                 }
                 .chart-placeholder {
@@ -6098,7 +6216,7 @@ function downloadWordReport() {
                     text-align: center;
                     margin: 20px 0;
                     color: #667eea;
-                    font-size: 1.1rem;
+                    font-size: 12.1pt;
                     font-weight: 600;
                 }
             </style>

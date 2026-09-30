@@ -952,10 +952,10 @@ function buildArchetypeGuideHtml(options) {
         <div class="ag-cols" style="--cols: 4;">
             ${question(1, 'Alignment', 'How well does the program advance our results?',
                 '<span class="hi">HIGH: Q1–Q2</span> · <span class="lo">LOW: Q3–Q4</span>',
-                'The quartile of each program the request funds, from the line items or the Summary Report. Added dollars are judged by the <b>least-aligned</b> program they go to.')}
+                'The quartile of each program the request funds. <b>One item</b> split across programs (a position or contract) is judged by where <b>most of its dollars</b> go. <b>Separate items</b> bundled together are judged by the <b>least-aligned</b> program receiving dollars.')}
             ${question(2, 'Obligation', 'Are we required to do this?',
                 '<span class="hi">MANDATED: score 3–4</span> · COMPLIANCE: 1–2 · <span class="lo">NONE: 0</span>',
-                'The program\'s mandate score, from the line items and then the Summary Report. Added dollars take the <b>least-mandated</b> program. The Q&A mandate answer is used only when no score exists.')}
+                'The program\'s mandate score, from the line items and then the Summary Report. One item split across programs takes the <b>dollar-weighted</b> score; bundled items take the <b>least-mandated</b> program. The Q&A mandate answer is used only when no score exists.')}
             ${question(3, 'Funding', 'Whose money pays for it?',
                 '<span class="hi">NON-GF</span> · <span class="lo">GF ONLY</span>',
                 'The Fund on each line item. <b>Any General Fund dollars make it GF.</b> Internal service funds count as GF. A request whose own ongoing revenue covers its cost counts as self-funding; one-time revenue for ongoing cost does not.')}
@@ -979,7 +979,7 @@ function buildArchetypeGuideHtml(options) {
     <div class="ag-band">
         <div class="ag-band-title">Rules that apply before the grid</div>
         <div class="ag-cols" style="--cols: 3;">
-            ${cell('Weakest link', 'A request is only as strong as its least-justified dollar. When a slice goes to a lower-quartile or less-mandated program, the report names it and shows what the rest would rate without it, so it can be funded separately or reallocated.')}
+            ${cell('One item or a bundle', 'A position or contract split across programs is judged on its main use; slices supporting lower-priority, unmandated programs become <b>conditions</b>. Separate items bundled into one request use the <b>weakest link</b>, so nothing rides along. An analyst can override the program a request is ranked on, with a reason that shows in every report.')}
             ${cell('Reductions run in reverse', 'Requests that reduce spending skip the grid. Reducing unmandated, lower-quartile programs → <b>APPROVE</b>. Reducing a highly mandated (3–4) or Most/More Aligned program → <b>VERIFY</b>: confirm mandate minimums and service levels still hold.')}
             ${cell('No guessing', 'If quartile data or the funding source is missing, or a request is charged to a custodial or fiduciary fund, the framework returns <b>REVIEW</b> and infers no recommendation.')}
         </div>
@@ -988,7 +988,7 @@ function buildArchetypeGuideHtml(options) {
     <div class="ag-band">
         <div class="ag-band-title">What each recommendation means</div>
         <div class="ag-cols" style="--cols: 6;">
-            ${meaning('APPROVE', 'Meets the criteria. Not "fund regardless of cost": approvals still compete for capacity.')}
+            ${meaning('APPROVE', 'Meets the criteria. Not "fund regardless of cost": approvals still compete for capacity. <b>Conditional Approve:</b> the lower-priority slice is funded only if its time is reallocated, covered by companion revenue, or absorbed through an efficiency.')}
             ${meaning('MODIFY', 'Real merit; attach conditions such as cost recovery, narrower scope, stage gates or an evidence plan.')}
             ${meaning('VERIFY', 'Low priority on 100% GF where a mandate alone prevents REJECT: document it first. Also used for reductions to mandated or top-quartile programs.')}
             ${meaning('DEFER', 'Not fundable this cycle. Strengthening actions are listed and the request can come back.')}
@@ -1063,6 +1063,22 @@ function dispositionAmountText(inc, red) {
     if (inc && red) return `+${money(inc)} · ${money(red)}`;
     if (red) return `${money(red)} in reductions`;
     return money(inc);
+}
+
+function dispositionLabel(analysis) {
+    return analysis.conditional ? 'CONDITIONAL APPROVE' : analysis.disposition;
+}
+
+function overrideBadgeHtml(analysis) {
+    return analysis.override
+        ? `<span title="${String(analysis.override.reason || '').replace(/"/g, '&quot;')}" style="display: inline-block; margin-left: 6px; background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; padding: 1px 7px; border-radius: 9999px; font-size: 0.68rem; font-weight: 700; white-space: nowrap;">Analyst override</span>`
+        : '';
+}
+
+function conditionText(sl) {
+    const pct = sl.share != null ? ` (${Math.round(sl.share * 100)}%)` : '';
+    const mandate = sl.mandateScore != null ? `, mandate ${sl.mandateScore}` : '';
+    return `Condition: the ${money(sl.amount)}${pct} supporting ${sl.program} (${normalizeQuartile(sl.quartile)}${mandate}) is approved only if that time is reallocated to a higher-priority program, covered by companion revenue, or absorbed through an efficiency elsewhere. Otherwise ${sl.program} stays at its current service level.`;
 }
 
 function archetypeLabel(analysis) {
@@ -1942,8 +1958,9 @@ function getRequestSlices(lineItems) {
         if (isRevenueLineItem(item)) continue;
         const program = (item.Program || '').toString().trim() || 'Unknown Program';
         const key = getProgramIdForItem(item) || program.toUpperCase();
-        if (!byKey[key]) byKey[key] = { program, amount: 0, gf: 0, funds: new Set(), mandateScore: null, quartile: null, recoveryScore: null, finalScore: null };
+        if (!byKey[key]) byKey[key] = { program, amount: 0, gf: 0, funds: new Set(), itemIds: new Set(), mandateScore: null, quartile: null, recoveryScore: null, finalScore: null };
         const e = byKey[key];
+        e.itemIds.add(normalizeId(item.ItemID) || `new:${(item.AcctCode || '').toString().trim()}`);
         const lineAmt = getLineItemAmount(item).total || 0;
         e.amount += lineAmt;
         const fund = resolveFund(item);
@@ -1964,27 +1981,80 @@ function getRequestSlices(lineItems) {
 // program, so a mandated or top-quartile slice cannot carry unrelated spending.
 // Reductions are the reverse: the risk is cutting from a mandated or top-quartile
 // program, so the strongest program cut governs and gets flagged.
+// Analyst overrides: which program a request is ranked on, with a reason. Stored per
+// browser, keyed by request ID; every report shows an "Analyst override" badge.
+let rankOverrides = (() => {
+    try { return JSON.parse(localStorage.getItem('pbbRankOverrides') || '{}') || {}; }
+    catch (e) { return {}; }
+})();
+
+function saveRankOverrides() {
+    try { localStorage.setItem('pbbRankOverrides', JSON.stringify(rankOverrides)); } catch (e) { /* storage blocked */ }
+}
+
+// How a request's quartile and mandate are decided:
+//  - "allocated": one line item (a position or contract) split across programs. Judged
+//    by where most of its dollars go; lower-priority slices become conditions.
+//  - "bundled": separate line items in one request. Weakest link: the least-aligned,
+//    least-mandated program receiving added dollars governs, so nothing rides along.
+//  - "override": an analyst chose the program to rank on.
+// Reductions are the reverse check: the strongest program being reduced governs.
 function getWeakestLinkProfile(lineItems, qa) {
     const slices = getRequestSlices(lineItems);
     const added = slices.filter(sl => sl.amount > 0);
     const cuts = slices.filter(sl => sl.amount < 0);
     const isReduction = added.length === 0 && cuts.length > 0;
     const governing = isReduction ? cuts : (added.length > 0 ? added : slices);
+    const pool = governing;
+    const poolTotal = pool.reduce((t, sl) => t + Math.abs(sl.amount), 0);
 
+    const requestId = lineItems.length ? normalizeId(getRequestId(lineItems[0])) : '';
+    const ov = requestId && rankOverrides[requestId];
+    const ovSlice = ov && !isReduction ? governing.find(sl => sl.program === ov.program) : null;
+    const itemIds = new Set();
+    governing.forEach(sl => sl.itemIds.forEach(id => itemIds.add(id)));
+    const mode = isReduction ? 'reduction'
+        : ovSlice ? 'override'
+        : (governing.length > 1 && itemIds.size === 1) ? 'allocated'
+        : 'bundled';
+
+    // --- mandate
     const scored = governing.filter(sl => sl.mandateScore !== null);
     let mandateScore = null, mandateSource = null;
-    if (scored.length > 0) {
+    if (mode === 'override' && ovSlice.mandateScore !== null) {
+        mandateScore = ovSlice.mandateScore; mandateSource = 'override';
+    } else if (scored.length > 0) {
         const scores = scored.map(sl => sl.mandateScore);
-        mandateScore = isReduction ? Math.max(...scores) : Math.min(...scores);
+        if (mode === 'allocated') {
+            const w = scored.reduce((t, sl) => t + Math.abs(sl.amount), 0);
+            mandateScore = w > 0
+                ? Math.round(scored.reduce((t, sl) => t + sl.mandateScore * Math.abs(sl.amount), 0) / w * 10) / 10
+                : Math.min(...scores);
+        } else {
+            mandateScore = isReduction ? Math.max(...scores) : Math.min(...scores);
+        }
         mandateSource = 'scores';
     } else {
         const fromQA = getMandateScoreFromQA(qa);
         if (fromQA) { mandateScore = fromQA.score; mandateSource = `Q&A answer "${fromQA.answer}"`; }
     }
 
+    // --- quartile
     const ranked = governing.filter(sl => normalizeQuartile(sl.quartile));
-    let quartile = null, quartileProgram = null;
-    if (ranked.length > 0) {
+    let quartile = null, quartileProgram = null, quartileShare = null;
+    if (mode === 'override' && normalizeQuartile(ovSlice.quartile)) {
+        quartile = normalizeQuartile(ovSlice.quartile);
+        quartileProgram = ovSlice.program;
+    } else if (mode === 'allocated' && ranked.length > 0) {
+        // Where most of the dollars go; ties go to the lower-aligned quartile.
+        const byQ = {};
+        ranked.forEach(sl => { const q = normalizeQuartile(sl.quartile); byQ[q] = (byQ[q] || 0) + Math.abs(sl.amount); });
+        const best = Object.entries(byQ).sort((x, y) => (y[1] - x[1]) || (quartileRank(y[0]) - quartileRank(x[0])))[0];
+        quartile = best[0];
+        quartileShare = poolTotal > 0 ? best[1] / poolTotal : null;
+        quartileProgram = ranked.filter(sl => normalizeQuartile(sl.quartile) === quartile)
+            .reduce((x, y) => (Math.abs(y.amount) > Math.abs(x.amount) ? y : x)).program;
+    } else if (ranked.length > 0) {
         const pick = ranked.reduce((a, b) => {
             const ra = quartileRank(a.quartile), rb = quartileRank(b.quartile);
             return isReduction ? (rb < ra ? b : a) : (rb > ra ? b : a);
@@ -1993,9 +2063,18 @@ function getWeakestLinkProfile(lineItems, qa) {
         quartileProgram = pick.program;
     }
 
+    // --- conditional slices: lower-priority, not highly mandated parts of an item that
+    // is otherwise judged on its main use (allocated or override).
+    const conditions = (mode === 'allocated' || mode === 'override') && quartile
+        ? added.filter(sl => normalizeQuartile(sl.quartile) &&
+            quartileRank(sl.quartile) > quartileRank(quartile) &&
+            (sl.mandateScore === null || sl.mandateScore < 3))
+          .map(sl => Object.assign(sl, { share: poolTotal > 0 ? Math.abs(sl.amount) / poolTotal : null }))
+        : [];
+
     const addedTotal = added.reduce((t, sl) => t + sl.amount, 0);
-    // Slices dragging an increase down: those at the governing level while other
-    // added slices sit higher. Removing them lifts the rest to the next level.
+    // Bundled requests only: slices dragging the request down. Removing them lifts the
+    // rest to the next level.
     const drag = (levelOf, rankOf) => {
         const known = added.filter(sl => levelOf(sl) !== null);
         if (known.length < 2) return null;
@@ -2014,18 +2093,20 @@ function getWeakestLinkProfile(lineItems, qa) {
         };
     };
     const MANDATE_RANK = { Mandated: 1, Compliance: 2, None: 3 };
-    const mandateDrag = isReduction ? null : drag(
+    const mandateDrag = mode !== 'bundled' ? null : drag(
         sl => mandateLevelForScore(sl.mandateScore),
         sl => MANDATE_RANK[mandateLevelForScore(sl.mandateScore)]);
-    const quartileDrag = isReduction ? null : drag(
+    const quartileDrag = mode !== 'bundled' ? null : drag(
         sl => normalizeQuartile(sl.quartile),
         sl => quartileRank(sl.quartile));
 
     const reductionFlags = cuts.filter(sl =>
         (sl.mandateScore !== null && sl.mandateScore >= 3) || quartileRank(sl.quartile) <= 2);
 
-    return { slices, added, cuts, isReduction, mandateScore, mandateSource, quartile, quartileProgram,
-             mandateDrag, quartileDrag, reductionFlags };
+    return { slices, added, cuts, isReduction, mode, requestId,
+             override: mode === 'override' ? ov : null,
+             mandateScore, mandateSource, quartile, quartileProgram, quartileShare,
+             conditions, mandateDrag, quartileDrag, reductionFlags };
 }
 
 // The quartile a request is judged on (weakest link for added dollars, strongest
@@ -2059,7 +2140,9 @@ function getRequestProgramInfo(lineItems) {
         name: largest.program,
         more,
         label: more > 0 ? `${largest.program} +${more} more` : largest.program,
-        quartileNote: more > 0 && profile.quartileProgram ? `set by ${profile.quartileProgram}` : ''
+        quartileNote: profile.mode === 'override' ? `analyst override: ${profile.quartileProgram}`
+            : more > 0 && profile.mode === 'allocated' && profile.quartileShare != null ? `${Math.round(profile.quartileShare * 100)}% of dollars`
+            : more > 0 && profile.quartileProgram ? `set by ${profile.quartileProgram}` : ''
     };
 }
 
@@ -2108,8 +2191,12 @@ function getMandateScore(profile) {
     if (level === null) {
         return { score: 0, reason: "No mandate score on the line items or in the Summary Report, and no answer to the mandate question" };
     }
-    const src = profile.mandateSource === 'scores'
-        ? (profile.isReduction ? 'the most-mandated program this request reduces' : 'the least-mandated program this request adds funding to')
+    const src = profile.mandateSource === 'override'
+        ? `${profile.quartileProgram} (analyst override)`
+        : profile.mandateSource === 'scores'
+        ? (profile.isReduction ? 'the most-mandated program this request reduces'
+            : profile.mode === 'allocated' ? 'the dollar-weighted score of the programs this item is allocated to'
+            : 'the least-mandated program this request adds funding to')
         : profile.mandateSource;
     if (level === 'Mandated') {
         return { score: 2, reason: `Mandate score ${profile.mandateScore} (highly mandated), from ${src}` };
@@ -2751,6 +2838,17 @@ function scoreRequest(request) {
     // is low-alignment and the ask materially expands it, say so — as a verification
     // prompt, not a score, so the framework's own judgement is left intact.
     analysis.verifyNow = (analysis.verifyNow || []).slice();
+
+    // Conditional slices: lower-priority, not highly mandated parts of an item judged on
+    // its main use. An APPROVE becomes a Conditional Approve; a MODIFY or VERIFY carries
+    // the same condition in its list.
+    const conditionable = ['APPROVE', 'MODIFY', 'VERIFY'].includes(analysis.disposition);
+    analysis.conditions = conditionable ? (profile.conditions || []) : [];
+    analysis.conditional = analysis.conditions.length > 0 && analysis.disposition === 'APPROVE';
+    analysis.override = profile.override;
+    if (analysis.conditions.length > 0 && (analysis.disposition === 'MODIFY' || analysis.disposition === 'VERIFY')) {
+        analysis.conditions.forEach(sl => analysis.verifyNow.push(conditionText(sl)));
+    }
     const bigExpansion = (analysis.programImpacts || []).filter(
         i => i.expansionShare != null && i.expansionShare >= PROGRAM_EXPANSION_FLAG
     );
@@ -3298,6 +3396,19 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
         }
         narrative += `\n`;
     }
+    if (wl && wl.mode === 'override' && wl.override) {
+        narrative += `**ANALYST OVERRIDE:** ranked on ${wl.quartileProgram} (${wl.quartile || 'no quartile'}${wl.mandateScore != null ? `, mandate ${wl.mandateScore}` : ''}). Reason: "${wl.override.reason}". This replaces the framework's automatic choice of program.\n\n`;
+    }
+    if (wl && (analysis.conditions || []).length > 0) {
+        const condTotal = analysis.conditions.reduce((t, sl) => t + sl.amount, 0);
+        const basis = wl.mode === 'override' ? `the analyst's chosen program (${wl.quartileProgram})`
+            : `where most of its dollars go (${wl.quartile}${wl.quartileShare != null ? `, ${Math.round(wl.quartileShare * 100)}% of the dollars` : ''})`;
+        narrative += `**CONDITIONS:** this is one item allocated across programs, so it is judged on ${basis}. The ${money(condTotal)} supporting lower-priority programs is approved only on condition:\n\n`;
+        for (const sl of analysis.conditions) {
+            narrative += `- **${sl.program}** (${normalizeQuartile(sl.quartile)}${sl.mandateScore != null ? `, mandate ${sl.mandateScore}` : ''}): ${money(sl.amount)}${sl.share != null ? ` (${Math.round(sl.share * 100)}%)` : ''}. Approve only if the department reallocates that time to a higher-priority program, finds companion revenue to cover it, or absorbs it through an efficiency elsewhere. Otherwise ${sl.program} stays at its current service level.\n`;
+        }
+        narrative += `\n`;
+    }
     if (wl && wl.isReduction) {
         narrative += `**REDUCTION CHECK:** this request reduces spending, so the PBB check runs in reverse — reductions should come from lower-quartile, low-mandate programs.\n\n`;
         for (const sl of wl.cuts) {
@@ -3348,12 +3459,18 @@ function generateEnhancedNarrative(request, lineItems, qa, analysis) {
     }
     
     // Disposition and recommendation with PBB suggests language
-    narrative += `**PBB FRAMEWORK SUGGESTS: ${analysis.disposition}** (Score: ${analysis.totalScore}/${includeAccessEquity ? 12 : 10})\n\n`;
+    narrative += `**PBB FRAMEWORK SUGGESTS: ${dispositionLabel(analysis)}** (Score: ${analysis.totalScore}/${includeAccessEquity ? 12 : 10})\n\n`;
     narrative += `*Note: This is an advisory recommendation based on textbook PBB methodology, not a final decision.*\n\n`;
     
     // Main recommendation based on disposition
     if (analysis.isReduction) {
         narrative += `**PBB Framework Advisory:** ${analysis.keyConsideration}.\n\n`;
+    } else if (analysis.conditional) {
+        const condNames = analysis.conditions.map(sl => sl.program);
+        const core = (analysis.weakestLink.added || []).filter(sl => !condNames.includes(sl.program))
+            .sort((x, y) => y.amount - x.amount);
+        const coreTotal = core.reduce((t, sl) => t + sl.amount, 0);
+        narrative += `**PBB Framework Advisory:** CONDITIONAL APPROVE. Approve the ${money(coreTotal)} supporting ${core.map(sl => sl.program).join(', ')}. The portion supporting ${condNames.join(', ')} is approved only if the department reallocates that time to a higher-priority program, finds companion revenue, or absorbs the cost through an efficiency (see Conditions above). ${analysis.keyConsideration}.\n\n`;
     } else if (analysis.disposition === 'APPROVE') {
         narrative += `*PBB suggests APPROVE means this request meets the framework's funding criteria — it does NOT mean "fund regardless of cost." Even strong cases compete for finite General Fund resources, so all approvals are subject to overall budget capacity.*\n\n`;
         if (analysis.mandateLevel === 'Mandated') {
@@ -3566,32 +3683,51 @@ function priorityRowHtml(row, isReduction) {
     const detailId = `priority-detail-${row.requestId}`;
 
     const wl = a.weakestLink || { slices: [] };
+    const condNames = (a.conditions || []).map(c => c.program);
+    const canOverride = !isReduction && wl.slices.length > 1;
+    const rid = String(row.requestId).replace(/'/g, "\\'");
     const sliceRows = wl.slices.slice().sort((x, y) => Math.abs(y.amount) - Math.abs(x.amount)).map(sl => {
         const governs = sl.program === wl.quartileProgram && wl.slices.length > 1;
-        return `<tr${governs ? ' class="governs"' : ''}>
-            <td>${sl.program}${governs ? ' <span class="priority-governs">sets quartile</span>' : ''}</td>
+        const conditional = condNames.includes(sl.program);
+        const tag = governs
+            ? (wl.mode === 'override' ? 'analyst choice' : wl.mode === 'allocated' ? 'largest share' : 'sets quartile')
+            : conditional ? 'conditional' : '';
+        const prog = sl.program.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const action = !canOverride ? ''
+            : (wl.mode === 'override' && governs)
+                ? `<button class="priority-override-btn" onclick="event.stopPropagation(); clearRankOverride('${rid}')">Clear override</button>`
+                : `<button class="priority-override-btn" onclick="event.stopPropagation(); setRankOverride('${rid}', '${prog}')">Rank on this</button>`;
+        return `<tr class="${governs ? 'governs' : ''}${conditional ? ' conditional' : ''}">
+            <td>${sl.program}${tag ? ` <span class="priority-governs${conditional ? ' cond' : ''}">${tag}</span>` : ''}</td>
             <td style="text-align: center;">${badge(normalizeQuartile(sl.quartile))}</td>
             <td style="text-align: center;">${sl.mandateScore != null ? sl.mandateScore : '—'}</td>
             <td style="text-align: center;">${sl.finalScore != null ? sl.finalScore : '—'}</td>
             <td>${[...sl.funds].join(', ') || '—'}</td>
             <td style="text-align: right;">${money(sl.amount)}</td>
             <td style="text-align: right;">${sl.gf ? money(sl.gf) : '—'}</td>
+            ${canOverride ? `<td style="text-align: right;">${action}</td>` : ''}
         </tr>`;
     }).join('');
     const why = isReduction
         ? 'For a reduction, the quartile shown is the most-aligned program being reduced.'
-        : (wl.slices.length > 1 ? `The quartile comes from ${wl.quartileProgram || 'the least-aligned program'}, the least-aligned program receiving added dollars.` : '');
+        : wl.mode === 'override'
+            ? `Analyst override: ranked on ${wl.quartileProgram}. Reason: "${String(wl.override.reason).replace(/</g, '&lt;')}"${wl.override.date ? ` (${wl.override.date})` : ''}.`
+        : wl.mode === 'allocated'
+            ? `One item allocated across programs, so it is ranked on where most of its dollars go (${wl.quartile}${wl.quartileShare != null ? `, ${Math.round(wl.quartileShare * 100)}%` : ''}).${condNames.length ? ` Lower-priority slices marked "conditional" are approved only if the time is reallocated, covered by companion revenue, or absorbed through an efficiency.` : ''}`
+        : wl.slices.length > 1
+            ? `Separate items bundled in one request, so the least-aligned program receiving added dollars sets the quartile (${wl.quartileProgram}).`
+            : '';
 
     return `
         <tr class="${isReduction ? 'reduction-row' : 'priority-row'}" data-cumgf="${Math.round(row.cumulativeGf || 0)}" onclick="togglePriorityDetail('${detailId}', this)">
             <td style="text-align: center; font-weight: 600; color: #64748b;"><span class="priority-caret">▸</span> ${row.rank}</td>
             <td>
-                <div style="font-weight: 600; color: #1f2937;">${program}</div>
+                <div style="font-weight: 600; color: #1f2937;">${program}${overrideBadgeHtml(a)}</div>
                 <div style="font-size: 0.78rem; color: #6b7280;">${dept}${dept ? ' · ' : ''}Request ${row.requestId}</div>
             </td>
             <td style="text-align: center;">${badge(q)}</td>
             <td style="text-align: center; color: #475569;">${a.programFinalScore != null ? a.programFinalScore : '—'}</td>
-            <td style="text-align: center;"><span style="background: ${a.dispositionColor}; color: white; padding: 3px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600;">${a.disposition}</span></td>
+            <td style="text-align: center;"><span style="display: inline-block; line-height: 1.25; background: ${a.dispositionColor}; color: white; padding: 3px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600;">${dispositionLabel(a)}</span></td>
             <td style="text-align: right;${a.requestTotal < 0 ? ' color: #dc2626;' : ''}">${money(a.requestTotal || 0)}</td>
             <td style="text-align: right;">${gfCell}</td>
             <td style="text-align: right; color: #475569;">${isReduction ? '' : money(row.cumulativeGf)}</td>
@@ -3600,12 +3736,41 @@ function priorityRowHtml(row, isReduction) {
             <td></td>
             <td colspan="7">
                 <table class="priority-breakdown">
-                    <thead><tr><th>Program</th><th style="text-align: center;">Quartile</th><th style="text-align: center;">Mandate</th><th style="text-align: center;">PBB Score</th><th>Fund</th><th style="text-align: right;">Amount</th><th style="text-align: right;">General Fund</th></tr></thead>
+                    <thead><tr><th>Program</th><th style="text-align: center;">Quartile</th><th style="text-align: center;">Mandate</th><th style="text-align: center;">PBB Score</th><th>Fund</th><th style="text-align: right;">Amount</th><th style="text-align: right;">General Fund</th>${canOverride ? '<th></th>' : ''}</tr></thead>
                     <tbody>${sliceRows}</tbody>
                 </table>
                 ${why ? `<div class="priority-why">${why}</div>` : ''}
             </td>
         </tr>`;
+}
+
+function setRankOverride(requestId, program) {
+    const reason = window.prompt(`Rank request ${requestId} on "${program}"?\n\nReason (required; shown in every report with an "Analyst override" badge):`);
+    if (!reason || !reason.trim()) return;
+    rankOverrides[normalizeId(requestId)] = { program, reason: reason.trim(), date: new Date().toISOString().slice(0, 10) };
+    saveRankOverrides();
+    refreshAfterOverride(requestId);
+}
+
+function clearRankOverride(requestId) {
+    delete rankOverrides[normalizeId(requestId)];
+    saveRankOverrides();
+    refreshAfterOverride(requestId);
+}
+
+// Re-score and re-render everything, then return the analyst to the request.
+function refreshAfterOverride(requestId) {
+    displayReport();
+    if (typeof updateDecisionDashboard === 'function') updateDecisionDashboard();
+    setTimeout(() => {
+        const detail = document.getElementById(`priority-detail-${requestId}`);
+        if (detail) {
+            detail.style.display = 'table-row';
+            const caret = detail.previousElementSibling && detail.previousElementSibling.querySelector('.priority-caret');
+            if (caret) caret.textContent = '▾';
+            detail.scrollIntoView({ block: 'center' });
+        }
+    }, 150);
 }
 
 function togglePriorityDetail(id, rowEl) {
@@ -4464,11 +4629,11 @@ function generateDetailedRequestReportAnalytical() {
                     <span class="request-accordion-id">#${requestId}</span>
                     <div class="request-accordion-title">
                         <div class="request-accordion-desc">${description || 'No description'}</div>
-                        <div class="request-accordion-meta">${h.meta} · ${analysis.isReduction ? 'Reduction check' : `Archetype ${archetypeLabel(analysis)}`}</div>
+                        <div class="request-accordion-meta">${h.meta} · ${analysis.isReduction ? 'Reduction check' : `Archetype ${archetypeLabel(analysis)}`}${overrideBadgeHtml(analysis)}</div>
                     </div>
                     <div class="request-accordion-badges">
                         ${h.amountPill}${h.quartileBadge}
-                        <span class="request-accordion-badge" style="background: ${analysis.dispositionColor};">${analysis.disposition}</span>
+                        <span class="request-accordion-badge" style="background: ${analysis.dispositionColor};">${dispositionLabel(analysis)}</span>
                     </div>
                     <span class="request-accordion-arrow" id="${uniqueId}-arrow">▼</span>
                 </div>
@@ -4479,7 +4644,7 @@ function generateDetailedRequestReportAnalytical() {
                             <div class="summary-grid">
                                 <div class="summary-item">
                                     <div class="summary-label">PBB Recommendation</div>
-                                    <div class="summary-value" style="color: ${analysis.dispositionColor};">${analysis.disposition}</div>
+                                    <div class="summary-value" style="color: ${analysis.dispositionColor};">${dispositionLabel(analysis)}</div>
                                     <div class="summary-sub">${analysis.isReduction ? 'Reduction check' : `Archetype ${archetypeLabel(analysis)}`}</div>
                                 </div>
                                 ${amountTileHtml(h.amounts)}
@@ -4514,7 +4679,7 @@ function generateDetailedRequestReportAnalytical() {
                                         ${archetypeLabel(analysis)}
                                     </div>
                                     <div style="font-size: 1.8rem; font-weight: 700; color: ${analysis.dispositionColor}; margin-bottom: 15px;">
-                                        ${analysis.disposition}
+                                        ${dispositionLabel(analysis)}
                                     </div>
                                     <div style="font-size: 1.1rem; color: #444; font-style: italic; max-width: 600px; margin: 0 auto; line-height: 1.5;">
                                         "${analysis.keyConsideration}"
@@ -4711,7 +4876,7 @@ function generateAnalyticalTableOfContents() {
                 Request ${requestId}: ${description || 'N/A'}
             </a>
             <span style="background: ${badgeColor}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8rem; margin-left: 10px;">
-                ${analysis.disposition} (${analysis.totalScore}/${includeAccessEquity ? 12 : 10})
+                ${dispositionLabel(analysis)} (${analysis.totalScore}/${includeAccessEquity ? 12 : 10})
             </span>
         </li>`;
     });
@@ -4781,7 +4946,7 @@ function downloadAnalyticalWordReport() {
                 <td style="padding: 8px; border: 1px solid #e2e8f0;">${primaryQuartile}</td>
                 <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: right;">${money(amounts.total)}</td>
                 <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: center; font-weight: bold;">${archetypeLabel(analysis)}</td>
-                <td style="padding: 8px; border: 1px solid #e2e8f0; background: ${dispColor}; color: white; font-weight: bold; text-align: center;">${analysis.disposition}</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0; background: ${dispColor}; color: white; font-weight: bold; text-align: center;">${dispositionLabel(analysis)}</td>
             </tr>
         `;
     });
@@ -4834,7 +4999,7 @@ function downloadAnalyticalWordReport() {
                             <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">Total Amount</div><div style="font-weight: 600; color: #10b981;">${money(amounts.total)}</div></td>
                             <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">Ongoing</div><div style="font-weight: 600;">${money(amounts.ongoing)}</div></td>
                             <td style="width: 16%; padding: 8px; background: #f8fafc; border-radius: 4px; text-align: center;"><div style="font-size: 10px; color: #64748b;">One-time</div><div style="font-weight: 600;">${money(amounts.onetime)}</div></td>
-                            <td style="width: 16%; padding: 8px; background: ${dispColor}; border-radius: 4px; text-align: center; color: white;"><div style="font-size: 10px;">Recommendation</div><div style="font-weight: 700;">${analysis.disposition}</div></td>
+                            <td style="width: 16%; padding: 8px; background: ${dispColor}; border-radius: 4px; text-align: center; color: white;"><div style="font-size: 10px;">Recommendation</div><div style="font-weight: 700;">${dispositionLabel(analysis)}</div></td>
                         </tr>
                     </table>
                     
@@ -5028,12 +5193,12 @@ function downloadAnalyticalPdfReport() {
         
         tableRows += `<tr>
             <td>${requestId}</td>
-            <td>${shortDesc}</td>
+            <td>${shortDesc}${analysis.override ? ' <span class="badge" style="background: #fef3c7; color: #92400e;">Override</span>' : ''}</td>
             <td>${primaryDept}</td>
             <td><span class="badge ${qBadge}">${primaryQuartile}</span></td>
             <td class="${amountClass(amounts.total)}">${money(amounts.total)}</td>
             <td style="text-align: center; font-weight: bold;">${archetypeLabel(analysis)}</td>
-            <td><span class="badge ${dispBadge}">${analysis.disposition}</span></td>
+            <td><span class="badge ${dispBadge}">${dispositionLabel(analysis)}</span></td>
         </tr>`;
     });
     
@@ -5107,8 +5272,9 @@ function downloadAnalyticalPdfReport() {
                         <!-- Archetype Badge -->
                         <div style="text-align: center; padding: 15px; margin-bottom: 15px; background: linear-gradient(135deg, ${dispColor}15, ${dispColor}05); border-radius: 8px; border: 2px solid ${dispColor};">
                             <div style="font-size: 8px; color: #666; text-transform: uppercase;">Archetype</div>
-                            <div style="font-size: 24px; font-weight: 800; color: ${dispColor};">${archetypeLabel(analysis)} · ${analysis.disposition}</div>
+                            <div style="font-size: 24px; font-weight: 800; color: ${dispColor};">${archetypeLabel(analysis)} · ${dispositionLabel(analysis)}</div>
                             <div style="font-size: 9px; color: #444; font-style: italic;">"${analysis.keyConsideration}"</div>
+                            ${analysis.override ? `<div style="margin-top: 6px; font-size: 9px; color: #92400e;"><strong>Analyst override:</strong> ranked on ${analysis.override.program}. ${analysis.override.reason}</div>` : ''}
                         </div>
                         
                         <div class="meta-grid">
@@ -7562,6 +7728,8 @@ function exportPBBAnalysisToExcel() {
         '5. Efficiency/ROI Score (0-2)',
         '5. Efficiency/ROI Notes',
         ...(includeAccessEquity ? ['6. Access Score (0-2)', '6. Access Notes'] : []),
+        'Conditions',
+        'Analyst Override',
         'Overall Rationale'
     ]];
     
@@ -7596,7 +7764,7 @@ function exportPBBAnalysisToExcel() {
             analysis.isReduction ? 'Reduction' : analysis.archetypeNumber,
             analysis.gridKey,
             analysis.totalScore,
-            analysis.disposition,
+            dispositionLabel(analysis),
             rankById[requestId] != null ? rankById[requestId] : '',
             analysis.programFinalScore != null ? analysis.programFinalScore : '',
             analysis.gfExposure ? Math.round(analysis.gfExposure.gf) : '',
@@ -7619,6 +7787,8 @@ function exportPBBAnalysisToExcel() {
             analysis.efficiencyScore,
             analysis.efficiencyReason,
             ...(includeAccessEquity ? [analysis.accessScore, analysis.accessReason] : []),
+            (analysis.conditions || []).map(conditionText).join(' | '),
+            analysis.override ? `Ranked on ${analysis.override.program}: ${analysis.override.reason}` : '',
             narrativeToText(analysis.narrative)
         ]);
     });
@@ -7659,6 +7829,8 @@ function exportPBBAnalysisToExcel() {
         { wch: 10 },  // Efficiency/ROI Score
         { wch: 60 },  // Efficiency/ROI Notes
         ...(includeAccessEquity ? [{ wch: 10 }, { wch: 60 }] : []),
+        { wch: 60 },  // Conditions
+        { wch: 40 },  // Analyst Override
         { wch: 80 }   // Overall Rationale
     ];
     

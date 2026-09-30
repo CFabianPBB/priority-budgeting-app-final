@@ -2262,6 +2262,31 @@ tr:hover {
     margin-left: 4px;
 }
 
+.priority-breakdown tr.conditional td {
+    background: #fefce8;
+}
+
+.priority-governs.cond {
+    color: #854d0e;
+    background: #fef08a;
+}
+
+.priority-override-btn {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--tyler-blue);
+    background: white;
+    border: 1px solid var(--slate-300, #cbd5e1);
+    border-radius: 9999px;
+    padding: 2px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.priority-override-btn:hover {
+    background: #eef2ff;
+}
+
 .priority-why {
     font-size: 0.78rem;
     color: var(--slate-500);
